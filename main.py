@@ -21,7 +21,8 @@ intents.message_content = True
 
 team_size = 6
 team_size_alt = 4
-approved_channels = [824691989366046750, 712297302857089025, 650967104933330947, 754569102873460776, 754569222260129832]
+approved_channels = [824691989366046750, 712297302857089025,
+                     650967104933330947, 754569102873460776, 754569222260129832]
 
 
 class RankedBot(discord.Client):
@@ -40,9 +41,6 @@ async def ping(interaction: discord.Interaction):
     """Pingggg"""
     await interaction.response.send_message('Pong! {0} :ping_pong: '.format(round(bot.latency * 1000, 4)),
                                             ephemeral=False)
-
-
-
 
     # qdata = self.get_queue(ctx)
     # print(qdata)
@@ -95,6 +93,7 @@ async def ping(interaction: discord.Interaction):
     #         else:
     #             await channel.send("Queue is now full! You can start as soon as the current match concludes.")
     #
+
 
 async def remove_roles(ctx):
     # Remove any current roles
@@ -189,13 +188,16 @@ class TeamMaker:
             self.names_to_ids.update({row["Name"]: str(index)[1:]})
 
         wks = self.open_sheet("6-man Rankings + Elos", "Leaderboard")
-        self.ranks = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+        self.ranks = gspread_dataframe.get_as_dataframe(
+            wks, evaluate_formulas=True)
 
         wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-        self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+        self.elo_results = gspread_dataframe.get_as_dataframe(
+            wks, evaluate_formulas=True)
 
         wks = self.open_sheet("6-man Rankings + Elos", "VEX ELO Raw")
-        self.elo_results2 = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+        self.elo_results2 = gspread_dataframe.get_as_dataframe(
+            wks, evaluate_formulas=True)
 
     @tree.command()
     async def queue(self, interaction: discord.Interaction):
@@ -351,8 +353,6 @@ class TeamMaker:
     # async def seriestest(self, ctx):
     #     await ctx.channel.send(f"{self.red_series} {self.blue_series}")
 
-
-
     @commands.cooldown(1, 10, commands.BucketType.member)
     @commands.command(pass_context=True, name="queue", aliases=["q"], description="Add yourself to the queue")
     async def q(self, ctx):
@@ -415,12 +415,14 @@ class TeamMaker:
         channel = ctx.channel
         try:
             for _ in range(0, 2):  # loop to not reverse order
-                players = [qdata['queue'].get() for _ in range(qdata['queue'].qsize())]
+                players = [qdata['queue'].get()
+                           for _ in range(qdata['queue'].qsize())]
                 for player in players:
                     qdata['queue'].put(player)
             embed = discord.Embed(color=0xcda03f, title="Signed up players")
             embed.add_field(name='Players',
-                            value="{}".format("\n".join([player.mention for player in players])),
+                            value="{}".format(
+                                "\n".join([player.mention for player in players])),
                             inline=False)
             await channel.send(embed=embed)
         except:
@@ -536,10 +538,12 @@ class TeamMaker:
         qdata['game'].add_to_blue(qdata['blue_captain'])
 
         embed.add_field(name='🟥 RED 🟥',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].red])),
+                        value="{}".format(
+                            "\n".join([player.mention for player in qdata['game'].red])),
                         inline=False)
         embed.add_field(name='🟦 BLUE 🟦',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].blue])),
+                        value="{}".format(
+                            "\n".join([player.mention for player in qdata['game'].blue])),
                         inline=False)
         embed.add_field(name='Picking Process...',
                         value="{mention} Use {prefix}pick [user] to pick 1 player.".format(
@@ -547,7 +551,8 @@ class TeamMaker:
                             prefix=self.bot.command_prefix),
                         inline=False)
         embed.add_field(name='Available players:',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].players])),
+                        value="{}".format(
+                            "\n".join([player.mention for player in qdata['game'].players])),
                         inline=False)
         self.set_queue(ctx, qdata)
         # red Pick
@@ -558,12 +563,15 @@ class TeamMaker:
         qdata['game'].add_to_red(red_pick)
 
         # Blue Picks
-        embed = discord.Embed(color=0x00affa, title="Blue Alliance Captain's Picks!")
+        embed = discord.Embed(
+            color=0x00affa, title="Blue Alliance Captain's Picks!")
         embed.add_field(name='🟥 RED 🟥',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].red])),
+                        value="{}".format(
+                            "\n".join([player.mention for player in qdata['game'].red])),
                         inline=False)
         embed.add_field(name='🟦 BLUE 🟦',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].blue])),
+                        value="{}".format(
+                            "\n".join([player.mention for player in qdata['game'].blue])),
                         inline=False)
         embed.add_field(name='Picking Process...',
                         value="{mention} Use {prefix}pick [user1] [user2] to pick 2 players.".format(
@@ -571,7 +579,8 @@ class TeamMaker:
                             prefix=self.bot.command_prefix),
                         inline=False)
         embed.add_field(name='Available players:',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].players])),
+                        value="{}".format(
+                            "\n".join([player.mention for player in qdata['game'].players])),
                         inline=False)
         await channel.send(embed=embed)
         blue_picks = None
@@ -632,8 +641,10 @@ class TeamMaker:
         await ctx.channel.send(f"{red_check.mention} {blue_check.mention}")
 
     def open_sheet(self, sheet_name, tab_name):
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        credentials = ServiceAccountCredentials.from_json_keyfile_name('fantasy-first-260710-7fa1a0ed0b21.json', scope)
+        scope = ['https://spreadsheets.google.com/feeds',
+                 'https://www.googleapis.com/auth/drive']
+        credentials = ServiceAccountCredentials.from_json_keyfile_name(
+            'fantasy-first-260710-7fa1a0ed0b21.json', scope)
         gc = gspread.authorize(credentials)
         stuff = gc.open(sheet_name)
         wks = stuff.worksheet(tab_name)
@@ -644,14 +655,12 @@ class TeamMaker:
     async def submit(self, ctx, red_score, blue_score, edit=None):
 
         if ctx.channel.id == 824691989366046750:  # FRC
-            headers = [1, 2, 3, 4, 5, 6, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4', 'iElo5', 'iElo6',
+            headers = [1, 2, 3, 4, 5, 6, 'Match', 'rScore', 'bScore', 'iElo1', 'iElo2', 'iElo3', 'iElo4', 'iElo5', 'iElo6',
                        'rElo', 'bElo', 'rOdds', 'bOdds',
                        'fElo1', 'fElo2', 'fElo3', 'fElo4', 'fElo5', 'fElo6',
                        'status1', 'status2', 'status3', 'status4', 'status5', 'status6']
         elif ctx.channel.id == 712297302857089025 or ctx.channel.id == 754569222260129832 or ctx.channel.id == 754569222260129832:  # VEX
-            headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4',
+            headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore', 'iElo1', 'iElo2', 'iElo3', 'iElo4',
                        'rElo', 'bElo', 'rOdds', 'bOdds',
                        'fElo1', 'fElo2', 'fElo3', 'fElo4',
                        'status1', 'status2', 'status3', 'status4']
@@ -810,22 +819,26 @@ class TeamMaker:
 
         if ctx.channel.id == 824691989366046750:  # FRC
             wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-            self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+            self.elo_results = gspread_dataframe.get_as_dataframe(
+                wks, evaluate_formulas=True)
             if edit == "edit":
                 self.elo_results = self.elo_results.iloc[1:]
             elo_current = self.elo_results
             print(elo_current)
         elif ctx.channel.id == 712297302857089025:  # VEX
             wks = self.open_sheet("6-man Rankings + Elos", "VEX ELO Raw")
-            self.elo_results2 = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+            self.elo_results2 = gspread_dataframe.get_as_dataframe(
+                wks, evaluate_formulas=True)
             elo_current = self.elo_results2
         elif ctx.channel.id == 754569222260129832:  # FTC
             wks = self.open_sheet("6-man Rankings + Elos", "FTC 4 Mans Raw")
-            self.elo_results3 = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+            self.elo_results3 = gspread_dataframe.get_as_dataframe(
+                wks, evaluate_formulas=True)
             elo_current = self.elo_results3
         elif ctx.channel.id == 754569102873460776:  # FRC 4
             wks = self.open_sheet("6-man Rankings + Elos", "FRC 4 Mans Raw")
-            self.elo_results4 = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+            self.elo_results4 = gspread_dataframe.get_as_dataframe(
+                wks, evaluate_formulas=True)
             elo_current = self.elo_results4
         else:
             return
@@ -842,7 +855,8 @@ class TeamMaker:
         for player in elo_calc_players:
             try:
                 try:
-                    elo_player_pairs.update({player: self.players_current_elo[player]})
+                    elo_player_pairs.update(
+                        {player: self.players_current_elo[player]})
                 except:
                     # sets all matches to True
                     matches = elo_current.isin([player])
@@ -857,16 +871,20 @@ class TeamMaker:
                     match = outlist[0]
 
                     if ctx.channel.id == 824691989366046750:  # FRC
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
+                        column_to_label = {
+                            1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
                     elif ctx.channel.id == 712297302857089025 or ctx.channel.id == 754569222260129832 or ctx.channel.id == 754569102873460776:  # VEX
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4"}
+                        column_to_label = {1: "fElo1",
+                                           2: "fElo2", 3: "fElo3", 4: "fElo4"}
                     else:
                         return
 
-                    elo_player_pairs.update({player: elo_current.loc[match[0], column_to_label[match[1]]]})
+                    elo_player_pairs.update(
+                        {player: elo_current.loc[match[0], column_to_label[match[1]]]})
             except:
                 elo_player_pairs.update({player: 1200})
-        result = self.calculate_elo(elo_calc_players, elo_player_pairs, int(red_score), int(blue_score))
+        result = self.calculate_elo(
+            elo_calc_players, elo_player_pairs, int(red_score), int(blue_score))
         final_elos = result[0]
 
         # Set wins/losses
@@ -898,14 +916,18 @@ class TeamMaker:
             data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
                     elo_calc_players[4], elo_calc_players[5],
                     matchnum, int(red_score), int(blue_score),
-                    elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
+                    elo_player_pairs[elo_calc_players[0]
+                                     ], elo_player_pairs[elo_calc_players[1]],
                     elo_player_pairs[elo_calc_players[2]],
-                    elo_player_pairs[elo_calc_players[3]], elo_player_pairs[elo_calc_players[4]],
+                    elo_player_pairs[elo_calc_players[3]
+                                     ], elo_player_pairs[elo_calc_players[4]],
                     elo_player_pairs[elo_calc_players[5]],
                     result[3], result[4], result[1], result[2],
-                    final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
+                    final_elos[elo_calc_players[0]
+                               ], final_elos[elo_calc_players[1]],
                     final_elos[elo_calc_players[2]],
-                    final_elos[elo_calc_players[3]], final_elos[elo_calc_players[4]],
+                    final_elos[elo_calc_players[3]
+                               ], final_elos[elo_calc_players[4]],
                     final_elos[elo_calc_players[5]]]
             df2 = pd.DataFrame(data=[red_players + blue_players + [matchnum, red_score, blue_score]],
                                columns=["Red1", "Red2", "Red3", "Blue1", "Blue2", "Blue3", "Match Number",
@@ -916,32 +938,37 @@ class TeamMaker:
                 data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
                         elo_calc_players[4], elo_calc_players[5],
                         matchnum + 1, int(red_score), int(blue_score),
-                        elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
+                        elo_player_pairs[elo_calc_players[0]
+                                         ], elo_player_pairs[elo_calc_players[1]],
                         elo_player_pairs[elo_calc_players[2]],
-                        elo_player_pairs[elo_calc_players[3]], elo_player_pairs[elo_calc_players[4]],
+                        elo_player_pairs[elo_calc_players[3]
+                                         ], elo_player_pairs[elo_calc_players[4]],
                         elo_player_pairs[elo_calc_players[5]],
                         result[3], result[4], result[1], result[2],
-                        final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
+                        final_elos[elo_calc_players[0]
+                                   ], final_elos[elo_calc_players[1]],
                         final_elos[elo_calc_players[2]],
-                        final_elos[elo_calc_players[3]], final_elos[elo_calc_players[4]],
+                        final_elos[elo_calc_players[3]
+                                   ], final_elos[elo_calc_players[4]],
                         final_elos[elo_calc_players[5]]]
                 df2 = pd.DataFrame(data=[red_players + blue_players + [matchnum + 1, red_score, blue_score]],
                                    columns=["Red1", "Red2", "Red3", "Blue1", "Blue2", "Blue3", "Match Number",
                                             "Red Score",
                                             "Blue Score"])
             elif ctx.channel.id == 712297302857089025 or ctx.channel.id == 754569222260129832 or ctx.channel.id == 754569222260129832:  # VEX
-                headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore'
-                    , 'iElo1', 'iElo2', 'iElo3', 'iElo4',
+                headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore', 'iElo1', 'iElo2', 'iElo3', 'iElo4',
                            'rElo', 'bElo', 'rOdds', 'bOdds',
                            'fElo1', 'fElo2', 'fElo3', 'fElo4',
                            'status1', 'status2', 'status3', 'status4']
                 data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
                         matchnum + 1, int(red_score), int(blue_score),
-                        elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
+                        elo_player_pairs[elo_calc_players[0]
+                                         ], elo_player_pairs[elo_calc_players[1]],
                         elo_player_pairs[elo_calc_players[2]],
                         elo_player_pairs[elo_calc_players[3]],
                         result[3], result[4], result[1], result[2],
-                        final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
+                        final_elos[elo_calc_players[0]
+                                   ], final_elos[elo_calc_players[1]],
                         final_elos[elo_calc_players[2]],
                         final_elos[elo_calc_players[3]]]
                 df2 = pd.DataFrame(data=[red_players + blue_players + [matchnum + 1, red_score, blue_score]],
@@ -974,7 +1001,8 @@ class TeamMaker:
 
         Thread(target=self.submit_match, daemon=True, args=(ctx,)).start()
 
-        embed = discord.Embed(color=0xcda03f, title=f"Score submitted | 🟥 {red_log}-{blue_log}  🟦 |")
+        embed = discord.Embed(
+            color=0xcda03f, title=f"Score submitted | 🟥 {red_log}-{blue_log}  🟦 |")
         red_out = "```diff\n"
         blue_out = "```diff\n"
         i = 0
@@ -1009,8 +1037,10 @@ class TeamMaker:
     def submit_match(self, ctx):
         sheet_name = "6-man Rankings + Elos"
 
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        credentials = ServiceAccountCredentials.from_json_keyfile_name('fantasy-first-260710-7fa1a0ed0b21.json', scope)
+        scope = ['https://spreadsheets.google.com/feeds',
+                 'https://www.googleapis.com/auth/drive']
+        credentials = ServiceAccountCredentials.from_json_keyfile_name(
+            'fantasy-first-260710-7fa1a0ed0b21.json', scope)
 
         gc = gspread.authorize(credentials)
         sheet = gc.open(sheet_name)
@@ -1041,7 +1071,8 @@ class TeamMaker:
             return
         qdata['busy'] = True
         qdata = self.create_game(ctx)
-        red = random.sample(qdata['game'].players, int(int(qdata['team_size']) / 2))
+        red = random.sample(qdata['game'].players,
+                            int(int(qdata['team_size']) / 2))
         for player in red:
             qdata['game'].add_to_red(player)
 
@@ -1086,42 +1117,42 @@ class TeamMaker:
             if i < int((len(elo_calc_players) / 2) + 1):
                 if r_score > b_score:
                     new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(r_score - b_score) + 1, 8)) * (
-                                                                  1 - r_odds)) * (((self.b - 1) / (
-                                self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
+                        self.k / (1 + 0) + 2 * math.log(
+                            math.fabs(r_score - b_score) + 1, 8)) * (
+                        1 - r_odds)) * (((self.b - 1) / (
+                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
                 elif b_score > r_score:
                     new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(r_score - b_score) + 1, 8)) * (
-                                                                  0 - r_odds)) * (((self.b - 1) / (
-                                self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
+                        self.k / (1 + 0) + 2 * math.log(
+                            math.fabs(r_score - b_score) + 1, 8)) * (
+                        0 - r_odds)) * (((self.b - 1) / (
+                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
                 else:
                     new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(r_score - b_score) + 1, 8)) * (
-                                                                  0.5 - r_odds)) * (((self.b - 1) / (
-                                self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
+                        self.k / (1 + 0) + 2 * math.log(
+                            math.fabs(r_score - b_score) + 1, 8)) * (
+                        0.5 - r_odds)) * (((self.b - 1) / (
+                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
 
             else:
                 if b_score > r_score:
                     new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(b_score - r_score) + 1, 8)) * (
-                                                                  1 - b_odds)) * (((self.b - 1) / (
-                                self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
+                        self.k / (1 + 0) + 2 * math.log(
+                            math.fabs(b_score - r_score) + 1, 8)) * (
+                        1 - b_odds)) * (((self.b - 1) / (
+                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
                 elif r_score > b_score:
                     new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(b_score - r_score) + 1, 8)) * (
-                                                                  0 - b_odds)) * (((self.b - 1) / (
-                                self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
+                        self.k / (1 + 0) + 2 * math.log(
+                            math.fabs(b_score - r_score) + 1, 8)) * (
+                        0 - b_odds)) * (((self.b - 1) / (
+                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
                 else:
                     new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(b_score - r_score) + 1, 8)) * (
-                                                                  0.5 - b_odds)) * (((self.b - 1) / (
-                                self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
+                        self.k / (1 + 0) + 2 * math.log(
+                            math.fabs(b_score - r_score) + 1, 8)) * (
+                        0.5 - b_odds)) * (((self.b - 1) / (
+                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
 
             new_elo_player_pairs.update({player: new_elo})
             self.players_current_elo.update({player: new_elo})
@@ -1145,13 +1176,16 @@ class TeamMaker:
                        for j, c in enumerate(r)
                        if c]
             # Get values of elos
-            column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
+            column_to_label = {1: "fElo1", 2: "fElo2",
+                               3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
             elo_history = []
             for match in outlist:
-                elo_history.append(self.elo_results.loc[match[0], column_to_label[match[1]]])
+                elo_history.append(
+                    self.elo_results.loc[match[0], column_to_label[match[1]]])
             elo_history.reverse()
             plt.plot(elo_history, label=player, )
-        plt.title(f"Elo history of {', '.join([player for player in players])}")
+        plt.title(
+            f"Elo history of {', '.join([player for player in players])}")
         plt.legend()
         plt.ylabel('ELO')
         plt.xlabel('Match Number')
@@ -1163,8 +1197,10 @@ class TeamMaker:
     async def checkelo(self, ctx):
         privs = {699094822132121662, 637411162203619350}
         wks = self.open_sheet("6-man Rankings + Elos", "Leaderboard")
-        self.ranks = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-        new_ranks = self.ranks[["Player", "#", "MMR", "Rank", "Wins", "Losses", "Ties"]]
+        self.ranks = gspread_dataframe.get_as_dataframe(
+            wks, evaluate_formulas=True)
+        new_ranks = self.ranks[["Player", "#",
+                                "MMR", "Rank", "Wins", "Losses", "Ties"]]
         colors = {"Challenger": 0xc7ffff, "Grandmaster": 0xeb8686, "Master": 0xf985cb, "Diamond": 0xc6d2ff,
                   "Platinum": 0x54eac1, "Gold": 0xebce75, "Silver": 0xd9d9d9, "Bronze": 0xb8a25e, "Iron": 0xffffff,
                   "Stone": 0x000000}
@@ -1183,10 +1219,12 @@ class TeamMaker:
                    for j, c in enumerate(r)
                    if c]
         # Get values of elos
-        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
+        column_to_label = {1: "fElo1", 2: "fElo2",
+                           3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
         elo_history = []
         for match in outlist:
-            elo_history.append(self.elo_results.loc[match[0], column_to_label[match[1]]])
+            elo_history.append(
+                self.elo_results.loc[match[0], column_to_label[match[1]]])
 
         player_data = new_ranks.loc[new_ranks['Player'] == player]
         elo_history.reverse()
@@ -1210,12 +1248,17 @@ class TeamMaker:
         embed = discord.Embed(title=f"#{player_data.iloc[0]['#']} - {player}",
                               color=colors[player_data.iloc[0]['Rank']],
                               url="https://docs.google.com/spreadsheets/d/1Oz7PRidqPPe_aC6ApHA4xo9XTpuTmgj6z9z2sy3U6ds/edit#gid=1261790407")
-        embed.set_thumbnail(url=f"https://cdn.discordapp.com/avatars/{ctx.author.id}/{ctx.author.avatar}.png?size=1024")
+        embed.set_thumbnail(
+            url=f"https://cdn.discordapp.com/avatars/{ctx.author.id}/{ctx.author.avatar}.png?size=1024")
         if 715286195612942356 in [y.id for y in ctx.message.author.roles]:
-            embed.add_field(name="BETA TESTER", value=f"Thank you for your support!", inline=False)
-        embed.add_field(name="Placement", value=f"#{player_data.iloc[0]['#']}/{len(new_ranks.index)}", inline=True)
-        embed.add_field(name="Rank", value=f"{player_data.iloc[0]['Rank']}", inline=True)
-        embed.add_field(name="MMR", value=f"{round(player_data.iloc[0]['MMR'], 1)}", inline=True)
+            embed.add_field(name="BETA TESTER",
+                            value=f"Thank you for your support!", inline=False)
+        embed.add_field(
+            name="Placement", value=f"#{player_data.iloc[0]['#']}/{len(new_ranks.index)}", inline=True)
+        embed.add_field(
+            name="Rank", value=f"{player_data.iloc[0]['Rank']}", inline=True)
+        embed.add_field(
+            name="MMR", value=f"{round(player_data.iloc[0]['MMR'], 1)}", inline=True)
         embed.add_field(name="Record",
                         value=f"{round(player_data.iloc[0]['Wins'])}-{round(player_data.iloc[0]['Losses'])}-{round(player_data.iloc[0]['Ties'])}",
                         inline=False)
@@ -1229,7 +1272,8 @@ class TeamMaker:
     async def namecheck(self, ctx):
 
         wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-        self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+        self.elo_results = gspread_dataframe.get_as_dataframe(
+            wks, evaluate_formulas=True)
 
         wks = self.open_sheet("6-man Rankings + Elos", "User Index")
         self.user_index = gspread_dataframe.get_as_dataframe(wks)
@@ -1255,7 +1299,8 @@ class TeamMaker:
         for index, row in new_ranks.iterrows():
             await asyncio.sleep(.1)
             try:
-                user = ctx.message.guild.get_member(int(self.names_to_ids[row['Player']]))
+                user = ctx.message.guild.get_member(
+                    int(self.names_to_ids[row['Player']]))
                 role = get(ctx.message.author.guild.roles, name=row["Rank"])
                 # print(role)
                 if role in user.roles:
@@ -1272,7 +1317,8 @@ class TeamMaker:
                     # print(f"{user} updated")
             except Exception as e:
                 try:
-                    user = ctx.message.guild.get_member(int(self.names_to_ids[row['Player']]))
+                    user = ctx.message.guild.get_member(
+                        int(self.names_to_ids[row['Player']]))
                     ranks_to_check = ["Challenger", "Grandmaster", "Master", "Diamond", "Platinum", "Gold", "Silver",
                                       "Bronze", "Iron", "Stone"]
                     for rank in ranks_to_check:
@@ -1306,10 +1352,12 @@ class TeamMaker:
         channel = ctx.channel
         if ctx.channel.id == 824691989366046750:  # 6 FRC
             red_check = get(ctx.message.author.guild.roles, name="Ranked Red")
-            blue_check = get(ctx.message.author.guild.roles, name="Ranked Blue")
+            blue_check = get(ctx.message.author.guild.roles,
+                             name="Ranked Blue")
             red_lobby = self.bot.get_channel(824692157142269963)
             for player in qdata['game'].red:
-                to_change = get(ctx.message.author.guild.roles, name="Ranked Red")
+                to_change = get(ctx.message.author.guild.roles,
+                                name="Ranked Red")
                 await player.add_roles(to_change)
                 try:
                     await player.move_to(red_lobby)
@@ -1318,7 +1366,8 @@ class TeamMaker:
                     pass
             blue_lobby = self.bot.get_channel(824692212528840724)
             for player in qdata['game'].blue:
-                to_change = get(ctx.message.author.guild.roles, name="Ranked Blue")
+                to_change = get(ctx.message.author.guild.roles,
+                                name="Ranked Blue")
                 await player.add_roles(to_change)
                 try:
                     await player.move_to(blue_lobby)
@@ -1328,20 +1377,25 @@ class TeamMaker:
 
         elif ctx.channel.id == 712297302857089025 or ctx.channel.id == 754569222260129832 or ctx.channel.id == 754569102873460776:  # VEX
             red_check = get(ctx.message.author.guild.roles, name="4 Mans Red")
-            blue_check = get(ctx.message.author.guild.roles, name="4 Mans Blue")
+            blue_check = get(ctx.message.author.guild.roles,
+                             name="4 Mans Blue")
             for player in qdata['game'].red:
-                to_change = get(ctx.message.author.guild.roles, name="4 Mans Red")
+                to_change = get(ctx.message.author.guild.roles,
+                                name="4 Mans Red")
                 await player.add_roles(to_change)
             for player in qdata['game'].blue:
-                to_change = get(ctx.message.author.guild.roles, name="4 Mans Blue")
+                to_change = get(ctx.message.author.guild.roles,
+                                name="4 Mans Blue")
                 await player.add_roles(to_change)
 
         embed = discord.Embed(color=0xcda03f, title="Teams have been picked!")
         embed.add_field(name='🟥 RED 🟥',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].red])),
+                        value="{}".format(
+                            "\n".join([player.mention for player in qdata['game'].red])),
                         inline=True)
         embed.add_field(name='🟦 BLUE 🟦',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].blue])),
+                        value="{}".format(
+                            "\n".join([player.mention for player in qdata['game'].blue])),
                         inline=True)
 
         await channel.send(embed=embed)
@@ -1370,9 +1424,9 @@ class TeamMaker:
     async def fastcalcelo(self, ctx):
         if 693160987125350466 in [y.id for y in ctx.message.author.roles]:
             wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-            self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-            headers = [1, 2, 3, 4, 5, 6, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4', 'iElo5', 'iElo6',
+            self.elo_results = gspread_dataframe.get_as_dataframe(
+                wks, evaluate_formulas=True)
+            headers = [1, 2, 3, 4, 5, 6, 'Match', 'rScore', 'bScore', 'iElo1', 'iElo2', 'iElo3', 'iElo4', 'iElo5', 'iElo6',
                        'rElo', 'bElo', 'rOdds', 'bOdds',
                        'fElo1', 'fElo2', 'fElo3', 'fElo4', 'fElo5', 'fElo6',
                        'status1', 'status2', 'status3', 'status4', 'status5', 'status6']
@@ -1408,24 +1462,31 @@ class TeamMaker:
                         # Get values of elos
                         match = outlist[0]
 
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
-                        elo_player_pairs.update({player: dfFinal.loc[match[0], column_to_label[match[1]]]})
+                        column_to_label = {
+                            1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
+                        elo_player_pairs.update(
+                            {player: dfFinal.loc[match[0], column_to_label[match[1]]]})
                     except Exception as e:
                         print(e)
                         elo_player_pairs.update({player: 1200})
-                result = self.calculate_elo(elo_calc_players, elo_player_pairs, r_score, b_score)
+                result = self.calculate_elo(
+                    elo_calc_players, elo_player_pairs, r_score, b_score)
                 final_elos = result[0]
                 data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
                         elo_calc_players[4], elo_calc_players[5],
                         match_num, r_score, b_score,
-                        elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
+                        elo_player_pairs[elo_calc_players[0]
+                                         ], elo_player_pairs[elo_calc_players[1]],
                         elo_player_pairs[elo_calc_players[2]],
-                        elo_player_pairs[elo_calc_players[3]], elo_player_pairs[elo_calc_players[4]],
+                        elo_player_pairs[elo_calc_players[3]
+                                         ], elo_player_pairs[elo_calc_players[4]],
                         elo_player_pairs[elo_calc_players[5]],
                         result[3], result[4], result[1], result[2],
-                        final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
+                        final_elos[elo_calc_players[0]
+                                   ], final_elos[elo_calc_players[1]],
                         final_elos[elo_calc_players[2]],
-                        final_elos[elo_calc_players[3]], final_elos[elo_calc_players[4]],
+                        final_elos[elo_calc_players[3]
+                                   ], final_elos[elo_calc_players[4]],
                         final_elos[elo_calc_players[5]]]
                 if r_score > b_score:
                     statuses = [f"{elo_calc_players[0]}_W", f"{elo_calc_players[1]}_W", f"{elo_calc_players[2]}_W",
@@ -1452,10 +1513,10 @@ class TeamMaker:
     async def calcelo(self, ctx):
         if 693160987125350466 in [y.id for y in ctx.message.author.roles]:
             wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-            self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+            self.elo_results = gspread_dataframe.get_as_dataframe(
+                wks, evaluate_formulas=True)
             print(self.elo_results)
-            headers = [1, 2, 3, 4, 5, 6, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4', 'iElo5', 'iElo6',
+            headers = [1, 2, 3, 4, 5, 6, 'Match', 'rScore', 'bScore', 'iElo1', 'iElo2', 'iElo3', 'iElo4', 'iElo5', 'iElo6',
                        'rElo', 'bElo', 'rOdds', 'bOdds',
                        'fElo1', 'fElo2', 'fElo3', 'fElo4', 'fElo5', 'fElo6',
                        'status1', 'status2', 'status3', 'status4', 'status5', 'status6']
@@ -1492,24 +1553,31 @@ class TeamMaker:
                         # Get values of elos
                         match = outlist[0]
 
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
-                        elo_player_pairs.update({player: dfFinal.loc[match[0], column_to_label[match[1]]]})
+                        column_to_label = {
+                            1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
+                        elo_player_pairs.update(
+                            {player: dfFinal.loc[match[0], column_to_label[match[1]]]})
                     except Exception as e:
                         print(e)
                         elo_player_pairs.update({player: 1200})
-                result = self.calculate_elo(elo_calc_players, elo_player_pairs, r_score, b_score)
+                result = self.calculate_elo(
+                    elo_calc_players, elo_player_pairs, r_score, b_score)
                 final_elos = result[0]
                 data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
                         elo_calc_players[4], elo_calc_players[5],
                         match_num, r_score, b_score,
-                        elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
+                        elo_player_pairs[elo_calc_players[0]
+                                         ], elo_player_pairs[elo_calc_players[1]],
                         elo_player_pairs[elo_calc_players[2]],
-                        elo_player_pairs[elo_calc_players[3]], elo_player_pairs[elo_calc_players[4]],
+                        elo_player_pairs[elo_calc_players[3]
+                                         ], elo_player_pairs[elo_calc_players[4]],
                         elo_player_pairs[elo_calc_players[5]],
                         result[3], result[4], result[1], result[2],
-                        final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
+                        final_elos[elo_calc_players[0]
+                                   ], final_elos[elo_calc_players[1]],
                         final_elos[elo_calc_players[2]],
-                        final_elos[elo_calc_players[3]], final_elos[elo_calc_players[4]],
+                        final_elos[elo_calc_players[3]
+                                   ], final_elos[elo_calc_players[4]],
                         final_elos[elo_calc_players[5]]]
                 if r_score > b_score:
                     statuses = [f"{elo_calc_players[0]}_W", f"{elo_calc_players[1]}_W", f"{elo_calc_players[2]}_W",
@@ -1539,9 +1607,9 @@ class TeamMaker:
     async def fcalcelo(self, ctx):
         if 693160987125350466 in [y.id for y in ctx.message.author.roles]:
             wks = self.open_sheet("6-man Rankings + Elos", "FTC 4 Mans Raw")
-            self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-            headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4',
+            self.elo_results = gspread_dataframe.get_as_dataframe(
+                wks, evaluate_formulas=True)
+            headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore', 'iElo1', 'iElo2', 'iElo3', 'iElo4',
                        'rElo', 'bElo', 'rOdds', 'bOdds',
                        'fElo1', 'fElo2', 'fElo3', 'fElo4',
                        'status1', 'status2', 'status3', 'status4']
@@ -1577,20 +1645,25 @@ class TeamMaker:
                         # Get values of elos
                         match = outlist[0]
 
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4"}
-                        elo_player_pairs.update({player: dfFinal.loc[match[0], column_to_label[match[1]]]})
+                        column_to_label = {1: "fElo1",
+                                           2: "fElo2", 3: "fElo3", 4: "fElo4"}
+                        elo_player_pairs.update(
+                            {player: dfFinal.loc[match[0], column_to_label[match[1]]]})
                     except Exception as e:
                         print(e)
                         elo_player_pairs.update({player: 1200})
-                result = self.calculate_elo(elo_calc_players, elo_player_pairs, r_score, b_score)
+                result = self.calculate_elo(
+                    elo_calc_players, elo_player_pairs, r_score, b_score)
                 final_elos = result[0]
                 data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
                         match_num, r_score, b_score,
-                        elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
+                        elo_player_pairs[elo_calc_players[0]
+                                         ], elo_player_pairs[elo_calc_players[1]],
                         elo_player_pairs[elo_calc_players[2]],
                         elo_player_pairs[elo_calc_players[3]],
                         result[3], result[4], result[1], result[2],
-                        final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
+                        final_elos[elo_calc_players[0]
+                                   ], final_elos[elo_calc_players[1]],
                         final_elos[elo_calc_players[2]],
                         final_elos[elo_calc_players[3]]]
                 if r_score > b_score:
@@ -1618,9 +1691,9 @@ class TeamMaker:
     async def vcalcelo(self, ctx):
         if 693160987125350466 in [y.id for y in ctx.message.author.roles]:
             wks = self.open_sheet("6-man Rankings + Elos", "VEX ELO Raw")
-            self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-            headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4',
+            self.elo_results = gspread_dataframe.get_as_dataframe(
+                wks, evaluate_formulas=True)
+            headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore', 'iElo1', 'iElo2', 'iElo3', 'iElo4',
                        'rElo', 'bElo', 'rOdds', 'bOdds',
                        'fElo1', 'fElo2', 'fElo3', 'fElo4',
                        'status1', 'status2', 'status3', 'status4']
@@ -1656,20 +1729,25 @@ class TeamMaker:
                         # Get values of elos
                         match = outlist[0]
 
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4"}
-                        elo_player_pairs.update({player: dfFinal.loc[match[0], column_to_label[match[1]]]})
+                        column_to_label = {1: "fElo1",
+                                           2: "fElo2", 3: "fElo3", 4: "fElo4"}
+                        elo_player_pairs.update(
+                            {player: dfFinal.loc[match[0], column_to_label[match[1]]]})
                     except Exception as e:
                         print(e)
                         elo_player_pairs.update({player: 1200})
-                result = self.calculate_elo(elo_calc_players, elo_player_pairs, r_score, b_score)
+                result = self.calculate_elo(
+                    elo_calc_players, elo_player_pairs, r_score, b_score)
                 final_elos = result[0]
                 data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
                         match_num, r_score, b_score,
-                        elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
+                        elo_player_pairs[elo_calc_players[0]
+                                         ], elo_player_pairs[elo_calc_players[1]],
                         elo_player_pairs[elo_calc_players[2]],
                         elo_player_pairs[elo_calc_players[3]],
                         result[3], result[4], result[1], result[2],
-                        final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
+                        final_elos[elo_calc_players[0]
+                                   ], final_elos[elo_calc_players[1]],
                         final_elos[elo_calc_players[2]],
                         final_elos[elo_calc_players[3]]]
                 if r_score > b_score:
@@ -1764,12 +1842,14 @@ class TeamMaker:
 
                 if payload.emoji.name == "❌":
 
-                    channel = self.bot.get_channel(self.last_match_msg.channel.id)
+                    channel = self.bot.get_channel(
+                        self.last_match_msg.channel.id)
                     message = await channel.fetch_message(payload.message_id)
                     reaction = get(message.reactions, emoji="❌")
 
                     if reaction and reaction.count > 3:
-                        staff = get(message.author.guild.roles, name="FRC Sim Staff")
+                        staff = get(message.author.guild.roles,
+                                    name="FRC Sim Staff")
                         await channel.send(f"{staff.mention} the previous match score is in contention.")
 
                         self.rejected_matches.append(self.last_match_msg.id)
@@ -1780,7 +1860,8 @@ class TeamMaker:
 
                 if payload.emoji.name == "✔":
 
-                    channel = self.bot.get_channel(self.clearmatch_message.channel.id)
+                    channel = self.bot.get_channel(
+                        self.clearmatch_message.channel.id)
                     message = await channel.fetch_message(payload.message_id)
                     reaction = get(message.reactions, emoji="✔")
 
@@ -1881,5 +1962,6 @@ class PlayerQueue(Queue):
     def __contains__(self, item):
         with self.mutex:
             return item in self.queue
+
 
 bot.run(KEY)
