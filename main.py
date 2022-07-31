@@ -14,6 +14,9 @@ from discord.ext import commands
 import asyncio
 import matplotlib.pyplot as plt
 import math
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 
 intents = discord.Intents.all()
@@ -1964,4 +1967,4 @@ class PlayerQueue(Queue):
             return item in self.queue
 
 
-bot.run(KEY)
+bot.run(os.getenv("DISCORD_BOT_TOKEN"))
