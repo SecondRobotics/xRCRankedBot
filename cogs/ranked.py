@@ -39,6 +39,7 @@ async def remove_roles(ctx):
             to_change = get(ctx.user.guild.roles, name="Ranked Blue")
             await player.remove_roles(to_change)
 
+
 class Ranked(commands.Cog):
     def __init__(self, bot):
         self.n = 256
@@ -189,59 +190,67 @@ class Ranked(commands.Cog):
                 "past_winner": past_winner,
                 "team_size": size}
 
+    @commands.command(pass_context=True)
+    async def autoq(self, ctx, command=None, command_ctx=None):
+        if command is not None:
+            if 699094822132121662 in [y.id for y in ctx.message.author.roles]:
+                print("trueee")
+                if command.lower() == "kick":
+                    if command_ctx is not None:
+                        self.autoq.remove(int(command_ctx))
+                        await ctx.channel.send(f"Removed <@{command_ctx}> to the autoq list")
+                        print(command_ctx)
+                        return
+        if ctx.channel.id != 824691989366046750:
+            return
+        privs = {637411162203619350, 824727390873452634}
+        roles = set([y.id for y in ctx.message.author.roles])
+        if roles.intersection(privs):
+            if ctx.author.id in self.autoq:
+                await self.leave(ctx)
+                self.autoq.remove(ctx.author.id)
+                await ctx.channel.send(f"Removed {ctx.author.mention} from the autoq list")
+            else:
+                await self.q(ctx)
+                self.autoq.append(ctx.author.id)
+                await ctx.channel.send(f"Added {ctx.author.mention} to the autoq list")
+        else:
+            await ctx.channel.send(f"Autoqing is only available to patreons. To become a patreon check out this link! https://www.patreon.com/BrennanB ")
+        print(self.autoq)
+
+    async def queue_auto(self, ctx):
+        qdata = self.get_queue(ctx)
+        print(qdata)
+        for id in self.autoq:
+            member = ctx.guild.get_member(id)
+            qdata['queue'].put(member)
+            await ctx.channel.send(
+                "{} was autoqed. ({:d}/{:d})".format(member.display_name, qdata['queue'].qsize(),
+                                                        qdata['team_size']))
+
+    @app_commands.command(description="Force queue players")
+    async def queueall(self, interaction: discord.Interaction,
+                       member1: discord.Member = None,
+                       member2: discord.Member = None,
+                       member3: discord.Member = None,
+                       member4: discord.Member = None,
+                       member5: discord.Member = None,
+                       member6: discord.Member = None):
+        qdata = self.get_queue(interaction)
+        print(qdata)
+        members = [member1, member2, member3, member4, member5, member6]
+        added_players = ""
+        if interaction.user.id == 118000175816900615:
+            for member in members:
+                qdata['queue'].put(member)
+                added_players += f"{member.display_name}\n"
+            await interaction.response.send_message(f"Successfully added\n{added_players} to the queue.", ephemeral=True)
+        else:
+            await interaction.response.send_message("Nerd.", ephemeral=True)
+
     # @commands.command(pass_context=True)
-    # async def autoq(self, ctx, command=None, command_ctx=None):
-    #     if command is not None:
-    #         if 699094822132121662 in [y.id for y in ctx.message.author.roles]:
-    #             print("trueee")
-    #             if command.lower() == "kick":
-    #                 if command_ctx is not None:
-    #                     self.autoq.remove(int(command_ctx))
-    #                     await ctx.channel.send(f"Removed <@{command_ctx}> to the autoq list")
-    #                     print(command_ctx)
-    #                     return
-    #     if ctx.channel.id != 824691989366046750:
-    #         return
-    #     privs = {637411162203619350, 824727390873452634}
-    #     roles = set([y.id for y in ctx.message.author.roles])
-    #     if roles.intersection(privs):
-    #         if ctx.author.id in self.autoq:
-    #             await self.leave(ctx)
-    #             self.autoq.remove(ctx.author.id)
-    #             await ctx.channel.send(f"Removed {ctx.author.mention} from the autoq list")
-    #         else:
-    #             await self.q(ctx)
-    #             self.autoq.append(ctx.author.id)
-    #             await ctx.channel.send(f"Added {ctx.author.mention} to the autoq list")
-    #     else:
-    #         await ctx.channel.send(f"Autoqing is only available to patreons. To become a patreon check out this link! https://www.patreon.com/BrennanB ")
-    #     print(self.autoq)
-    #
-    # async def queue_auto(self, ctx):
-    #     qdata = self.get_queue(ctx)
-    #     print(qdata)
-    #     for id in self.autoq:
-    #         member = ctx.guild.get_member(id)
-    #         qdata['queue'].put(member)
-    #         await ctx.channel.send(
-    #             "{} was autoqed. ({:d}/{:d})".format(member.display_name, qdata['queue'].qsize(),
-    #                                                     qdata['team_size']))
-    #
-    # @commands.command(pass_context=True)
-    # async def queue_all(self, ctx, *members: discord.Member):
-    #     qdata = self.get_queue(ctx)
-    #     print(qdata)
-    #     if ctx.author.id == 118000175816900615:
-    #         for member in members:
-    #             qdata['queue'].put(member)
-    #         qdata['queue'].put(ctx.message.author)
-    #     else:
-    #         await ctx.channel.send("Nerd.")
-    #
-    # # @commands.command(pass_context=True)
-    # # async def seriestest(self, ctx):
-    # #     await ctx.channel.send(f"{self.red_series} {self.blue_series}")
-    #
+    # async def seriestest(self, ctx):
+    #     await ctx.channel.send(f"{self.red_series} {self.blue_series}")
 
     @app_commands.command(name="queue", description="Add yourself to the queue")
     async def q(self, interaction: discord.Interaction):
@@ -273,7 +282,7 @@ class Ranked(commands.Cog):
             qdata['queue'].put(player)
 
             await interaction.response.send_message(
-                "{} added to queue. ({:d}/{:d})".format(player.display_name, qdata['queue'].qsize(), qdata['team_size']))
+                "**{}** added to queue. ({:d}/{:d})".format(player.display_name, qdata['queue'].qsize(), qdata['team_size']))
             if self.queue_full(interaction):
                 if qdata['red_series'] == 2 or qdata['blue_series']== 2:
                     await interaction.response.send_message("Queue is now full! Type {prefix}startmatch".format(
@@ -309,23 +318,22 @@ class Ranked(commands.Cog):
             if player in qdata['queue']:
                 qdata['queue'].remove(player)
                 await interaction.response.send_message(
-                    "{} removed from queue. ({:d}/{:d})".format(player.display_name, qdata['queue'].qsize(), qdata['team_size']))
+                    "**{}** removed from queue. ({:d}/{:d})".format(player.display_name, qdata['queue'].qsize(), qdata['team_size']))
             else:
                 await interaction.response.send_message("You aren't in queue.", ephemeral=True)
         self.set_queue(interaction, qdata)
 
-    @commands.command(description="Remove someone else from the queue")
-    @commands.has_role("FRC Sim Staff")
-    async def kick(self, ctx, player: discord.Member):
-        qdata = self.get_queue(ctx)
-        if ctx.message.channel.id in approved_channels:
-            channel = ctx.channel
+    @app_commands.command(description="Remove someone else from the queue")
+    @app_commands.checks.has_any_role("Event Staff")
+    async def kick(self, interaction: discord.Interaction, player: discord.Member):
+        qdata = self.get_queue(interaction)
+        if interaction.channel.id in approved_channels:
             if player in qdata['queue']:
                 qdata['queue'].remove(player)
-                await channel.send(
+                await interaction.response.send_message(
                     "{} removed from queue. ({:d}/{:d})".format(player.display_name, qdata['queue'].qsize(), qdata['team_size']))
             else:
-                await channel.send("{} is not in queue.".format(player.display_name))
+                await interaction.response.send_message("{} is not in queue.".format(player.display_name), ephemeral=True)
 
     def queue_full(self, ctx):
         if ctx.channel.id == 824691989366046750: # 6 FRC
@@ -339,12 +347,12 @@ class Ranked(commands.Cog):
         else:
             return False
 
-    def check_vote_command(self, message):
-        if not message.content.startswith("{prefix}vote".format(prefix=self.bot.command_prefix)):
-            return False
-        if not len(message.mentions) == 1:
-            return False
-        return True
+    # def check_vote_command(self, message):
+    #     if not message.content.startswith("{prefix}vote".format(prefix=self.bot.command_prefix)):
+    #         return False
+    #     if not len(message.mentions) == 1:
+    #         return False
+    #     return True
 
     # @commands.command(description="Start a game by voting for captains")
     # async def voting(self, ctx):
@@ -446,31 +454,33 @@ class Ranked(commands.Cog):
             len(self.elo_results[self.elo_results[5] == user]) +
             len(self.elo_results[self.elo_results[6] == user]))
 
-    @commands.command(description="Start a game", aliases=["startgame", "start", "begin"])
-    async def startmatch(self, ctx):
-        qdata = self.get_queue(ctx)
+    @app_commands.command(description="Start a game")
+    async def startmatch(self, interaction: discord.Interaction):
+        qdata = self.get_queue(interaction)
         print(qdata)
-        if not self.queue_full(ctx):
-            await ctx.channel.send("Queue is not full.")
+        if not self.queue_full(interaction):
+            await interaction.response.send_message("Queue is not full.", ephemeral=True)
             return
         if qdata['red_series'] == 2 or qdata['blue_series'] == 2:
             qdata['red_series'] = 0
             qdata['blue_series'] = 0
             qdata['past_winner'] = ""
-            self.set_queue(ctx, qdata)
+            self.set_queue(interaction, qdata)
             pass
         else:
-            await ctx.message.channel.send("Current match incomplete.")
+            await interaction.response.send_message("Current match incomplete.", ephemeral=True)
             return
-        if ctx.channel.id == 712297302857089025 or ctx.channel.id == 754569222260129832 or ctx.channel.id == 754569102873460776:
-            return await self.random(ctx)
+        if interaction.channel.id == 712297302857089025 or \
+                interaction.channel.id == 754569222260129832 or \
+                interaction.channel.id == 754569102873460776:
+            return await self.random(interaction.channel.id)
         chooser = random.randint(1, 10)
-        if chooser < 4:  # 6
-            print("Cap")
-            await self.captains(ctx)
+        if chooser < 0:  # 6
+            print("Captains")
+            await self.captains(interaction)
         else:
-            print("Rando")
-            await self.random(ctx)
+            print("Randoms")
+            await self.random(interaction)
 
     async def captains(self, ctx):
         qdata = self.get_queue(ctx)
@@ -1303,11 +1313,11 @@ class Ranked(commands.Cog):
         qdata = self.get_queue(ctx)
         channel = ctx.channel
         if ctx.channel.id == 824691989366046750:  # 6 FRC
-            red_check = get(ctx.message.author.guild.roles, name="Ranked Red")
-            blue_check = get(ctx.message.author.guild.roles, name="Ranked Blue")
+            red_check = get(ctx.user.guild.roles, name="Ranked Red")
+            blue_check = get(ctx.user.guild.roles, name="Ranked Blue")
             red_lobby = self.bot.get_channel(824692157142269963)
             for player in qdata['game'].red:
-                to_change = get(ctx.message.author.guild.roles, name="Ranked Red")
+                to_change = get(ctx.user.guild.roles, name="Ranked Red")
                 await player.add_roles(to_change)
                 try:
                     await player.move_to(red_lobby)
@@ -1316,23 +1326,13 @@ class Ranked(commands.Cog):
                     pass
             blue_lobby = self.bot.get_channel(824692212528840724)
             for player in qdata['game'].blue:
-                to_change = get(ctx.message.author.guild.roles, name="Ranked Blue")
+                to_change = get(ctx.user.guild.roles, name="Ranked Blue")
                 await player.add_roles(to_change)
                 try:
                     await player.move_to(blue_lobby)
                 except Exception as e:
                     print(e)
                     pass
-
-        elif ctx.channel.id == 712297302857089025 or ctx.channel.id == 754569222260129832 or ctx.channel.id == 754569102873460776:  # VEX
-            red_check = get(ctx.message.author.guild.roles, name="4 Mans Red")
-            blue_check = get(ctx.message.author.guild.roles, name="4 Mans Blue")
-            for player in qdata['game'].red:
-                to_change = get(ctx.message.author.guild.roles, name="4 Mans Red")
-                await player.add_roles(to_change)
-            for player in qdata['game'].blue:
-                to_change = get(ctx.message.author.guild.roles, name="4 Mans Blue")
-                await player.add_roles(to_change)
 
         embed = discord.Embed(color=0xcda03f, title="Teams have been picked!")
         embed.add_field(name='🟥 RED 🟥',
@@ -1342,7 +1342,7 @@ class Ranked(commands.Cog):
                         value="{}".format("\n".join([player.mention for player in qdata['game'].blue])),
                         inline=True)
 
-        await channel.send(embed=embed)
+        await ctx.response.send_message(embed=embed)
 
         await channel.send(f"{red_check.mention} {blue_check.mention}")
 
