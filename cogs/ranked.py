@@ -18,10 +18,16 @@ import math
 from threading import Thread
 from collections.abc import MutableSet
 import sys
+import requests
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 team_size = 6
 team_size_alt = 4
 approved_channels = [824691989366046750, 712297302857089025, 650967104933330947, 754569102873460776, 754569222260129832]
+header = {"x-api-key": os.getenv("SRC_API_TOKEN")}
 
 listener = commands.Cog.listener
 
@@ -231,6 +237,18 @@ class Ranked(commands.Cog):
                 "{} was autoqed. ({:d}/{:d})".format(member.display_name, qdata['queue'].qsize(),
                                                      qdata['team_size']))
 
+    # @app_commands.command(description="memes")
+    # async def test(self, interaction: discord.Interaction, red_score: int, blue_score: int):
+    #     url = 'https://secondrobotics.org/api/ranked/RR1v1/match/'
+    #     json = {
+    #         "red_alliance": [261976608519225345],
+    #         "blue_alliance": [118000175816900615],
+    #         "red_score": red_score,
+    #         "blue_score": blue_score
+    #      }
+    #     x = requests.post(url, json=json, headers=header)
+    #     print(x.json())
+
     @app_commands.command(description="Force queue players")
     async def queueall(self, interaction: discord.Interaction,
                        member1: discord.Member = None,
@@ -259,6 +277,16 @@ class Ranked(commands.Cog):
     @app_commands.command(name="queue", description="Add yourself to the queue")
     async def q(self, interaction: discord.Interaction):
         """Enter's player into queue for upcoming matches"""
+
+        url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
+
+        x = requests.get(url, headers=header)
+        thing = x.json()
+
+        if not thing["exists"]:
+            await interaction.response.send_message("You must register for an account at <https://www.secondrobotics.org/login> before you can queue.", ephemeral=True)
+            return
+
         qdata = self.get_queue(interaction)
         print(qdata)
 
@@ -272,12 +300,12 @@ class Ranked(commands.Cog):
                 # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
                 queue_check = bool(set(roles).intersection(ranked_roles))
                 if queue_check:
-                    await channel.send("You are already playing in a game!")
+                    await interaction.response.send_message("You are already playing in a game!", ephemeral=True)
                     return
             else:
                 await interaction.response.send_message("You can't queue in this channel.", ephemeral=True)
             if player in qdata['queue']:
-                await interaction.response.send("You are already in queue.", ephemeral=True)
+                await interaction.response.send_message("You are already in queue.", ephemeral=True)
                 return
             if qdata['busy'] and player in qdata['game']:
                 await interaction.response.send_message("You are already in a game.", ephemeral=True)
@@ -290,10 +318,10 @@ class Ranked(commands.Cog):
                                                               qdata['team_size']))
             if self.queue_full(interaction):
                 if qdata['red_series'] == 2 or qdata['blue_series'] == 2:
-                    await interaction.response.send_message("Queue is now full! Type {prefix}startmatch".format(
+                    await interaction.channel.send("Queue is now full! Type {prefix}startmatch".format(
                         prefix=self.bot.command_prefix))
                 else:
-                    await interaction.response.send_message(
+                    await interaction.channel.send(
                         "Queue is now full! You can start as soon as the current match concludes.")
 
     #
@@ -623,66 +651,25 @@ class Ranked(commands.Cog):
     async def submit(self, interaction: discord.Interaction, red_score: int, blue_score: int):
 
         if interaction.channel.id == 824691989366046750:  # FRC
-            headers = [1, 2, 3, 4, 5, 6, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4', 'iElo5', 'iElo6',
-                       'rElo', 'bElo', 'rOdds', 'bOdds',
-                       'fElo1', 'fElo2', 'fElo3', 'fElo4', 'fElo5', 'fElo6',
-                       'status1', 'status2', 'status3', 'status4', 'status5', 'status6']
-        elif interaction.channel.id == 712297302857089025 or interaction.channel.id == 754569222260129832 or interaction.channel.id == 754569222260129832:  # VEX
-            headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4',
-                       'rElo', 'bElo', 'rOdds', 'bOdds',
-                       'fElo1', 'fElo2', 'fElo3', 'fElo4',
-                       'status1', 'status2', 'status3', 'status4']
+            roles = [y.id for y in interaction.user.roles]
+            ranked_roles = [699094822132121662, 824711734069297152, 824711824011427841]
+            # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
+            submit_check = bool(set(roles).intersection(ranked_roles))
+            if submit_check:
+                pass
+            else:
+                await interaction.response.send_message("You are ineligible to submit!", ephemeral=True)
+                return
 
-        try:
-            red_check = int(red_score)
-        except:
-            await interaction.response.send_message(f"{red_score} is not a number.", ephemeral=True)
-            return
-        try:
-            blue_check = int(blue_score)
-        except:
-            await interaction.response.send_message(f"{blue_score} is not a number.", ephemeral=True)
-            return
-        if interaction.channel.id == 824691989366046750:  # FRC
-            if 699094822132121662 in [y.id for y in interaction.user.roles] or \
-                    824711734069297152 in [y.id for y in interaction.user.roles] or \
-                    824711824011427841 in [y.id for y in interaction.user.roles]:
-                pass
-            else:
-                await interaction.response.send_message("You are ineligible to submit!", ephemeral=True)
-                return
-        elif interaction.channel.id == 699094822132121662 or interaction.channel.id == 824711824011427841 or interaction.channel.id == 824711734069297152:  # VEX
-            print("Vex Verification")
-            if 693160987125350466 in [y.id for y in interaction.user.roles] or \
-                    824711824011427841 in [y.id for y in interaction.user.roles] or \
-                    824711734069297152 in [y.id for y in interaction.user.roles]:
-                pass
-            else:
-                await interaction.response.send_message("You are ineligible to submit!", ephemeral=True)
-                return
         if interaction.channel.id == 824691989366046750:  # FRC
             if self.red_series == 2 or self.blue_series == 2:
-                await interaction.response.send_message("Series is complete already!", ephemeral=True)
-                return
-        elif interaction.channel.id == 712297302857089025:  # VEX
-            if self.red_series2 == 2 or self.blue_series2 == 2:
                 await interaction.response.send_message("Series is complete already!", ephemeral=True)
                 return
 
         if interaction.channel.id == 824691989366046750:  # FRC
             current_red = self.red_series
             current_blue = self.blue_series
-        elif interaction.channel.id == 712297302857089025:  # VEX
-            current_red = self.red_series2
-            current_blue = self.blue_series2
-        elif interaction.channel.id == 754569222260129832:  # FTC
-            current_red = self.red_series3
-            current_blue = self.blue_series3
-        elif interaction.channel.id == 754569102873460776:  # FRC 4
-            current_red = self.red_series4
-            current_blue = self.blue_series4
+
         else:
             return
         print("Checking ")
@@ -703,234 +690,80 @@ class Ranked(commands.Cog):
             await self.queue_auto(interaction)
             await interaction.response.send_message("🟥 Red Wins! 🟥")
             await remove_roles(interaction)
-            curMembers = []
+
+            # Kick players back to main lobby
             channel = self.bot.get_channel(824692157142269963)
             lobby = self.bot.get_channel(824692700364275743)
             for member in channel.members:
                 await member.move_to(lobby)
-                curMembers.append(member)
             channel = self.bot.get_channel(824692212528840724)
             for member in channel.members:
                 await member.move_to(lobby)
-                curMembers.append(member)
-            print(curMembers)
 
-        if current_blue == 2:
+        elif current_blue == 2:
             await self.queue_auto(interaction)
             await interaction.channel.send("🟦 Blue Wins! 🟦")
             await remove_roles(interaction)
-            curMembers = []
+
+            # Kick players back to lobby
             channel = self.bot.get_channel(824692157142269963)
             lobby = self.bot.get_channel(824692700364275743)
             for member in channel.members:
                 await member.move_to(lobby)
-                curMembers.append(member)
             channel = self.bot.get_channel(824692212528840724)
             for member in channel.members:
                 await member.move_to(lobby)
-                curMembers.append(member)
-            print(curMembers)
+        else:
+            await interaction.response.send_message("Score Submitted")
+
         if interaction.channel.id == 824691989366046750:  # FRC
             self.red_series = current_red
             self.blue_series = current_blue
-        elif interaction.channel.id == 712297302857089025:  # VEX
-            self.red_series2 = current_red
-            self.blue_series2 = current_blue
-        elif interaction.channel.id == 754569222260129832:  # ftc
-            self.red_series3 = current_red
-            self.blue_series3 = current_blue
-        elif interaction.channel.id == 754569102873460776:  # frc 4
-            self.red_series3 = current_red
-            self.blue_series3 = current_blue
         else:
             return
         print("Blah")
         qdata = self.get_queue(interaction)
         # Finding player ids
-        red_players = []
+        red_ids = []
         for player in qdata['game'].red:
-            player_id = player.id
-            text_id = f"#{player_id}"
-            try:
-                player = self.user_index.loc[text_id]
-                red_players.append(player["Name"])
-            except:
-                red_players.append(player.display_name)
-        # red_players = [player.display_name for player in self.game.red]
-        # blue_players = [player.display_name for player in self.game.blue]
-        blue_players = []
+            red_ids.append(player.id)
+
+        blue_ids = []
         for player in qdata['game'].blue:
-            player_id = player.id
-            text_id = f"#{player_id}"
-            try:
-                player = self.user_index.loc[text_id]
-                blue_players.append(player["Name"])
-            except:
-                blue_players.append(player.display_name)
+            blue_ids.append(player.id)
+
+        url = 'https://secondrobotics.org/api/ranked/RR3v3/match/'
+        json = {
+            "red_alliance": red_ids,
+            "blue_alliance": blue_ids,
+            "red_score": red_score,
+            "blue_score": blue_score
+         }
+        x = requests.post(url, json=json, headers=header)
+        print(x.json())
+        response = x.json()
 
         print(f"Red {current_red}")
         print(f"Blue {current_blue}")
         # Getting match Number
 
-        if interaction.channel.id == 824691989366046750:  # FRC
-            wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-            self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-            elo_current = self.elo_results
-            print(elo_current)
-        elif interaction.channel.id == 712297302857089025:  # VEX
-            wks = self.open_sheet("6-man Rankings + Elos", "VEX ELO Raw")
-            self.elo_results2 = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-            elo_current = self.elo_results2
-        elif interaction.channel.id == 754569222260129832:  # FTC
-            wks = self.open_sheet("6-man Rankings + Elos", "FTC 4 Mans Raw")
-            self.elo_results3 = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-            elo_current = self.elo_results3
-        elif interaction.channel.id == 754569102873460776:  # FRC 4
-            wks = self.open_sheet("6-man Rankings + Elos", "FRC 4 Mans Raw")
-            self.elo_results4 = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-            elo_current = self.elo_results4
-        else:
-            return
 
-        matchnum = elo_current["Match"].iloc[0]
 
         print(f"Red {current_red}")
         print(f"Blue {current_blue}")
-        # Calculating elo
-        elo_calc_players = red_players + blue_players
-
-        elo_player_pairs = {}
-        print(elo_calc_players)
-        for player in elo_calc_players:
-            try:
-                try:
-                    elo_player_pairs.update({player: self.players_current_elo[player]})
-                except:
-                    # sets all matches to True
-                    matches = elo_current.isin([player])
-                    # Find locations of all Trues
-                    outlist = [[i, matches.columns.tolist()[j]]
-                               for i, r in enumerate(matches.values)
-                               for j, c in enumerate(r)
-                               if c]
-                    # Get values of elos
-                    print(player)
-                    print(outlist)
-                    match = outlist[0]
-
-                    if interaction.channel.id == 824691989366046750:  # FRC
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
-                    elif interaction.channel.id == 712297302857089025 or interaction.channel.id == 754569222260129832 \
-                            or interaction.channel.id == 754569102873460776:  # VEX
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4"}
-                    else:
-                        return
-
-                    elo_player_pairs.update({player: elo_current.loc[match[0], column_to_label[match[1]]]})
-            except:
-                elo_player_pairs.update({player: 1200})
-        result = self.calculate_elo(elo_calc_players, elo_player_pairs, int(red_score), int(blue_score))
-        final_elos = result[0]
-
-        # Set wins/losses
-
-        if interaction.channel.id == 824691989366046750:  # FRC
-            if self.past_winner == "Red":
-                statuses = [f"{elo_calc_players[0]}_W", f"{elo_calc_players[1]}_W", f"{elo_calc_players[2]}_W",
-                            f"{elo_calc_players[3]}_L", f"{elo_calc_players[4]}_L", f"{elo_calc_players[5]}_L"]
-            elif self.past_winner == "Blue":
-                statuses = [f"{elo_calc_players[0]}_L", f"{elo_calc_players[1]}_L", f"{elo_calc_players[2]}_L",
-                            f"{elo_calc_players[3]}_W", f"{elo_calc_players[4]}_W", f"{elo_calc_players[5]}_W"]
-            else:
-                statuses = [f"{elo_calc_players[0]}_T", f"{elo_calc_players[1]}_T", f"{elo_calc_players[2]}_T",
-                            f"{elo_calc_players[3]}_T", f"{elo_calc_players[4]}_T", f"{elo_calc_players[5]}_T"]
-        elif interaction.channel.id == 712297302857089025 or interaction.channel.id == 754569222260129832 \
-                or interaction.channel.id == 754569222260129832:  # VEX
-            if self.past_winner == "Red":
-                statuses = [f"{elo_calc_players[0]}_W", f"{elo_calc_players[1]}_W",
-                            f"{elo_calc_players[2]}_L", f"{elo_calc_players[3]}_L"]
-            elif self.past_winner == "Blue":
-                statuses = [f"{elo_calc_players[0]}_L", f"{elo_calc_players[1]}_L",
-                            f"{elo_calc_players[2]}_W", f"{elo_calc_players[3]}_W"]
-            else:
-                statuses = [f"{elo_calc_players[0]}_T", f"{elo_calc_players[1]}_T",
-                            f"{elo_calc_players[2]}_T", f"{elo_calc_players[3]}_T"]
-        else:
-            return
-        if interaction.channel.id == 824691989366046750:  # FRC
-            data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
-                    elo_calc_players[4], elo_calc_players[5],
-                    matchnum + 1, int(red_score), int(blue_score),
-                    elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
-                    elo_player_pairs[elo_calc_players[2]],
-                    elo_player_pairs[elo_calc_players[3]], elo_player_pairs[elo_calc_players[4]],
-                    elo_player_pairs[elo_calc_players[5]],
-                    result[3], result[4], result[1], result[2],
-                    final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
-                    final_elos[elo_calc_players[2]],
-                    final_elos[elo_calc_players[3]], final_elos[elo_calc_players[4]],
-                    final_elos[elo_calc_players[5]]]
-            df2 = pd.DataFrame(data=[red_players + blue_players + [matchnum + 1, red_score, blue_score]],
-                               columns=["Red1", "Red2", "Red3", "Blue1", "Blue2", "Blue3", "Match Number",
-                                        "Red Score",
-                                        "Blue Score"])
-        elif interaction.channel.id == 712297302857089025 or interaction.channel.id == 754569222260129832 or \
-                interaction.channel.id == 754569222260129832:  # VEX
-            headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4',
-                       'rElo', 'bElo', 'rOdds', 'bOdds',
-                       'fElo1', 'fElo2', 'fElo3', 'fElo4',
-                       'status1', 'status2', 'status3', 'status4']
-            data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
-                    matchnum + 1, int(red_score), int(blue_score),
-                    elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
-                    elo_player_pairs[elo_calc_players[2]],
-                    elo_player_pairs[elo_calc_players[3]],
-                    result[3], result[4], result[1], result[2],
-                    final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
-                    final_elos[elo_calc_players[2]],
-                    final_elos[elo_calc_players[3]]]
-            df2 = pd.DataFrame(data=[red_players + blue_players + [matchnum + 1, red_score, blue_score]],
-                               columns=["Red1", "Red2", "Blue1", "Blue2", "Match Number",
-                                        "Red Score",
-                                        "Blue Score"])
-        else:
-            return
-        print(f"Red {current_red}")
-        print(f"Blue {current_blue}")
-        print("-----------")
-
-        # Merge Data
-        data.extend(statuses)
-        dfInt = pd.DataFrame(columns=headers, data=[data])
-        self.elo_results = dfInt.append(elo_current, ignore_index=True)
-        print(self.elo_results)
-
-        # Submit Data
-        if interaction.channel.id == 824691989366046750:  # FRC
-            self.elo_results.to_csv('matches.csv', index=False)
-        elif interaction.channel.id == 712297302857089025:  # VEX
-            self.elo_results.to_csv('matches2.csv', index=False)
-        elif interaction.channel.id == 754569222260129832:  # FTC
-            self.elo_results.to_csv('matches3.csv', index=False)
-        elif interaction.channel.id == 754569222260129832:  # FRC 4
-            self.elo_results.to_csv('matches4.csv', index=False)
-        else:
-            return
-
-        Thread(target=self.submit_match, daemon=True, args=(interaction,)).start()
 
         embed = discord.Embed(color=0xcda03f, title=f"Score submitted | 🟥 {red_log}-{blue_log}  🟦 |")
         red_out = "```diff\n"
         blue_out = "```diff\n"
         i = 0
-        for player in qdata['game'].red:
-            red_out += f"{elo_calc_players[i]} [{round(final_elos[elo_calc_players[i]], 1)}]\n" \
-                       f"{'%+d' % (round(final_elos[elo_calc_players[i]] - elo_player_pairs[elo_calc_players[i]], 2))}\n"
+        for player in response['red_player_elos']:
+            red_out += f"{response['red_display_names'][i]} [{round(player['elo'], 2)}]\n" \
+                       f"{'%+d' % (round(response['red_elo_changes'][i], 2))}\n"
             i += 1
-        for player in qdata['game'].blue:
-            blue_out += f"{elo_calc_players[i]} [{round(final_elos[elo_calc_players[i]], 1)}]\n" \
-                        f"{'%+d' % (round(final_elos[elo_calc_players[i]] - elo_player_pairs[elo_calc_players[i]], 2))}\n"
+        i = 0
+        for player in response['blue_player_elos']:
+            blue_out += f"{response['blue_display_names'][i]} [{round(player['elo'], 2)}]\n" \
+                        f"{'%+d' % (round(response['blue_elo_changes'][i], 2))}\n"
             i += 1
         red_out += "```"
         blue_out += "```"
@@ -942,36 +775,11 @@ class Ranked(commands.Cog):
                         value=f"{blue_out}",
                         inline=True)
 
-        message = await interaction.response.send_message(embed=embed)
+        message = await interaction.channel.send(embed=embed)
         self.last_match_msg = message
         self.set_queue(interaction, qdata)
 
-    def submit_match(self, ctx):
-        sheet_name = "6-man Rankings + Elos"
 
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        credentials = ServiceAccountCredentials.from_json_keyfile_name('fantasy-first-260710-7fa1a0ed0b21.json', scope)
-
-        gc = gspread.authorize(credentials)
-        sheet = gc.open(sheet_name)
-
-        if ctx.channel.id == 824691989366046750:  # FRC
-            data = pd.read_csv("matches.csv")
-            wks = sheet.worksheet("ELO raw")
-        elif ctx.channel.id == 712297302857089025:  # VEX
-            data = pd.read_csv("matches2.csv")
-            wks = sheet.worksheet("VEX ELO Raw")
-        elif ctx.channel.id == 754569222260129832:  # FTC
-            data = pd.read_csv("matches3.csv")
-            wks = sheet.worksheet("FTC 4 Mans Raw")
-        elif ctx.channel.id == 754569102873460776:  # FRC 4
-            data = pd.read_csv("matches4.csv")
-            wks = sheet.worksheet("FRC 4 Mans Raw")
-        else:
-            return
-        print(data)
-        gspread_dataframe.set_with_dataframe(wks, data)
-        # sys.exit()
 
     async def random(self, ctx):
         qdata = self.get_queue(ctx)
@@ -1246,6 +1054,7 @@ class Ranked(commands.Cog):
             red_lobby = self.bot.get_channel(824692157142269963)
             for player in qdata['game'].red:
                 to_change = get(ctx.user.guild.roles, name="Ranked Red")
+                print(player.display_name)
                 await player.add_roles(to_change)
                 try:
                     await player.move_to(red_lobby)
@@ -1254,6 +1063,7 @@ class Ranked(commands.Cog):
                     pass
             blue_lobby = self.bot.get_channel(824692212528840724)
             for player in qdata['game'].blue:
+                print(player.display_name)
                 to_change = get(ctx.user.guild.roles, name="Ranked Blue")
                 await player.add_roles(to_change)
                 try:

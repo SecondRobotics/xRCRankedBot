@@ -235,9 +235,9 @@ async def remove_roles(ctx):
 
 
 
-async def setup(bot : commands.Bot):
-    await bot.add_cog(
-        TeamMaker(bot), guilds=[discord.Object(id=637407041048281098)])
+# async def setup(bot : commands.Bot):
+#     await bot.add_cog(
+#         TeamMaker(bot), guilds=[discord.Object(id=637407041048281098)])
 
 
 bot.run(os.getenv("DISCORD_BOT_TOKEN"))
