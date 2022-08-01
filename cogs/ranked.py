@@ -44,7 +44,7 @@ async def remove_roles(ctx):
 
 
 class XrcGame():
-    def __init__(self, game, game_size):
+    def __init__(self, game, game_size, api_short):
         self.queue = PlayerQueue()
         self.game_type = game
         self.game = None
@@ -56,6 +56,7 @@ class XrcGame():
         self.clearmatch_message = None
         self.autoq = []
         self.team_size = int(game_size/2)
+        self.api_short = api_short
 
 
 def create_game(game_type):
@@ -145,15 +146,15 @@ class Ranked(commands.Cog):
                 f"Autoqing is only available to patreons. To become a patreon check out this link! https://www.patreon.com/BrennanB ")
         print(self.autoq)
 
-    async def queue_auto(self, ctx):
-        qdata = self.get_queue(ctx)
-        print(qdata)
-        for id in self.autoq:
-            member = ctx.guild.get_member(id)
-            qdata['queue'].put(member)
-            await ctx.channel.send(
-                "{} was autoqed. ({:d}/{:d})".format(member.display_name, qdata['queue'].qsize(),
-                                                     qdata['team_size']))
+    # async def queue_auto(self, ctx):
+    #
+    #     print(qdata)
+    #     for id in self.autoq:
+    #         member = ctx.guild.get_member(id)
+    #         qdata['queue'].put(member)
+    #         await ctx.channel.send(
+    #             "{} was autoqed. ({:d}/{:d})".format(member.display_name, qdata['queue'].qsize(),
+    #                                                  qdata['team_size']))
 
     @app_commands.choices(game=playable_games)
     @app_commands.command(description="Force queue players")
@@ -335,118 +336,118 @@ class Ranked(commands.Cog):
         chooser = random.randint(1, 10)
         if chooser < 0:  # 6
             print("Captains")
-            await self.captains(interaction)
+            # await self.captains(interaction)
         else:
             print("Randoms")
             await self.random(interaction, game)
 
-    async def captains(self, ctx):
-        qdata = self.get_queue(ctx)
-        channel = ctx.channel
-        qdata = create_game(ctx)
+    # async def captains(self, ctx):
+    #     qdata = self.get_queue(ctx)
+    #     channel = ctx.channel
+    #     qdata = create_game(ctx)
+    #
+    #     self.set_queue(ctx, qdata)
+    #     await self.do_picks(ctx)
 
-        self.set_queue(ctx, qdata)
-        await self.do_picks(ctx)
+    # async def do_picks(self, ctx):
+    #     qdata = self.get_queue(ctx)
+    #     channel = ctx.channel
+    #     embed = discord.Embed(color=0xfa0000, title="Red Captain's pick!")
+    #
+    #     await channel.send("Captains: {} and {}".format(*[captain.mention for captain in qdata['game'].captains]))
+    #     qdata['red_captain'] = qdata['game'].captains[0]
+    #     qdata['game'].add_to_red(qdata['red_captain'])
+    #     qdata['blue_captain'] = qdata['game'].captains[1]
+    #     qdata['game'].add_to_blue(qdata['blue_captain'])
+    #
+    #     embed.add_field(name='🟥 RED 🟥',
+    #                     value="{}".format("\n".join([player.mention for player in qdata['game'].red])),
+    #                     inline=False)
+    #     embed.add_field(name='🟦 BLUE 🟦',
+    #                     value="{}".format("\n".join([player.mention for player in qdata['game'].blue])),
+    #                     inline=False)
+    #     embed.add_field(name='Picking Process...',
+    #                     value="{mention} Use {prefix}pick [user] to pick 1 player.".format(
+    #                         mention=qdata['red_captain'].mention,
+    #                         prefix=self.bot.command_prefix),
+    #                     inline=False)
+    #     embed.add_field(name='Available players:',
+    #                     value="{}".format("\n".join([player.mention for player in qdata['game'].players])),
+    #                     inline=False)
+    #     self.set_queue(ctx, qdata)
+    #     # red Pick
+    #     await channel.send(embed=embed)
+    #     red_pick = None
+    #     while not red_pick:
+    #         red_pick = await self.pick_red(ctx)
+    #     qdata['game'].add_to_red(red_pick)
+    #
+    #     # Blue Picks
+    #     embed = discord.Embed(color=0x00affa, title="Blue Alliance Captain's Picks!")
+    #     embed.add_field(name='🟥 RED 🟥',
+    #                     value="{}".format("\n".join([player.mention for player in qdata['game'].red])),
+    #                     inline=False)
+    #     embed.add_field(name='🟦 BLUE 🟦',
+    #                     value="{}".format("\n".join([player.mention for player in qdata['game'].blue])),
+    #                     inline=False)
+    #     embed.add_field(name='Picking Process...',
+    #                     value="{mention} Use {prefix}pick [user1] [user2] to pick 2 players.".format(
+    #                         mention=qdata['blue_captain'].mention,
+    #                         prefix=self.bot.command_prefix),
+    #                     inline=False)
+    #     embed.add_field(name='Available players:',
+    #                     value="{}".format("\n".join([player.mention for player in qdata['game'].players])),
+    #                     inline=False)
+    #     await channel.send(embed=embed)
+    #     blue_picks = None
+    #     self.set_queue(ctx, qdata)
+    #     while not blue_picks:
+    #         blue_picks = await self.pick_blue(ctx)
+    #     for blue_pick in blue_picks:
+    #         qdata['game'].add_to_blue(blue_pick)
+    #
+    #     # red Player
+    #     last_player = next(iter(qdata['game'].players))
+    #     qdata['game'].add_to_red(last_player)
+    #     await channel.send("{} added to 🟥 RED 🟥 team.".format(last_player.mention))
+    #     await self.display_teams(ctx, qdata)
 
-    async def do_picks(self, ctx):
-        qdata = self.get_queue(ctx)
-        channel = ctx.channel
-        embed = discord.Embed(color=0xfa0000, title="Red Captain's pick!")
+    # async def pick_red(self, ctx):
+    #
+    #     channel = ctx.channel
+    #     try:
+    #         msg = await self.bot.wait_for('message', timeout=45, check=self.check_red_first_pick_command)
+    #         if msg:
+    #             pick = msg.mentions[0]
+    #             if pick not in qdata['game'].players:
+    #                 await channel.send("{} not available to pick.".format(pick.display_name))
+    #                 return None
+    #             await channel.send("Picked {} for 🟥 RED 🟥 team.".format(pick.mention))
+    #     except asyncio.TimeoutError:
+    #         pick = random.choice(tuple(qdata['game'].players))
+    #         await channel.send("Timed out. Randomly picked {} for 🟥 RED 🟥 team.".format(pick.mention))
+    #     return pick
 
-        await channel.send("Captains: {} and {}".format(*[captain.mention for captain in qdata['game'].captains]))
-        qdata['red_captain'] = qdata['game'].captains[0]
-        qdata['game'].add_to_red(qdata['red_captain'])
-        qdata['blue_captain'] = qdata['game'].captains[1]
-        qdata['game'].add_to_blue(qdata['blue_captain'])
-
-        embed.add_field(name='🟥 RED 🟥',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].red])),
-                        inline=False)
-        embed.add_field(name='🟦 BLUE 🟦',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].blue])),
-                        inline=False)
-        embed.add_field(name='Picking Process...',
-                        value="{mention} Use {prefix}pick [user] to pick 1 player.".format(
-                            mention=qdata['red_captain'].mention,
-                            prefix=self.bot.command_prefix),
-                        inline=False)
-        embed.add_field(name='Available players:',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].players])),
-                        inline=False)
-        self.set_queue(ctx, qdata)
-        # red Pick
-        await channel.send(embed=embed)
-        red_pick = None
-        while not red_pick:
-            red_pick = await self.pick_red(ctx)
-        qdata['game'].add_to_red(red_pick)
-
-        # Blue Picks
-        embed = discord.Embed(color=0x00affa, title="Blue Alliance Captain's Picks!")
-        embed.add_field(name='🟥 RED 🟥',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].red])),
-                        inline=False)
-        embed.add_field(name='🟦 BLUE 🟦',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].blue])),
-                        inline=False)
-        embed.add_field(name='Picking Process...',
-                        value="{mention} Use {prefix}pick [user1] [user2] to pick 2 players.".format(
-                            mention=qdata['blue_captain'].mention,
-                            prefix=self.bot.command_prefix),
-                        inline=False)
-        embed.add_field(name='Available players:',
-                        value="{}".format("\n".join([player.mention for player in qdata['game'].players])),
-                        inline=False)
-        await channel.send(embed=embed)
-        blue_picks = None
-        self.set_queue(ctx, qdata)
-        while not blue_picks:
-            blue_picks = await self.pick_blue(ctx)
-        for blue_pick in blue_picks:
-            qdata['game'].add_to_blue(blue_pick)
-
-        # red Player
-        last_player = next(iter(qdata['game'].players))
-        qdata['game'].add_to_red(last_player)
-        await channel.send("{} added to 🟥 RED 🟥 team.".format(last_player.mention))
-        await self.display_teams(ctx, qdata)
-
-    async def pick_red(self, ctx):
-        qdata = self.get_queue(ctx)
-        channel = ctx.channel
-        try:
-            msg = await self.bot.wait_for('message', timeout=45, check=self.check_red_first_pick_command)
-            if msg:
-                pick = msg.mentions[0]
-                if pick not in qdata['game'].players:
-                    await channel.send("{} not available to pick.".format(pick.display_name))
-                    return None
-                await channel.send("Picked {} for 🟥 RED 🟥 team.".format(pick.mention))
-        except asyncio.TimeoutError:
-            pick = random.choice(tuple(qdata['game'].players))
-            await channel.send("Timed out. Randomly picked {} for 🟥 RED 🟥 team.".format(pick.mention))
-        return pick
-
-    async def pick_blue(self, ctx):
-        qdata = self.get_queue(ctx)
-        channel = ctx.channel
-        try:
-            msg = await self.bot.wait_for('message', timeout=45, check=self.check_blue_picks_command)
-            print(msg)
-
-            if msg:
-                picks = msg.mentions
-                for pick in picks:
-                    if pick not in qdata['game'].players:
-                        await channel.send("{} not available to pick.".format(pick.display_name))
-                        return None
-                await channel.send("Picked {} and {} for 🔷 BLUE 🔷 team.".format(*[pick.mention for pick in picks]))
-                return picks
-        except asyncio.TimeoutError:
-            picks = random.sample(qdata['game'].players, 2)
-            await channel.send(
-                "Timed out. Randomly picked {} and {} for 🔷 BLUE 🔷 team.".format(*[pick.mention for pick in picks]))
-            return picks
+    # async def pick_blue(self, ctx):
+    #     qdata = self.get_queue(ctx)
+    #     channel = ctx.channel
+    #     try:
+    #         msg = await self.bot.wait_for('message', timeout=45, check=self.check_blue_picks_command)
+    #         print(msg)
+    #
+    #         if msg:
+    #             picks = msg.mentions
+    #             for pick in picks:
+    #                 if pick not in qdata['game'].players:
+    #                     await channel.send("{} not available to pick.".format(pick.display_name))
+    #                     return None
+    #             await channel.send("Picked {} and {} for 🔷 BLUE 🔷 team.".format(*[pick.mention for pick in picks]))
+    #             return picks
+    #     except asyncio.TimeoutError:
+    #         picks = random.sample(qdata['game'].players, 2)
+    #         await channel.send(
+    #             "Timed out. Randomly picked {} and {} for 🔷 BLUE 🔷 team.".format(*[pick.mention for pick in picks]))
+    #         return picks
 
     # @commands.command(description="pingtest")
     # async def pingtest(self, ctx):
@@ -464,8 +465,9 @@ class Ranked(commands.Cog):
 
     @app_commands.choices(game=playable_games)
     @app_commands.command(description="Submit Score")
-    @app_commands.checks.cooldown(1, 60.0, key=lambda i: (i.guild_id, i.user.id))
+    @app_commands.checks.cooldown(1, 60.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
+        print(game)
         qdata = game_queues[game]
         if interaction.channel.id == 824691989366046750:  # FRC
             roles = [y.id for y in interaction.user.roles]
@@ -479,32 +481,27 @@ class Ranked(commands.Cog):
                 return
 
         if interaction.channel.id == 824691989366046750:  # FRC
+            print(qdata.red_series)
+            print(qdata.blue_series)
             if qdata.red_series == 2 or qdata.blue_series == 2:
                 await interaction.response.send_message("Series is complete already!", ephemeral=True)
                 return
-
-        if interaction.channel.id == 824691989366046750:  # FRC
-            current_red = qdata.red_series
-            current_blue = qdata.blue_series
-
         else:
             return
         print("Checking ")
         # Red wins
         if int(red_score) > int(blue_score):
-            current_red += 1
+            qdata.red_series += 1
             qdata.past_winner = "Red"
 
         # Blue wins
         elif int(red_score) < int(blue_score):
-            current_blue += 1
+            qdata.blue_series += 1
             qdata.past_winner = "Blue"
-        red_log = current_red
-        blue_log = current_blue
-        print(f"Red {current_red}")
-        print(f"Blue {current_blue}")
-        if current_red == 2:
-            await self.queue_auto(interaction)
+        print(f"Red {qdata.red_series}")
+        print(f"Blue {qdata.blue_series}")
+        if qdata.red_series == 2:
+            # await self.queue_auto(interaction)
             await interaction.response.send_message("🟥 Red Wins! 🟥")
             await remove_roles(interaction)
 
@@ -517,9 +514,9 @@ class Ranked(commands.Cog):
             for member in channel.members:
                 await member.move_to(lobby)
 
-        elif current_blue == 2:
-            await self.queue_auto(interaction)
-            await interaction.channel.send("🟦 Blue Wins! 🟦")
+        elif qdata.blue_series == 2:
+            # await self.queue_auto(interaction)
+            await interaction.response.send_message("🟦 Blue Wins! 🟦")
             await remove_roles(interaction)
 
             # Kick players back to lobby
@@ -533,22 +530,17 @@ class Ranked(commands.Cog):
         else:
             await interaction.response.send_message("Score Submitted")
 
-        if interaction.channel.id == 824691989366046750:  # FRC
-            qdata.red_series = current_red
-            qdata.blue_series = current_blue
-        else:
-            return
         print("Blah")
         # Finding player ids
         red_ids = []
-        for player in qdata['game'].red:
+        for player in qdata.game.red:
             red_ids.append(player.id)
 
         blue_ids = []
-        for player in qdata['game'].blue:
+        for player in qdata.game.blue:
             blue_ids.append(player.id)
 
-        url = 'https://secondrobotics.org/api/ranked/RR3v3/match/'
+        url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/'
         json = {
             "red_alliance": red_ids,
             "blue_alliance": blue_ids,
@@ -558,15 +550,10 @@ class Ranked(commands.Cog):
         x = requests.post(url, json=json, headers=header)
         print(x.json())
         response = x.json()
-
-        print(f"Red {current_red}")
-        print(f"Blue {current_blue}")
         # Getting match Number
 
-        print(f"Red {current_red}")
-        print(f"Blue {current_blue}")
 
-        embed = discord.Embed(color=0xcda03f, title=f"Score submitted | 🟥 {red_log}-{blue_log}  🟦 |")
+        embed = discord.Embed(color=0xcda03f, title=f"Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
         red_out = "```diff\n"
         blue_out = "```diff\n"
         i = 0
@@ -590,7 +577,7 @@ class Ranked(commands.Cog):
                         inline=True)
 
         message = await interaction.channel.send(embed=embed)
-        self.set_queue(interaction, qdata)
+
 
     async def random(self, interaction, game_type):
         print("randomizing")
@@ -945,11 +932,10 @@ class PlayerQueue(Queue):
             return item in self.queue
 
 
-game_queues = {"Splash2v2": XrcGame("Splash", 4),
-               "Splash1v1": XrcGame("Splash", 2),
-               "RapidReact3v3": XrcGame("RapidReact", 6),
-               "RapidReact2v2": XrcGame("RapidReact", 4),
-               "RapidReact1v1": XrcGame("RapidReact", 2),
+game_queues = {
+               "RapidReact3v3": XrcGame("RapidReact", 6, "RR3v3"),
+               "RapidReact2v2": XrcGame("RapidReact", 4, "RR2v2"),
+               "RapidReact1v1": XrcGame("RapidReact", 2, "RR1v1"),
                }
 
 
