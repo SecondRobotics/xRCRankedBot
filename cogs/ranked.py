@@ -190,6 +190,8 @@ class Ranked(commands.Cog):
                 "past_winner": past_winner,
                 "team_size": size}
 
+    # borked
+
     @commands.command(pass_context=True)
     async def autoq(self, ctx, command=None, command_ctx=None):
         if command is not None:
@@ -215,7 +217,8 @@ class Ranked(commands.Cog):
                 self.autoq.append(ctx.author.id)
                 await ctx.channel.send(f"Added {ctx.author.mention} to the autoq list")
         else:
-            await ctx.channel.send(f"Autoqing is only available to patreons. To become a patreon check out this link! https://www.patreon.com/BrennanB ")
+            await ctx.channel.send(
+                f"Autoqing is only available to patreons. To become a patreon check out this link! https://www.patreon.com/BrennanB ")
         print(self.autoq)
 
     async def queue_auto(self, ctx):
@@ -226,7 +229,7 @@ class Ranked(commands.Cog):
             qdata['queue'].put(member)
             await ctx.channel.send(
                 "{} was autoqed. ({:d}/{:d})".format(member.display_name, qdata['queue'].qsize(),
-                                                        qdata['team_size']))
+                                                     qdata['team_size']))
 
     @app_commands.command(description="Force queue players")
     async def queueall(self, interaction: discord.Interaction,
@@ -244,7 +247,8 @@ class Ranked(commands.Cog):
             for member in members:
                 qdata['queue'].put(member)
                 added_players += f"{member.display_name}\n"
-            await interaction.response.send_message(f"Successfully added\n{added_players} to the queue.", ephemeral=True)
+            await interaction.response.send_message(f"Successfully added\n{added_players} to the queue.",
+                                                    ephemeral=True)
         else:
             await interaction.response.send_message("Nerd.", ephemeral=True)
 
@@ -282,13 +286,16 @@ class Ranked(commands.Cog):
             qdata['queue'].put(player)
 
             await interaction.response.send_message(
-                "**{}** added to queue. *({:d}/{:d})*".format(player.display_name, qdata['queue'].qsize(), qdata['team_size']))
+                "**{}** added to queue. *({:d}/{:d})*".format(player.display_name, qdata['queue'].qsize(),
+                                                              qdata['team_size']))
             if self.queue_full(interaction):
-                if qdata['red_series'] == 2 or qdata['blue_series']== 2:
+                if qdata['red_series'] == 2 or qdata['blue_series'] == 2:
                     await interaction.response.send_message("Queue is now full! Type {prefix}startmatch".format(
                         prefix=self.bot.command_prefix))
                 else:
-                    await interaction.response.send_message("Queue is now full! You can start as soon as the current match concludes.")
+                    await interaction.response.send_message(
+                        "Queue is now full! You can start as soon as the current match concludes.")
+
     #
     @app_commands.command()
     async def queuestatus(self, interaction: discord.Interaction):
@@ -296,7 +303,7 @@ class Ranked(commands.Cog):
         qdata = self.get_queue(interaction)
         channel = interaction.channel
         try:
-            for _ in range(0, 2): #loop to not reverse order
+            for _ in range(0, 2):  # loop to not reverse order
                 players = [qdata['queue'].get() for _ in range(qdata['queue'].qsize())]
                 for player in players:
                     qdata['queue'].put(player)
@@ -318,7 +325,8 @@ class Ranked(commands.Cog):
             if player in qdata['queue']:
                 qdata['queue'].remove(player)
                 await interaction.response.send_message(
-                    "**{}** removed from queue. *({:d}/{:d})*".format(player.display_name, qdata['queue'].qsize(), qdata['team_size']))
+                    "**{}** removed from queue. *({:d}/{:d})*".format(player.display_name, qdata['queue'].qsize(),
+                                                                      qdata['team_size']))
             else:
                 await interaction.response.send_message("You aren't in queue.", ephemeral=True)
         self.set_queue(interaction, qdata)
@@ -331,18 +339,20 @@ class Ranked(commands.Cog):
             if player in qdata['queue']:
                 qdata['queue'].remove(player)
                 await interaction.response.send_message(
-                    "{} removed from queue. ({:d}/{:d})".format(player.display_name, qdata['queue'].qsize(), qdata['team_size']))
+                    "{} removed from queue. ({:d}/{:d})".format(player.display_name, qdata['queue'].qsize(),
+                                                                qdata['team_size']))
             else:
-                await interaction.response.send_message("{} is not in queue.".format(player.display_name), ephemeral=True)
+                await interaction.response.send_message("{} is not in queue.".format(player.display_name),
+                                                        ephemeral=True)
 
     def queue_full(self, ctx):
-        if ctx.channel.id == 824691989366046750: # 6 FRC
+        if ctx.channel.id == 824691989366046750:  # 6 FRC
             return self.queue.qsize() >= team_size
-        elif ctx.channel.id == 712297302857089025: #VEX
+        elif ctx.channel.id == 712297302857089025:  # VEX
             return self.queue2.qsize() >= team_size_alt
-        elif ctx.channel.id == 754569222260129832: #FTC
+        elif ctx.channel.id == 754569222260129832:  # FTC
             return self.queue3.qsize() >= team_size_alt
-        elif ctx.channel.id == 754569102873460776: #FRC 4
+        elif ctx.channel.id == 754569102873460776:  # FRC 4
             return self.queue4.qsize() >= team_size_alt
         else:
             return False
@@ -1059,49 +1069,6 @@ class Ranked(commands.Cog):
         # print(new_elo_player_pairs)
         return new_elo_player_pairs, r_odds, b_odds, r_elo, b_elo
 
-    # @commands.command(description="recent elo")
-    # async def calctest(self, ctx):
-    #     wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-    #     self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-    #
-    #     r_score = self.elo_results.iloc[0, 7]
-    #     b_score = self.elo_results.iloc[0, 8]
-    #
-    #     print(f"Red Score:{r_score}")
-    #     print(f"Blue Score:{b_score}")
-    #
-    #     # Find all players in match
-    #
-    #     elo_calc_players = []
-    #     for i in range(0, 6):
-    #         elo_calc_players.append(self.elo_results.iloc[0, i])
-    #
-    #     print(elo_calc_players)
-    #
-    #     # Find most recent ELO for each players
-    #
-    #     elo_player_pairs = {}
-    #
-    #     for player in elo_calc_players:
-    #         # sets all matches to True
-    #         matches = self.elo_results.isin([player])
-    #         # Find locations of all Trues
-    #         outlist = [[i, matches.columns.tolist()[j]]
-    #                    for i, r in enumerate(matches.values)
-    #                    for j, c in enumerate(r)
-    #                    if c]
-    #         # Get values of elos
-    #         column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
-    #
-    #         # For retroactive calcs, use 1, for current calcs use 0
-    #         match = outlist[1]
-    #         elo_player_pairs.update({player: self.elo_results.loc[match[0], column_to_label[match[1]]]})
-    #
-    #     print(elo_player_pairs)
-    #
-    #     result = self.calculate_elo(elo_calc_players, elo_player_pairs, r_score, b_score)
-    #     print(result)
-
     @commands.command(description="recent elo")
     async def elolog(self, ctx, *players):
         plt.style.use('dark_background')
@@ -1325,253 +1292,6 @@ class Ranked(commands.Cog):
     #     wks = self.open_sheet("6-man Rankings + Elos", "To Add")
     #     df = gspread_dataframe.get_as_dataframe(wks)
     #     print(df["Match Number"].iloc[0])
-    @commands.command(description="Recalculate all Elos")
-    async def fastcalcelo(self, ctx):
-        if 693160987125350466 in [y.id for y in ctx.message.author.roles]:
-            wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-            self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-            headers = [1, 2, 3, 4, 5, 6, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4', 'iElo5', 'iElo6',
-                       'rElo', 'bElo', 'rOdds', 'bOdds',
-                       'fElo1', 'fElo2', 'fElo3', 'fElo4', 'fElo5', 'fElo6',
-                       'status1', 'status2', 'status3', 'status4', 'status5', 'status6']
-            match_num = self.elo_results["Match"].iloc[100]
-            dfFinal = pd.DataFrame(columns=headers)
-
-            for z in range(100, -1, -1):
-                r_score = self.elo_results.iloc[z, 7]
-                if pd.isnull(r_score):
-                    continue
-
-                b_score = self.elo_results.iloc[z, 8]
-
-                # Find all players in match
-
-                elo_calc_players = []
-                for i in range(0, 6):
-                    elo_calc_players.append(self.elo_results.iloc[z, i])
-
-                # Find most recent ELO for each players
-
-                elo_player_pairs = {}
-
-                for player in elo_calc_players:
-                    try:
-                        # sets all matches to True
-                        matches = dfFinal.isin([player])
-                        # Find locations of all Trues
-                        outlist = [[i, matches.columns.tolist()[j]]
-                                   for i, r in enumerate(matches.values)
-                                   for j, c in enumerate(r)
-                                   if c]
-                        # Get values of elos
-                        match = outlist[0]
-
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
-                        elo_player_pairs.update({player: dfFinal.loc[match[0], column_to_label[match[1]]]})
-                    except Exception as e:
-                        print(e)
-                        elo_player_pairs.update({player: 1200})
-                result = self.calculate_elo(elo_calc_players, elo_player_pairs, r_score, b_score)
-                final_elos = result[0]
-                data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
-                        elo_calc_players[4], elo_calc_players[5],
-                        match_num, r_score, b_score,
-                        elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
-                        elo_player_pairs[elo_calc_players[2]],
-                        elo_player_pairs[elo_calc_players[3]], elo_player_pairs[elo_calc_players[4]],
-                        elo_player_pairs[elo_calc_players[5]],
-                        result[3], result[4], result[1], result[2],
-                        final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
-                        final_elos[elo_calc_players[2]],
-                        final_elos[elo_calc_players[3]], final_elos[elo_calc_players[4]],
-                        final_elos[elo_calc_players[5]]]
-                if r_score > b_score:
-                    statuses = [f"{elo_calc_players[0]}_W", f"{elo_calc_players[1]}_W", f"{elo_calc_players[2]}_W",
-                                f"{elo_calc_players[3]}_L", f"{elo_calc_players[4]}_L", f"{elo_calc_players[5]}_L"]
-                elif b_score > r_score:
-                    statuses = [f"{elo_calc_players[0]}_L", f"{elo_calc_players[1]}_L", f"{elo_calc_players[2]}_L",
-                                f"{elo_calc_players[3]}_W", f"{elo_calc_players[4]}_W", f"{elo_calc_players[5]}_W"]
-                else:
-                    statuses = [f"{elo_calc_players[0]}_T", f"{elo_calc_players[1]}_T", f"{elo_calc_players[2]}_T",
-                                f"{elo_calc_players[3]}_T", f"{elo_calc_players[4]}_T", f"{elo_calc_players[5]}_T"]
-
-                data.extend(statuses)
-                dfInt = pd.DataFrame(columns=headers, data=[data])
-
-                dfFinal = dfInt.append(dfFinal, ignore_index=True)
-
-                match_num += 1
-
-                await asyncio.sleep(.001)
-            wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-            gspread_dataframe.set_with_dataframe(wks, dfFinal)
-
-    @commands.command(description="Recalculate all Elos")
-    async def calcelo(self, ctx):
-        if 693160987125350466 in [y.id for y in ctx.message.author.roles]:
-            wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-            self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-            print(self.elo_results)
-            headers = [1, 2, 3, 4, 5, 6, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4', 'iElo5', 'iElo6',
-                       'rElo', 'bElo', 'rOdds', 'bOdds',
-                       'fElo1', 'fElo2', 'fElo3', 'fElo4', 'fElo5', 'fElo6',
-                       'status1', 'status2', 'status3', 'status4', 'status5', 'status6']
-            match_num = 1
-            dfFinal = pd.DataFrame(columns=headers)
-            print(dfFinal)
-            status = await ctx.channel.send("Calculating Elo...")
-            for z in range(len(self.elo_results.index) - 1, -1, -1):
-                r_score = self.elo_results.iloc[z, 7]
-                if pd.isnull(r_score):
-                    continue
-
-                b_score = self.elo_results.iloc[z, 8]
-
-                # Find all players in match
-
-                elo_calc_players = []
-                for i in range(0, 6):
-                    elo_calc_players.append(self.elo_results.iloc[z, i])
-
-                # Find most recent ELO for each players
-
-                elo_player_pairs = {}
-
-                for player in elo_calc_players:
-                    try:
-                        # sets all matches to True
-                        matches = dfFinal.isin([player])
-                        # Find locations of all Trues
-                        outlist = [[i, matches.columns.tolist()[j]]
-                                   for i, r in enumerate(matches.values)
-                                   for j, c in enumerate(r)
-                                   if c]
-                        # Get values of elos
-                        match = outlist[0]
-
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
-                        elo_player_pairs.update({player: dfFinal.loc[match[0], column_to_label[match[1]]]})
-                    except Exception as e:
-                        print(e)
-                        elo_player_pairs.update({player: 1200})
-                result = self.calculate_elo(elo_calc_players, elo_player_pairs, r_score, b_score)
-                final_elos = result[0]
-                data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
-                        elo_calc_players[4], elo_calc_players[5],
-                        match_num, r_score, b_score,
-                        elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
-                        elo_player_pairs[elo_calc_players[2]],
-                        elo_player_pairs[elo_calc_players[3]], elo_player_pairs[elo_calc_players[4]],
-                        elo_player_pairs[elo_calc_players[5]],
-                        result[3], result[4], result[1], result[2],
-                        final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
-                        final_elos[elo_calc_players[2]],
-                        final_elos[elo_calc_players[3]], final_elos[elo_calc_players[4]],
-                        final_elos[elo_calc_players[5]]]
-                if r_score > b_score:
-                    statuses = [f"{elo_calc_players[0]}_W", f"{elo_calc_players[1]}_W", f"{elo_calc_players[2]}_W",
-                                f"{elo_calc_players[3]}_L", f"{elo_calc_players[4]}_L", f"{elo_calc_players[5]}_L"]
-                elif b_score > r_score:
-                    statuses = [f"{elo_calc_players[0]}_L", f"{elo_calc_players[1]}_L", f"{elo_calc_players[2]}_L",
-                                f"{elo_calc_players[3]}_W", f"{elo_calc_players[4]}_W", f"{elo_calc_players[5]}_W"]
-                else:
-                    statuses = [f"{elo_calc_players[0]}_T", f"{elo_calc_players[1]}_T", f"{elo_calc_players[2]}_T",
-                                f"{elo_calc_players[3]}_T", f"{elo_calc_players[4]}_T", f"{elo_calc_players[5]}_T"]
-
-                data.extend(statuses)
-                dfInt = pd.DataFrame(columns=headers, data=[data])
-
-                dfFinal = dfInt.append(dfFinal, ignore_index=True)
-                print(dfInt)
-
-                match_num += 1
-                if z % 20 == 0:
-                    await status.edit(
-                        content=f"Calculating Elo... [{len(self.elo_results.index) - z}/{len(self.elo_results.index)}]")
-                await asyncio.sleep(.001)
-            wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-            gspread_dataframe.set_with_dataframe(wks, dfFinal)
-
-    @commands.command(description="Recalculate all Elos")
-    async def fcalcelo(self, ctx):
-        if 693160987125350466 in [y.id for y in ctx.message.author.roles]:
-            wks = self.open_sheet("6-man Rankings + Elos", "FTC 4 Mans Raw")
-            self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-            headers = [1, 2, 3, 4, 'Match', 'rScore', 'bScore'
-                , 'iElo1', 'iElo2', 'iElo3', 'iElo4',
-                       'rElo', 'bElo', 'rOdds', 'bOdds',
-                       'fElo1', 'fElo2', 'fElo3', 'fElo4',
-                       'status1', 'status2', 'status3', 'status4']
-            match_num = 1
-            dfFinal = pd.DataFrame(columns=headers)
-
-            for z in range(len(self.elo_results.index) - 1, -1, -1):
-                r_score = self.elo_results.iloc[z, 5]
-                if pd.isnull(r_score):
-                    continue
-
-                b_score = self.elo_results.iloc[z, 6]
-
-                # Find all players in match
-
-                elo_calc_players = []
-                for i in range(0, 4):
-                    elo_calc_players.append(self.elo_results.iloc[z, i])
-
-                # Find most recent ELO for each players
-
-                elo_player_pairs = {}
-
-                for player in elo_calc_players:
-                    try:
-                        # sets all matches to True
-                        matches = dfFinal.isin([player])
-                        # Find locations of all Trues
-                        outlist = [[i, matches.columns.tolist()[j]]
-                                   for i, r in enumerate(matches.values)
-                                   for j, c in enumerate(r)
-                                   if c]
-                        # Get values of elos
-                        match = outlist[0]
-
-                        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4"}
-                        elo_player_pairs.update({player: dfFinal.loc[match[0], column_to_label[match[1]]]})
-                    except Exception as e:
-                        print(e)
-                        elo_player_pairs.update({player: 1200})
-                result = self.calculate_elo(elo_calc_players, elo_player_pairs, r_score, b_score)
-                final_elos = result[0]
-                data = [elo_calc_players[0], elo_calc_players[1], elo_calc_players[2], elo_calc_players[3],
-                        match_num, r_score, b_score,
-                        elo_player_pairs[elo_calc_players[0]], elo_player_pairs[elo_calc_players[1]],
-                        elo_player_pairs[elo_calc_players[2]],
-                        elo_player_pairs[elo_calc_players[3]],
-                        result[3], result[4], result[1], result[2],
-                        final_elos[elo_calc_players[0]], final_elos[elo_calc_players[1]],
-                        final_elos[elo_calc_players[2]],
-                        final_elos[elo_calc_players[3]]]
-                if r_score > b_score:
-                    statuses = [f"{elo_calc_players[0]}_W", f"{elo_calc_players[1]}_W", f"{elo_calc_players[2]}_L",
-                                f"{elo_calc_players[3]}_L"]
-                elif b_score > r_score:
-                    statuses = [f"{elo_calc_players[0]}_L", f"{elo_calc_players[1]}_L", f"{elo_calc_players[2]}_W",
-                                f"{elo_calc_players[3]}_W"]
-                else:
-                    statuses = [f"{elo_calc_players[0]}_T", f"{elo_calc_players[1]}_T", f"{elo_calc_players[2]}_T",
-                                f"{elo_calc_players[3]}_T"]
-
-                data.extend(statuses)
-                dfInt = pd.DataFrame(columns=headers, data=[data])
-
-                dfFinal = dfInt.append(dfFinal, ignore_index=True)
-
-                match_num += 1
-
-                await asyncio.sleep(.001)
-            wks = self.open_sheet("6-man Rankings + Elos", "FTC 4 Mans Raw")
-            gspread_dataframe.set_with_dataframe(wks, dfFinal)
 
     @app_commands.command(name="clearmatch", description="Clears current running match")
     async def clearmatch(self, interaction: discord.Interaction):
@@ -1582,6 +1302,13 @@ class Ranked(commands.Cog):
             qdata['blue_series'] = 2
             self.set_queue(interaction, qdata)
             await remove_roles(interaction)
+            channel = self.bot.get_channel(824692157142269963)
+            lobby = self.bot.get_channel(824692700364275743)
+            for member in channel.members:
+                await member.move_to(lobby)
+            channel = self.bot.get_channel(824692212528840724)
+            for member in channel.members:
+                await member.move_to(lobby)
             await interaction.response.send_message("Cleared successfully!")
 
     @app_commands.command(name="rules", description="Posts a link the the rules")
