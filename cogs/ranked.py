@@ -28,6 +28,7 @@ team_size = 6
 team_size_alt = 4
 approved_channels = [824691989366046750, 712297302857089025, 650967104933330947, 754569102873460776, 754569222260129832]
 header = {"x-api-key": os.getenv("SRC_API_TOKEN")}
+active_matches = []
 
 listener = commands.Cog.listener
 
@@ -46,60 +47,29 @@ async def remove_roles(ctx):
             await player.remove_roles(to_change)
 
 
-class Ranked(commands.Cog):
-    def __init__(self, bot):
-        self.n = 256
-        self.k = 16
-        self.r = 0.002
-        self.b = 10
-        self.c = 100
-        self.d = 1.1
-        self.a = (((self.b - 1) / (self.d - 1)) ** (1 / self.c))
-        self.bot = bot
+class XrcGame():
+    def __init__(self, game, game_size):
         self.queue = PlayerQueue()
-        self.game = None
-        self.busy = False
+        self.game = game
+        self.game_size = game_size
         self.red_series = 2
         self.blue_series = 2
         self.red_captain = None
         self.blue_captain = None
-        self.last_match_msg = None
         self.clearmatch_message = None
         self.autoq = []
-        self.players_current_elo = {}
 
-        self.queue2 = PlayerQueue()
-        self.game2 = None
-        self.busy2 = False
-        self.red_series2 = 2
-        self.blue_series2 = 2
-        self.red_captain2 = None
-        self.blue_captain2 = None
-        self.last_match_msg2 = None
-        self.clearmatch_message2 = None
-        self.past_winner2 = ""
-
-        self.queue3 = PlayerQueue()
-        self.game3 = None
-        self.busy3 = False
-        self.red_series3 = 2
-        self.blue_series3 = 2
-        self.red_captain3 = None
-        self.blue_captain3 = None
-        self.last_match_msg3 = None
-        self.clearmatch_message3 = None
-        self.past_winner3 = ""
-
-        self.queue4 = PlayerQueue()
-        self.game4 = None
-        self.busy4 = False
-        self.red_series4 = 2
-        self.blue_series4 = 2
-        self.red_captain4 = None
-        self.blue_captain4 = None
-        self.last_match_msg4 = None
-        self.clearmatch_message4 = None
-        self.past_winner4 = ""
+class Ranked(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.queue = PlayerQueue()
+        self.game = None
+        self.red_series = 2
+        self.blue_series = 2
+        self.red_captain = None
+        self.blue_captain = None
+        self.clearmatch_message = None
+        self.autoq = []
 
         self.rejected_matches = []
         wks = self.open_sheet("6-man Rankings + Elos", "User Index")
@@ -121,78 +91,37 @@ class Ranked(commands.Cog):
         wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
         self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
 
-        wks = self.open_sheet("6-man Rankings + Elos", "VEX ELO Raw")
-        self.elo_results2 = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+    @app_commands.command(description="memes")
+    @app_commands.checks.has_any_role("Event Staff")
+    async def test(self, interaction: discord.Interaction, game: str, game_size: int):
+        active_matches.append(XrcGame(game, game_size))
+
+        await interaction.response.send_message(game, ephemeral=True)
 
     def set_queue(self, ctx, qdata):
         if ctx.channel.id == 824691989366046750:  # 6 FRC
             self.queue = qdata['queue']
             self.game = qdata['game']
-            self.busy = qdata['busy']
             self.red_series = qdata['red_series']
             self.blue_series = qdata['blue_series']
             self.red_captain = qdata['red_captain']
             self.blue_captain = qdata['blue_captain']
-            self.last_match_msg = qdata['last_match_msg']
             self.past_winner = qdata['past_winner']
-        elif ctx.channel.id == 712297302857089025:  # VEX
-            self.queue2 = qdata['queue']
-            self.game2 = qdata['game']
-            self.busy2 = qdata['busy']
-            self.red_series2 = qdata['red_series']
-            self.blue_series2 = qdata['blue_series']
-            self.red_captain2 = qdata['red_captain']
-            self.blue_captain2 = qdata['blue_captain']
-            self.last_match_msg2 = qdata['last_match_msg']
-            self.past_winner2 = qdata['past_winner']
-        elif ctx.channel.id == 754569222260129832:  # FTC
-            self.queue3 = qdata['queue']
-            self.game3 = qdata['game']
-            self.busy3 = qdata['busy']
-            self.red_series3 = qdata['red_series']
-            self.blue_series3 = qdata['blue_series']
-            self.red_captain3 = qdata['red_captain']
-            self.blue_captain3 = qdata['blue_captain']
-            self.last_match_msg3 = qdata['last_match_msg']
-            self.past_winner3 = qdata['past_winner']
-        elif ctx.channel.id == 754569102873460776:  # FRC4
-            self.queue4 = qdata['queue']
-            self.game4 = qdata['game']
-            self.busy4 = qdata['busy']
-            self.red_series4 = qdata['red_series']
-            self.blue_series4 = qdata['blue_series']
-            self.red_captain4 = qdata['red_captain']
-            self.blue_captain4 = qdata['blue_captain']
-            self.last_match_msg4 = qdata['last_match_msg']
-            self.past_winner4 = qdata['past_winner']
 
     def get_queue(self, ctx):
         if ctx.channel.id == 824691989366046750:  # 6 FRC
             queue = self.queue
             game = self.game
-            busy = self.busy
             red_series = self.red_series
             blue_series = self.blue_series
             red_captain = self.red_captain
             blue_captain = self.blue_captain
-            last_match_msg = self.last_match_msg
             past_winner = self.past_winner
             size = team_size
-        elif ctx.channel.id == 712297302857089025:  # VEX
-            queue = self.queue2
-            game = self.game2
-            busy = self.busy2
-            red_series = self.red_series2
-            blue_series = self.blue_series2
-            red_captain = self.red_captain2
-            blue_captain = self.blue_captain2
-            last_match_msg = self.last_match_msg2
-            past_winner = self.past_winner2
-            size = team_size_alt
         else:
             return None
-        return {"queue": queue, "game": game, "busy": busy, "red_series": red_series, "blue_series": blue_series,
-                "red_captain": red_captain, "blue_captain": blue_captain, "last_match_msg": last_match_msg,
+        return {"queue": queue, "game": game, "red_series": red_series, "blue_series": blue_series,
+                "red_captain": red_captain, "blue_captain": blue_captain,
                 "past_winner": past_winner,
                 "team_size": size}
 
@@ -236,18 +165,6 @@ class Ranked(commands.Cog):
             await ctx.channel.send(
                 "{} was autoqed. ({:d}/{:d})".format(member.display_name, qdata['queue'].qsize(),
                                                      qdata['team_size']))
-
-    # @app_commands.command(description="memes")
-    # async def test(self, interaction: discord.Interaction, red_score: int, blue_score: int):
-    #     url = 'https://secondrobotics.org/api/ranked/RR1v1/match/'
-    #     json = {
-    #         "red_alliance": [261976608519225345],
-    #         "blue_alliance": [118000175816900615],
-    #         "red_score": red_score,
-    #         "blue_score": blue_score
-    #      }
-    #     x = requests.post(url, json=json, headers=header)
-    #     print(x.json())
 
     @app_commands.command(description="Force queue players")
     async def queueall(self, interaction: discord.Interaction,
@@ -306,9 +223,6 @@ class Ranked(commands.Cog):
                 await interaction.response.send_message("You can't queue in this channel.", ephemeral=True)
             if player in qdata['queue']:
                 await interaction.response.send_message("You are already in queue.", ephemeral=True)
-                return
-            if qdata['busy'] and player in qdata['game']:
-                await interaction.response.send_message("You are already in a game.", ephemeral=True)
                 return
 
             qdata['queue'].put(player)
@@ -385,82 +299,6 @@ class Ranked(commands.Cog):
         else:
             return False
 
-    # def check_vote_command(self, message):
-    #     if not message.content.startswith("{prefix}vote".format(prefix=self.bot.command_prefix)):
-    #         return False
-    #     if not len(message.mentions) == 1:
-    #         return False
-    #     return True
-
-    # @commands.command(description="Start a game by voting for captains")
-    # async def voting(self, ctx):
-    #     channel = ctx.channel
-    #     if not self.queue_full():
-    #         await channel.send("Queue is not full.")
-    #         return
-    #     if self.busy:
-    #         await channel.send("Bot is busy. Please wait until picking is done.")
-    #         return
-    #     self.busy = True
-    #     self.create_game()
-    #
-    #     await channel.send(
-    #         "Captain voting initiated. Use {prefix}vote [user] to vote for a captain (cannot be yourself).".format(
-    #             prefix=self.bot.command_prefix))
-    #     await channel.send("Available: {}".format(", ".join([player.display_name for player in self.game.players])))
-    #
-    #     votes = {}
-    #     timeout = 90
-    #     end_time = time.time() + timeout
-    #     while len(votes) < team_size and time.time() < end_time:
-    #         msg = await self.bot.wait_for('message', timeout=1, check=self.check_vote_command)
-    #         if not msg:
-    #             continue
-    #         if msg.author not in self.game.players:
-    #             return
-    #
-    #         vote = msg.mentions[0]
-    #         if vote == msg.author:
-    #             await channel.send("Cannot vote for yourself.")
-    #         elif vote in self.game.players:
-    #             votes[msg.author] = msg.mentions[0]
-    #             await channel.send("Vote added for {}.".format(vote.display_name))
-    #         else:
-    #             await channel.send("{} not available to pick.".format(vote.display_name))
-    #     if len(votes) < team_size:
-    #         await channel.send("Timed out.")
-    #         msg = ""
-    #         for player in self.game.players:
-    #             if player not in votes:
-    #                 vote = player
-    #                 while vote == player:
-    #                     vote = random.choice(tuple(self.game.players))
-    #                 votes[player] = vote
-    #                 msg += "Random vote added for {} from {}.\n".format(vote.display_name, player.display_name)
-    #         await channel.send(msg)
-    #
-    #     vote_nums = {}
-    #     for vote in votes.values():
-    #         vote_nums[vote] = vote_nums.get(vote, 0) + 1
-    #     sorted_vote_nums = sorted(vote_nums.items(), key=operator.itemgetter(1), reverse=True)
-    #     top_votes = [key for key, value in sorted_vote_nums if value == sorted_vote_nums[0][1]]
-    #     if len(top_votes) < 2:
-    #         self.game.captains = top_votes
-    #         secondary_votes = [key for key, value in sorted_vote_nums if value == sorted_vote_nums[1][1]]
-    #         if len(secondary_votes) > 1:
-    #             await channel.send("{:d}-way tie for 2nd captain. Shuffling picks...".format(len(secondary_votes)))
-    #             random.shuffle(secondary_votes)
-    #         self.game.captains.append(secondary_votes[0])
-    #     else:
-    #         if len(top_votes) > 2:
-    #             await channel.send("{:d}-way tie for captains. Shuffling picks...".format(len(top_votes)))
-    #         random.shuffle(top_votes)
-    #         self.game.captains = top_votes[:2]
-    #
-    #     await self.do_picks(ctx)
-    #
-    #     self.busy = False
-
     # def check_red_first_pick_command(self, message):
     #     qdata = self.get_queue(message)
     #     if not message.content.startswith("{prefix}pick".format(prefix=self.bot.command_prefix)):
@@ -523,9 +361,6 @@ class Ranked(commands.Cog):
     async def captains(self, ctx):
         qdata = self.get_queue(ctx)
         channel = ctx.channel
-        if qdata['busy']:
-            await channel.send("Bot is busy. Please wait until picking is done.")
-            return
         qdata = self.create_game(ctx)
 
         self.set_queue(ctx, qdata)
@@ -776,18 +611,12 @@ class Ranked(commands.Cog):
                         inline=True)
 
         message = await interaction.channel.send(embed=embed)
-        self.last_match_msg = message
         self.set_queue(interaction, qdata)
-
-
 
     async def random(self, ctx):
         qdata = self.get_queue(ctx)
         channel = ctx.channel
-        if qdata['busy']:
-            await channel.send("Bot is busy. Please wait until picking is done.")
-            return
-        qdata['busy'] = True
+
         qdata = self.create_game(ctx)
         red = random.sample(qdata['game'].players, int(int(qdata['team_size']) / 2))
         for player in red:
@@ -799,83 +628,6 @@ class Ranked(commands.Cog):
 
         self.set_queue(ctx, qdata)
         await self.display_teams(ctx)
-
-        qdata['busy'] = False
-
-    def calculate_elo(self, elo_calc_players, elo_player_pairs, r_score, b_score):
-        # Generate team elo averages
-
-        r_elo = 0
-        for i in range(0, int((len(elo_calc_players) / 2))):
-            r_elo += elo_player_pairs[elo_calc_players[i]]
-        r_elo = r_elo / int((len(elo_calc_players) / 2))
-        # print(f"Red elo is: {r_elo}")
-
-        b_elo = 0
-        for i in range(int((len(elo_calc_players) / 2)), len(elo_calc_players)):
-            b_elo += elo_player_pairs[elo_calc_players[i]]
-        b_elo = b_elo / int((len(elo_calc_players) / 2))
-        # print(f"Blue elo is: {b_elo}")
-
-        r_odds = 1 / (1 + 10 ** ((b_elo - r_elo) / self.n))
-        b_odds = 1 - r_odds
-        # print(f"Red odds: {r_odds}")
-        # print(f"Blue odds: {b_odds}")
-
-        new_elo_player_pairs = {}
-        i = 1
-        for player in elo_calc_players:
-            num_played = len(self.elo_results[self.elo_results[1] == player]) + len(
-                self.elo_results[self.elo_results[2] == player]) + len(
-                self.elo_results[self.elo_results[3] == player]) + len(
-                self.elo_results[self.elo_results[4] == player]) + len(
-                self.elo_results[self.elo_results[5] == player]) + len(self.elo_results[self.elo_results[6] == player])
-
-            if i < int((len(elo_calc_players) / 2) + 1):
-                if r_score > b_score:
-                    new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(r_score - b_score) + 1, 8)) * (
-                                                                  1 - r_odds)) * (((self.b - 1) / (
-                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
-                elif b_score > r_score:
-                    new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(r_score - b_score) + 1, 8)) * (
-                                                                  0 - r_odds)) * (((self.b - 1) / (
-                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
-                else:
-                    new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(r_score - b_score) + 1, 8)) * (
-                                                                  0.5 - r_odds)) * (((self.b - 1) / (
-                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
-
-            else:
-                if b_score > r_score:
-                    new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(b_score - r_score) + 1, 8)) * (
-                                                                  1 - b_odds)) * (((self.b - 1) / (
-                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
-                elif r_score > b_score:
-                    new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(b_score - r_score) + 1, 8)) * (
-                                                                  0 - b_odds)) * (((self.b - 1) / (
-                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
-                else:
-                    new_elo = elo_player_pairs[player] + ((
-                                                                  self.k / (1 + 0) + 2 * math.log(
-                                                              math.fabs(b_score - r_score) + 1, 8)) * (
-                                                                  0.5 - b_odds)) * (((self.b - 1) / (
-                            self.a ** num_played)) + 1)  # + self.r * (1200 - elo_player_pairs[player])
-
-            new_elo_player_pairs.update({player: new_elo})
-            self.players_current_elo.update({player: new_elo})
-            i += 1
-        # print(new_elo_player_pairs)
-        return new_elo_player_pairs, r_odds, b_odds, r_elo, b_elo
 
     @commands.command(description="recent elo")
     async def elolog(self, ctx, *players):
