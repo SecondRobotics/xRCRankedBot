@@ -24,7 +24,7 @@ class RankedBot(commands.Bot):
     async def on_ready(self):
         print("alive")
         # Required to update all slash commands
-        await bot.change_presence(activity=discord.Game(name=str("New phone who dis")))
+        await bot.change_presence(activity=discord.Game(name=str("xRC Sim Ranked Queue")))
 
 
 bot = RankedBot()

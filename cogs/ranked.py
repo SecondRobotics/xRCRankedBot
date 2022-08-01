@@ -1,26 +1,19 @@
 from discord import app_commands
-import collections
-import operator
 import random
-import time
 from queue import Queue
 from discord.utils import get
 from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 import gspread_dataframe
-import pandas as pd
 import discord
 from discord.ext import commands
 import asyncio
 import matplotlib.pyplot as plt
-import matplotlib as mpl
-import math
-from threading import Thread
 from collections.abc import MutableSet
-import sys
 import requests
 from dotenv import load_dotenv
 import os
+from discord.app_commands import Choice
 
 load_dotenv()
 
@@ -28,11 +21,14 @@ team_size = 6
 team_size_alt = 4
 approved_channels = [824691989366046750, 712297302857089025, 650967104933330947, 754569102873460776, 754569222260129832]
 header = {"x-api-key": os.getenv("SRC_API_TOKEN")}
-active_matches = []
 
 listener = commands.Cog.listener
 
-
+playable_games = [
+        Choice(name="Rapid React 3v3", value="RapidReact3v3"),
+        Choice(name="Rapid React 2v2", value="RapidReact2v2"),
+        Choice(name="Rapid React 1v1", value="RapidReact1v1")
+    ]
 async def remove_roles(ctx):
     # Remove any current roles
 
@@ -58,6 +54,7 @@ class XrcGame():
         self.blue_captain = None
         self.clearmatch_message = None
         self.autoq = []
+
 
 class Ranked(commands.Cog):
     def __init__(self, bot):
@@ -93,10 +90,10 @@ class Ranked(commands.Cog):
 
     @app_commands.command(description="memes")
     @app_commands.checks.has_any_role("Event Staff")
-    async def test(self, interaction: discord.Interaction, game: str, game_size: int):
-        active_matches.append(XrcGame(game, game_size))
+    async def test(self, interaction: discord.Interaction, game: str):
+        result = game_queues[game]
 
-        await interaction.response.send_message(game, ephemeral=True)
+        await interaction.response.send_message(result.game_size, ephemeral=True)
 
     def set_queue(self, ctx, qdata):
         if ctx.channel.id == 824691989366046750:  # 6 FRC
@@ -190,9 +187,9 @@ class Ranked(commands.Cog):
     # @commands.command(pass_context=True)
     # async def seriestest(self, ctx):
     #     await ctx.channel.send(f"{self.red_series} {self.blue_series}")
-
+    @app_commands.choices(game=playable_games)
     @app_commands.command(name="queue", description="Add yourself to the queue")
-    async def q(self, interaction: discord.Interaction):
+    async def q(self, interaction: discord.Interaction, game: str):
         """Enter's player into queue for upcoming matches"""
 
         url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
@@ -201,11 +198,12 @@ class Ranked(commands.Cog):
         thing = x.json()
 
         if not thing["exists"]:
-            await interaction.response.send_message("You must register for an account at <https://www.secondrobotics.org/login> before you can queue.", ephemeral=True)
+            await interaction.response.send_message(
+                "You must register for an account at <https://www.secondrobotics.org/login> before you can queue.",
+                ephemeral=True)
             return
 
-        qdata = self.get_queue(interaction)
-        print(qdata)
+        qdata = game_queues[game]
 
         if interaction.channel.id in approved_channels:
             player = interaction.user
@@ -221,83 +219,71 @@ class Ranked(commands.Cog):
                     return
             else:
                 await interaction.response.send_message("You can't queue in this channel.", ephemeral=True)
-            if player in qdata['queue']:
-                await interaction.response.send_message("You are already in queue.", ephemeral=True)
+            if player in qdata.queue:
+                await interaction.response.send_message("You are already in this queue.", ephemeral=True)
                 return
 
-            qdata['queue'].put(player)
+            qdata.queue.put(player)
 
             await interaction.response.send_message(
-                "**{}** added to queue. *({:d}/{:d})*".format(player.display_name, qdata['queue'].qsize(),
-                                                              qdata['team_size']))
-            if self.queue_full(interaction):
-                if qdata['red_series'] == 2 or qdata['blue_series'] == 2:
-                    await interaction.channel.send("Queue is now full! Type {prefix}startmatch".format(
-                        prefix=self.bot.command_prefix))
+                f"**{player.display_name}**\nadded to queue for __{game}__. *({qdata.queue.qsize()}/{qdata.game_size})*")
+            if qdata.queue.qsize() >= qdata.game_size:
+                if qdata.red_series == 2 or qdata.blue_series == 2:
+                    await interaction.channel.send("Queue is now full! Type /startmatch")
                 else:
                     await interaction.channel.send(
                         "Queue is now full! You can start as soon as the current match concludes.")
 
     #
+    @app_commands.choices(game=playable_games)
     @app_commands.command()
-    async def queuestatus(self, interaction: discord.Interaction):
+    async def queuestatus(self, interaction: discord.Interaction, game: str):
         """View who is currently in the queue"""
-        qdata = self.get_queue(interaction)
-        channel = interaction.channel
+        qdata = game_queues[game]
         try:
             for _ in range(0, 2):  # loop to not reverse order
-                players = [qdata['queue'].get() for _ in range(qdata['queue'].qsize())]
+                players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
                 for player in players:
-                    qdata['queue'].put(player)
-            embed = discord.Embed(color=0xcda03f, title="Signed up players")
+                    qdata.queue.put(player)
+            embed = discord.Embed(color=0xcda03f, title=f"Signed up players for {game}")
             embed.add_field(name='Players',
                             value="{}".format("\n".join([player.mention for player in players])),
                             inline=False)
             await interaction.response.send_message(embed=embed, ephemeral=True)
         except:
-            await interaction.response.send_message("Nobody is in queue!", ephemeral=True)
+            await interaction.response.send_message(f"Nobody is in queue for {game}!", ephemeral=True)
 
+    @app_commands.choices(game=playable_games)
     @app_commands.command(name="leave", description="Remove yourself from the queue")
-    async def leave(self, interaction: discord.Interaction):
-        qdata = self.get_queue(interaction)
+    async def leave(self, interaction: discord.Interaction, game: str):
+        qdata = game_queues[game]
         if interaction.channel.id in approved_channels:
             player = interaction.user
-            channel = interaction.channel
-
-            if player in qdata['queue']:
-                qdata['queue'].remove(player)
+            print(qdata.queue)
+            if player in qdata.queue:
+                qdata.queue.remove(player)
                 await interaction.response.send_message(
-                    "**{}** removed from queue. *({:d}/{:d})*".format(player.display_name, qdata['queue'].qsize(),
-                                                                      qdata['team_size']))
+                    f"**{player.display_name}**\nremoved to queue for __{game}__. *({qdata.queue.qsize()}/{qdata.game_size})*")
+                return
             else:
-                await interaction.response.send_message("You aren't in queue.", ephemeral=True)
-        self.set_queue(interaction, qdata)
+                await interaction.response.send_message("You aren't in this queue.", ephemeral=True)
+                return
 
+    @app_commands.choices(game=playable_games)
     @app_commands.command(description="Remove someone else from the queue")
     @app_commands.checks.has_any_role("Event Staff")
-    async def kick(self, interaction: discord.Interaction, player: discord.Member):
-        qdata = self.get_queue(interaction)
+    async def kick(self, interaction: discord.Interaction, player: discord.Member, game: str):
+        qdata = game_queues[game]
         if interaction.channel.id in approved_channels:
-            if player in qdata['queue']:
-                qdata['queue'].remove(player)
+            if player in qdata.queue:
+                qdata.queue.remove(player)
                 await interaction.response.send_message(
-                    "{} removed from queue. ({:d}/{:d})".format(player.display_name, qdata['queue'].qsize(),
-                                                                qdata['team_size']))
+                    f"**{player.display_name}**\nremoved to queue for __{game}__. *({qdata.queue.qsize()}/{qdata.game_size})*")
+                return
             else:
                 await interaction.response.send_message("{} is not in queue.".format(player.display_name),
                                                         ephemeral=True)
-
-    def queue_full(self, ctx):
-        if ctx.channel.id == 824691989366046750:  # 6 FRC
-            return self.queue.qsize() >= team_size
-        elif ctx.channel.id == 712297302857089025:  # VEX
-            return self.queue2.qsize() >= team_size_alt
-        elif ctx.channel.id == 754569222260129832:  # FTC
-            return self.queue3.qsize() >= team_size_alt
-        elif ctx.channel.id == 754569102873460776:  # FRC 4
-            return self.queue4.qsize() >= team_size_alt
-        else:
-            return False
+                return
 
     # def check_red_first_pick_command(self, message):
     #     qdata = self.get_queue(message)
@@ -330,18 +316,19 @@ class Ranked(commands.Cog):
             len(self.elo_results[self.elo_results[5] == user]) +
             len(self.elo_results[self.elo_results[6] == user]))
 
+    @app_commands.choices(game=playable_games)
     @app_commands.command(description="Start a game")
-    async def startmatch(self, interaction: discord.Interaction):
-        qdata = self.get_queue(interaction)
+    async def startmatch(self, interaction: discord.Interaction, game: str):
+        qdata = game_queues[game]
         print(qdata)
-        if not self.queue_full(interaction):
+        if not qdata.queue.qsize() >= qdata.game_size:
             await interaction.response.send_message("Queue is not full.", ephemeral=True)
             return
-        if qdata['red_series'] == 2 or qdata['blue_series'] == 2:
-            qdata['red_series'] = 0
-            qdata['blue_series'] = 0
-            qdata['past_winner'] = ""
-            self.set_queue(interaction, qdata)
+        if qdata.red_series == 2 or qdata.blue_series == 2:
+            qdata.red_series = 0
+            qdata.blue_series = 0
+            qdata.past_winner = ""
+
             pass
         else:
             await interaction.response.send_message("Current match incomplete.", ephemeral=True)
@@ -573,7 +560,7 @@ class Ranked(commands.Cog):
             "blue_alliance": blue_ids,
             "red_score": red_score,
             "blue_score": blue_score
-         }
+        }
         x = requests.post(url, json=json, headers=header)
         print(x.json())
         response = x.json()
@@ -581,8 +568,6 @@ class Ranked(commands.Cog):
         print(f"Red {current_red}")
         print(f"Blue {current_blue}")
         # Getting match Number
-
-
 
         print(f"Red {current_red}")
         print(f"Blue {current_blue}")
@@ -971,6 +956,14 @@ class PlayerQueue(Queue):
     def __contains__(self, item):
         with self.mutex:
             return item in self.queue
+
+
+game_queues = {"Splash2v2": XrcGame("Splash", 4),
+               "Splash1v1": XrcGame("Splash", 2),
+               "RapidReact3v3": XrcGame("RapidReact", 6),
+               "RapidReact2v2": XrcGame("RapidReact", 4),
+               "RapidReact1v1": XrcGame("RapidReact", 2),
+               }
 
 
 async def setup(bot: commands.Bot) -> None:
