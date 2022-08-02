@@ -467,6 +467,7 @@ class Ranked(commands.Cog):
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 60.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
+        await interaction.response.defer()
         print(game)
         qdata = game_queues[game]
         if interaction.channel.id == 824691989366046750:  # FRC
@@ -477,14 +478,18 @@ class Ranked(commands.Cog):
             if submit_check:
                 pass
             else:
-                await interaction.response.send_message("You are ineligible to submit!", ephemeral=True)
+                await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
 
         if interaction.channel.id == 824691989366046750:  # FRC
             print(qdata.red_series)
             print(qdata.blue_series)
             if qdata.red_series == 2 or qdata.blue_series == 2:
-                await interaction.response.send_message("Series is complete already!", ephemeral=True)
+                print("INSIDE")
+                print(qdata.red_series)
+                print(qdata.blue_series)
+                print(interaction)
+                await interaction.followup.send("Series is complete already!", ephemeral=True)
                 return
         else:
             return
@@ -502,7 +507,7 @@ class Ranked(commands.Cog):
         print(f"Blue {qdata.blue_series}")
         if qdata.red_series == 2:
             # await self.queue_auto(interaction)
-            await interaction.response.send_message("🟥 Red Wins! 🟥")
+            await interaction.followup.send("🟥 Red Wins! 🟥")
             await remove_roles(interaction)
 
             # Kick players back to main lobby
@@ -516,7 +521,7 @@ class Ranked(commands.Cog):
 
         elif qdata.blue_series == 2:
             # await self.queue_auto(interaction)
-            await interaction.response.send_message("🟦 Blue Wins! 🟦")
+            await interaction.followup.send("🟦 Blue Wins! 🟦")
             await remove_roles(interaction)
 
             # Kick players back to lobby
@@ -528,7 +533,9 @@ class Ranked(commands.Cog):
             for member in channel.members:
                 await member.move_to(lobby)
         else:
-            await interaction.response.send_message("Score Submitted")
+            print(interaction)
+            await interaction.followup.send("Score Submitted")
+            print("got here")
 
         print("Blah")
         # Finding player ids
