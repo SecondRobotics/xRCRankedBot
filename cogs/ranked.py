@@ -2,8 +2,8 @@ from discord import app_commands
 import random
 from queue import Queue
 from discord.utils import get
-import gspread_dataframe
 import discord
+import logging
 from discord.ext import commands
 from collections.abc import MutableSet
 import requests
@@ -11,20 +11,25 @@ from dotenv import load_dotenv
 import os
 from discord.app_commands import Choice
 
+
+logger = logging.getLogger('discord')
 load_dotenv()
 
 team_size = 6
 team_size_alt = 4
-approved_channels = [824691989366046750, 712297302857089025, 650967104933330947, 754569102873460776, 754569222260129832]
+approved_channels = [824691989366046750, 712297302857089025,
+                     650967104933330947, 754569102873460776, 754569222260129832]
 header = {"x-api-key": os.getenv("SRC_API_TOKEN")}
 
 listener = commands.Cog.listener
 
 playable_games = [
-        Choice(name="Rapid React 3v3", value="RapidReact3v3"),
-        Choice(name="Rapid React 2v2", value="RapidReact2v2"),
-        Choice(name="Rapid React 1v1", value="RapidReact1v1")
-    ]
+    Choice(name="Rapid React 3v3", value="RapidReact3v3"),
+    Choice(name="Rapid React 2v2", value="RapidReact2v2"),
+    Choice(name="Rapid React 1v1", value="RapidReact1v1")
+]
+
+
 async def remove_roles(ctx):
     # Remove any current roles
 
@@ -58,8 +63,8 @@ class XrcGame():
 def create_game(game_type):
     qdata = game_queues[game_type]
     offset = qdata.queue.qsize() - qdata.game_size
-    print(offset)
-    print(qdata.game_size)
+    logger.info(offset)
+    logger.info(qdata.game_size)
     qsize = qdata.queue.qsize()
     players = [qdata.queue.get() for _ in range(qsize)]
     qdata.game = Game(players[0 + offset:qdata.game_size + offset])
@@ -84,7 +89,6 @@ class Ranked(commands.Cog):
         self.autoq = []
         self.past_winner = ""
 
-
     @app_commands.command(description="memes")
     @app_commands.checks.has_any_role("Event Staff")
     async def test(self, interaction: discord.Interaction, game: str):
@@ -92,19 +96,18 @@ class Ranked(commands.Cog):
 
         await interaction.response.send_message(result.game_size, ephemeral=True)
 
-
     # borked
 
     @commands.command(pass_context=True)
     async def autoq(self, ctx, command=None, command_ctx=None):
         if command is not None:
             if 699094822132121662 in [y.id for y in ctx.message.author.roles]:
-                print("trueee")
+                logger.info("trueee")
                 if command.lower() == "kick":
                     if command_ctx is not None:
                         self.autoq.remove(int(command_ctx))
                         await ctx.channel.send(f"Removed <@{command_ctx}> to the autoq list")
-                        print(command_ctx)
+                        logger.info(command_ctx)
                         return
         if ctx.channel.id != 824691989366046750:
             return
@@ -122,11 +125,11 @@ class Ranked(commands.Cog):
         else:
             await ctx.channel.send(
                 f"Autoqing is only available to patreons. To become a patreon check out this link! https://www.patreon.com/BrennanB ")
-        print(self.autoq)
+        logger.info(self.autoq)
 
     # async def queue_auto(self, ctx):
     #
-    #     print(qdata)
+    #     logger.info(qdata)
     #     for id in self.autoq:
     #         member = ctx.guild.get_member(id)
     #         qdata['queue'].put(member)
@@ -183,7 +186,7 @@ class Ranked(commands.Cog):
             player = interaction.user
             channel = interaction.channel
             if channel.id == 824691989366046750:  # FRC
-                print(interaction.user)
+                logger.info(interaction.user)
                 roles = [y.id for y in interaction.user.roles]
                 ranked_roles = [824711734069297152, 824711824011427841]
                 # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
@@ -216,12 +219,15 @@ class Ranked(commands.Cog):
         qdata = game_queues[game]
         try:
             for _ in range(0, 2):  # loop to not reverse order
-                players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
+                players = [qdata.queue.get()
+                           for _ in range(qdata.queue.qsize())]
                 for player in players:
                     qdata.queue.put(player)
-            embed = discord.Embed(color=0xcda03f, title=f"Signed up players for {game}")
+            embed = discord.Embed(
+                color=0xcda03f, title=f"Signed up players for {game}")
             embed.add_field(name='Players',
-                            value="{}".format("\n".join([player.mention for player in players])),
+                            value="{}".format(
+                                "\n".join([player.mention for player in players])),
                             inline=False)
             await interaction.response.send_message(embed=embed, ephemeral=True)
         except:
@@ -233,7 +239,7 @@ class Ranked(commands.Cog):
         qdata = game_queues[game]
         if interaction.channel.id in approved_channels:
             player = interaction.user
-            print(qdata.queue)
+            logger.info(qdata.queue)
             if player in qdata.queue:
                 qdata.queue.remove(player)
                 await interaction.response.send_message(
@@ -281,7 +287,7 @@ class Ranked(commands.Cog):
 
     # @app_commands.command(description="Number of matches played")
     # async def numplayed(self, interaction: discord.Interaction, user: str):
-    #     print(self.elo_results)
+    #     logger.info(self.elo_results)
     #     await interaction.response.send_message(
     #         len(self.elo_results[self.elo_results[1] == user]) +
     #         len(self.elo_results[self.elo_results[2] == user]) +
@@ -294,7 +300,7 @@ class Ranked(commands.Cog):
     @app_commands.command(description="Start a game")
     async def startmatch(self, interaction: discord.Interaction, game: str):
         qdata = game_queues[game]
-        print(qdata.red_series)
+        logger.info(qdata.red_series)
         if not qdata.queue.qsize() >= qdata.game_size:
             await interaction.response.send_message("Queue is not full.", ephemeral=True)
             return
@@ -313,10 +319,10 @@ class Ranked(commands.Cog):
             return await self.random(interaction, game)
         chooser = random.randint(1, 10)
         if chooser < 0:  # 6
-            print("Captains")
+            logger.info("Captains")
             # await self.captains(interaction)
         else:
-            print("Randoms")
+            logger.info("Randoms")
             await self.random(interaction, game)
 
     # async def captains(self, ctx):
@@ -411,7 +417,7 @@ class Ranked(commands.Cog):
     #     channel = ctx.channel
     #     try:
     #         msg = await self.bot.wait_for('message', timeout=45, check=self.check_blue_picks_command)
-    #         print(msg)
+    #         logger.info(msg)
     #
     #         if msg:
     #             picks = msg.mentions
@@ -433,17 +439,17 @@ class Ranked(commands.Cog):
     #     blue_check = get(ctx.message.author.guild.roles, name="6 Mans Blue")
     #     await ctx.channel.send(f"{red_check.mention} {blue_check.mention}")
 
-
     @app_commands.choices(game=playable_games)
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 60.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
         await interaction.response.defer()
-        print(game)
+        logger.info(game)
         qdata = game_queues[game]
         if interaction.channel.id == 824691989366046750:  # FRC
             roles = [y.id for y in interaction.user.roles]
-            ranked_roles = [699094822132121662, 824711734069297152, 824711824011427841]
+            ranked_roles = [699094822132121662,
+                            824711734069297152, 824711824011427841]
             # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
             submit_check = bool(set(roles).intersection(ranked_roles))
             if submit_check:
@@ -453,18 +459,18 @@ class Ranked(commands.Cog):
                 return
 
         if interaction.channel.id == 824691989366046750:  # FRC
-            print(qdata.red_series)
-            print(qdata.blue_series)
+            logger.info(qdata.red_series)
+            logger.info(qdata.blue_series)
             if qdata.red_series == 2 or qdata.blue_series == 2:
-                print("INSIDE")
-                print(qdata.red_series)
-                print(qdata.blue_series)
-                print(interaction)
+                logger.info("INSIDE")
+                logger.info(qdata.red_series)
+                logger.info(qdata.blue_series)
+                logger.info(interaction)
                 await interaction.followup.send("Series is complete already!", ephemeral=True)
                 return
         else:
             return
-        print("Checking ")
+        logger.info("Checking ")
         # Red wins
         if int(red_score) > int(blue_score):
             qdata.red_series += 1
@@ -474,8 +480,8 @@ class Ranked(commands.Cog):
         elif int(red_score) < int(blue_score):
             qdata.blue_series += 1
             qdata.past_winner = "Blue"
-        print(f"Red {qdata.red_series}")
-        print(f"Blue {qdata.blue_series}")
+        logger.info(f"Red {qdata.red_series}")
+        logger.info(f"Blue {qdata.blue_series}")
         if qdata.red_series == 2:
             # await self.queue_auto(interaction)
             await interaction.followup.send("🟥 Red Wins! 🟥")
@@ -504,11 +510,11 @@ class Ranked(commands.Cog):
             for member in channel.members:
                 await member.move_to(lobby)
         else:
-            print(interaction)
+            logger.info(interaction)
             await interaction.followup.send("Score Submitted")
-            print("got here")
+            logger.info("got here")
 
-        print("Blah")
+        logger.info("Blah")
         # Finding player ids
         red_ids = []
         for player in qdata.game.red:
@@ -526,12 +532,12 @@ class Ranked(commands.Cog):
             "blue_score": blue_score
         }
         x = requests.post(url, json=json, headers=header)
-        print(x.json())
+        logger.info(x.json())
         response = x.json()
         # Getting match Number
 
-
-        embed = discord.Embed(color=0xcda03f, title=f"Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
+        embed = discord.Embed(
+            color=0xcda03f, title=f"Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
         red_out = "```diff\n"
         blue_out = "```diff\n"
         i = 0
@@ -556,26 +562,24 @@ class Ranked(commands.Cog):
 
         message = await interaction.channel.send(embed=embed)
 
-
     async def random(self, interaction, game_type):
-        print("randomizing")
+        logger.info("randomizing")
         qdata = create_game(game_type)
-        print(f"players: {qdata.game.players}")
-        print(f"Team size {qdata.team_size}")
+        logger.info(f"players: {qdata.game.players}")
+        logger.info(f"Team size {qdata.team_size}")
         red = random.sample(qdata.game.players, int(qdata.team_size))
-        print(red)
+        logger.info(red)
         for player in red:
-            print(player)
+            logger.info(player)
             qdata.game.add_to_red(player)
 
         blue = list(qdata.game.players)
-        print(blue)
+        logger.info(blue)
         for player in blue:
-            print(player)
+            logger.info(player)
             qdata.game.add_to_blue(player)
 
         await self.display_teams(interaction, qdata)
-
 
     # @commands.command(description="Shows your current elo/ranking stats", aliases=["elocheck"])
     # async def checkelo(self, ctx):
@@ -675,10 +679,10 @@ class Ranked(commands.Cog):
     #         try:
     #             user = ctx.message.guild.get_member(int(self.names_to_ids[row['Player']]))
     #             role = get(ctx.message.author.guild.roles, name=row["Rank"])
-    #             # print(role)
+    #             # logger.info(role)
     #             if role in user.roles:
     #                 pass
-    #                 # print(f"{user} already has correct role")
+    #                 # logger.info(f"{user} already has correct role")
     #             else:
     #                 ranks_to_check = ["Challenger", "Grandmaster", "Master", "Diamond", "Platinum", "Gold", "Silver",
     #                                   "Bronze", "Iron", "Stone"]
@@ -687,7 +691,7 @@ class Ranked(commands.Cog):
     #                     if role2 in user.roles:
     #                         await user.remove_roles(role2)
     #                 await user.add_roles(role)
-    #                 # print(f"{user} updated")
+    #                 # logger.info(f"{user} updated")
     #         except Exception as e:
     #             try:
     #                 user = ctx.message.guild.get_member(int(self.names_to_ids[row['Player']]))
@@ -698,8 +702,8 @@ class Ranked(commands.Cog):
     #                     if role2 in user.roles:
     #                         await user.remove_roles(role2)
     #             except:
-    #                 print(f"Passed over {row['Player']} - {e}")
-    #     # print(new_ranks)
+    #                 logger.info(f"Passed over {row['Player']} - {e}")
+    #     # logger.info(new_ranks)
     #     all_members = ctx.message.guild.members
     #     await ctx.channel.send("Names updated")
 
@@ -709,34 +713,36 @@ class Ranked(commands.Cog):
             red_check = get(ctx.user.guild.roles, name="Ranked Red")
             blue_check = get(ctx.user.guild.roles, name="Ranked Blue")
             red_lobby = self.bot.get_channel(824692157142269963)
-            print(f"awefawfawsfe {qdata.game.red}")
+            logger.info(f"awefawfawsfe {qdata.game.red}")
             for player in qdata.game.red:
                 to_change = get(ctx.user.guild.roles, name="Ranked Red")
-                print(player.display_name)
+                logger.info(player.display_name)
                 await player.add_roles(to_change)
                 try:
                     await player.move_to(red_lobby)
                 except Exception as e:
-                    print(e)
+                    logger.info(e)
                     pass
             blue_lobby = self.bot.get_channel(824692212528840724)
             for player in qdata.game.blue:
-                print(player.display_name)
+                logger.info(player.display_name)
                 to_change = get(ctx.user.guild.roles, name="Ranked Blue")
                 await player.add_roles(to_change)
                 try:
                     await player.move_to(blue_lobby)
                 except Exception as e:
-                    print(e)
+                    logger.info(e)
                     pass
 
-        print(qdata.game.red)
+        logger.info(qdata.game.red)
         embed = discord.Embed(color=0xcda03f, title="Teams have been picked!")
         embed.add_field(name='🟥 RED 🟥',
-                        value="{}".format("\n".join([player.mention for player in qdata.game.red])),
+                        value="{}".format(
+                            "\n".join([player.mention for player in qdata.game.red])),
                         inline=True)
         embed.add_field(name='🟦 BLUE 🟦',
-                        value="{}".format("\n".join([player.mention for player in qdata.game.blue])),
+                        value="{}".format(
+                            "\n".join([player.mention for player in qdata.game.blue])),
                         inline=True)
 
         await ctx.response.send_message(embed=embed)
@@ -747,7 +753,7 @@ class Ranked(commands.Cog):
     # async def matchnum(self, ctx):
     #     wks = self.open_sheet("6-man Rankings + Elos", "To Add")
     #     df = gspread_dataframe.get_as_dataframe(wks)
-    #     print(df["Match Number"].iloc[0])
+    #     logger.info(df["Match Number"].iloc[0])
 
     @app_commands.choices(game=playable_games)
     @app_commands.command(name="clearmatch", description="Clears current running match")
@@ -776,7 +782,7 @@ class Ranked(commands.Cog):
 class Game:
     def __init__(self, players):
         self.players = set(players)
-        if len(players)>2:
+        if len(players) > 2:
             self.captains = random.sample(self.players, 2)
         self.red = set()
         self.blue = set()
@@ -870,10 +876,10 @@ class PlayerQueue(Queue):
 
 
 game_queues = {
-               "RapidReact3v3": XrcGame("RapidReact", 6, "RR3v3"),
-               "RapidReact2v2": XrcGame("RapidReact", 4, "RR2v2"),
-               "RapidReact1v1": XrcGame("RapidReact", 2, "RR1v1"),
-               }
+    "RapidReact3v3": XrcGame("RapidReact", 6, "RR3v3"),
+    "RapidReact2v2": XrcGame("RapidReact", 4, "RR2v2"),
+    "RapidReact1v1": XrcGame("RapidReact", 2, "RR1v1"),
+}
 
 
 async def setup(bot: commands.Bot) -> None:
