@@ -1,3 +1,5 @@
+import subprocess
+from typing import Dict
 from discord import app_commands
 import random
 from queue import Queue
@@ -22,13 +24,40 @@ approved_channels = [824691989366046750, 712297302857089025,
                      650967104933330947, 754569102873460776, 754569222260129832]
 header = {"x-api-key": os.getenv("SRC_API_TOKEN")}
 
+PORTS = [11115, 11116, 11117, 11118, 11119, 11120]
+# dictionary mapping int to Popen object
+servers_active: Dict[int, subprocess.Popen] = {}
+
 listener = commands.Cog.listener
+
+ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
 playable_games = [
     Choice(name="Rapid React 3v3", value="RapidReact3v3"),
     Choice(name="Rapid React 2v2", value="RapidReact2v2"),
     Choice(name="Rapid React 1v1", value="RapidReact1v1")
 ]
+
+server_games = [
+    Choice(name="Splish Splash", value="0"),
+    Choice(name="Relic Recovery", value="1"),
+    Choice(name="Rover Ruckus", value="2"),
+    Choice(name="Skystone", value="3"),
+    Choice(name="Infinite Recharge", value="4"),
+    Choice(name="Change Up", value="5"),
+    Choice(name="Bot Royale", value="6"),
+    Choice(name="Ultimate Goal", value="7"),
+    Choice(name="Tipping Point", value="8"),
+    Choice(name="Freight Frenzy", value="9"),
+    Choice(name="Rapid React", value="10"),
+    Choice(name="Spin Up", value="11")
+]
+
+server_game_settings = {
+    "4": "0:1:0:1:25:5:5100:0:1:1:1:1:1:1:1:14:7:1:1:1:0:15:100:0:1:2021:25",
+    "7": "30:1:0:0:10:0",
+    "9": "1:1:1:1:30:10",
+}
 
 
 async def remove_roles(ctx):
@@ -129,6 +158,74 @@ class Ranked(commands.Cog):
 
         await interaction.followup.send("✅ Updated to the latest release version of xRC Sim!")
         logger.info("Updated successfully")
+
+    @app_commands.command(description="Launches a new instance of xRC Sim server", name="launchserver")
+    @app_commands.checks.has_any_role("Event Staff")
+    @app_commands.choices(game=server_games)
+    async def launch_server(self, interaction: discord.Interaction,
+                            game: str, comment: str, password: str = "", admin: str = "Admin",
+                            restart_mode: int = 1, frame_rate: int = 120, update_time: int = 10,
+                            tournament_mode: bool = True, start_when_ready: bool = True,
+                            register: bool = True, spectators: int = 4,
+                            ):
+        logger.info(f"{interaction.user.name} called /launchserver")
+
+        server_path = "./server/xRC\\ Simulator.x86_64"
+
+        if not os.path.exists("./server/xRC Simulator.x86_64"):
+            await interaction.response.send_message("⚠ xRC Sim server not found, use `/update` to update")
+            return
+
+        if len(servers_active) >= len(PORTS):
+            await interaction.response.send_message("⚠ The maximum number of servers are already running")
+            return
+
+        for port in PORTS:
+            if port not in servers_active:
+                break
+
+        logger.info(f"Launching server on port {port}")
+
+        game_settings = server_game_settings[game] if game in server_game_settings else ""
+
+        servers_active[port] = subprocess.Popen(
+            [server_path, "-batchmode", "-nographics", f"RouterPort={port}", f"Port={port}", f"Game={game}",
+             f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
+             f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
+             f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
+             f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}"],
+        )
+
+        await interaction.response.send_message(f"✅ Launched server on port {port}")
+        logger.info(f"Server launched on port {port}")
+
+    @app_commands.command(description="Shutdown a running xRC Sim server", name="landserver")
+    @app_commands.checks.has_any_role("Event Staff")
+    @app_commands.choices(port=ports_choices)
+    async def land_server(self, interaction: discord.Interaction, port: int):
+        logger.info(f"{interaction.user.name} called /landserver")
+
+        if port not in servers_active:
+            await interaction.response.send_message(f"⚠ Server on port {port} not found")
+            return
+
+        logger.info(f"Shutting down server on port {port}")
+
+        servers_active[port].terminate()
+        del servers_active[port]
+
+        await interaction.response.send_message(f"✅ Server on port {port} shut down")
+        logger.info(f"Server on port {port} shut down")
+
+    @app_commands.command(description="Lists the running server instances", name="listservers")
+    @app_commands.checks.has_any_role("Event Staff")
+    async def list_servers(self, interaction: discord.Interaction):
+        logger.info(f"{interaction.user.name} called /listservers")
+        if not servers_active:
+            await interaction.response.send_message("⚠ No servers are running")
+            return
+
+        await interaction.response.send_message("Servers running: " + ", ".join(servers_active.keys()))
 
     @app_commands.command(description="memes")
     @app_commands.checks.has_any_role("Event Staff")
