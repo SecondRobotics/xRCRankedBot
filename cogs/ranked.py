@@ -154,6 +154,7 @@ class Ranked(commands.Cog):
         with zipfile.ZipFile(file, 'r') as zip_ref:
             zip_ref.extractall("./server")
 
+        os.chmod("./server/xRC Simulator.x86_64", 0o777)
         os.remove(zip_path)
 
         await interaction.followup.send("✅ Updated to the latest release version of xRC Sim!")
