@@ -35,7 +35,10 @@ ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 playable_games = [
     Choice(name="Rapid React 3v3", value="RapidReact3v3"),
     Choice(name="Rapid React 2v2", value="RapidReact2v2"),
-    Choice(name="Rapid React 1v1", value="RapidReact1v1")
+    Choice(name="Rapid React 1v1", value="RapidReact1v1"),
+    Choice(name="Skystone 2v2", value="Skystone2v2"),
+    Choice(name="Skystone 1v1", value="Skystone1v1"),
+
 ]
 
 server_games = [
@@ -1028,6 +1031,8 @@ game_queues = {
     "RapidReact3v3": XrcGame("RapidReact", 6, "RR3v3"),
     "RapidReact2v2": XrcGame("RapidReact", 4, "RR2v2"),
     "RapidReact1v1": XrcGame("RapidReact", 2, "RR1v1"),
+    "Skystone2v2": XrcGame("Skystone", 4, "SS2v2"),
+    "Skystone1v1": XrcGame("Skystone", 2, "SS1v1"),
 }
 
 
