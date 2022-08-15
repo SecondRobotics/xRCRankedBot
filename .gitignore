@@ -162,3 +162,5 @@ cython_debug/
 
 # Miscellaneous
 .DS_Store
+*.zip
+server/

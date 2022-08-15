@@ -10,7 +10,8 @@ import requests
 from dotenv import load_dotenv
 import os
 from discord.app_commands import Choice
-
+import zipfile
+import shutil
 
 logger = logging.getLogger('discord')
 load_dotenv()
@@ -76,6 +77,16 @@ def create_game(game_type):
     return qdata
 
 
+def download_file(url):
+    local_filename = url.split('/')[-1]
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(local_filename, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+    return local_filename
+
+
 class Ranked(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -89,9 +100,40 @@ class Ranked(commands.Cog):
         self.autoq = []
         self.past_winner = ""
 
+    @app_commands.command(description="Updates to the latest release version of xRC Sim")
+    @app_commands.checks.has_any_role("Event Staff")
+    async def update(self, interaction: discord.Interaction):
+        logger.info(f"{interaction.user.name} called /update")
+        await interaction.response.defer(thinking=True)
+
+        zip_path = "./xRC_Linux_Server.zip"
+
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+
+        url = "https://xrcsimulator.org/Downloads/xRC_Linux_Server.zip"
+        try:
+            file = download_file(url)
+        except Exception as e:
+            logger.error(e)
+            await interaction.followup.send("⚠ Update failed: Could not download file")
+            return
+
+        if os.path.exists("./server/"):
+            shutil.rmtree("./server/")
+
+        with zipfile.ZipFile(file, 'r') as zip_ref:
+            zip_ref.extractall("./server")
+
+        os.remove(zip_path)
+
+        await interaction.followup.send("✅ Updated to the latest release version of xRC Sim!")
+        logger.info("Updated successfully")
+
     @app_commands.command(description="memes")
     @app_commands.checks.has_any_role("Event Staff")
     async def test(self, interaction: discord.Interaction, game: str):
+        logger.info(f"{interaction.user.name} called /test")
         result = game_queues[game]
 
         await interaction.response.send_message(result.game_size, ephemeral=True)
@@ -147,6 +189,7 @@ class Ranked(commands.Cog):
                        member4: discord.Member = None,
                        member5: discord.Member = None,
                        member6: discord.Member = None):
+        logger.info(f"{interaction.user.name} called /queueall")
         qdata = game_queues[game]
 
         members = [member1, member2, member3, member4, member5, member6]
@@ -168,6 +211,7 @@ class Ranked(commands.Cog):
     @app_commands.command(name="queue", description="Add yourself to the queue")
     async def q(self, interaction: discord.Interaction, game: str):
         """Enter's player into queue for upcoming matches"""
+        logger.info(f"{interaction.user.name} called /q")
 
         url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
 
@@ -216,6 +260,7 @@ class Ranked(commands.Cog):
     @app_commands.command()
     async def queuestatus(self, interaction: discord.Interaction, game: str):
         """View who is currently in the queue"""
+        logger.info(f"{interaction.user.name} called /queuestatus")
         qdata = game_queues[game]
         try:
             for _ in range(0, 2):  # loop to not reverse order
@@ -236,6 +281,7 @@ class Ranked(commands.Cog):
     @app_commands.choices(game=playable_games)
     @app_commands.command(name="leave", description="Remove yourself from the queue")
     async def leave(self, interaction: discord.Interaction, game: str):
+        logger.info(f"{interaction.user.name} called /leave")
         qdata = game_queues[game]
         if interaction.channel.id in approved_channels:
             player = interaction.user
@@ -253,6 +299,7 @@ class Ranked(commands.Cog):
     @app_commands.command(description="Remove someone else from the queue")
     @app_commands.checks.has_any_role("Event Staff")
     async def kick(self, interaction: discord.Interaction, player: discord.Member, game: str):
+        logger.info(f"{interaction.user.name} called /kick")
         qdata = game_queues[game]
         if interaction.channel.id in approved_channels:
             if player in qdata.queue:
@@ -299,6 +346,7 @@ class Ranked(commands.Cog):
     @app_commands.choices(game=playable_games)
     @app_commands.command(description="Start a game")
     async def startmatch(self, interaction: discord.Interaction, game: str):
+        logger.info(f"{interaction.user.name} called /startmatch")
         qdata = game_queues[game]
         logger.info(qdata.red_series)
         if not qdata.queue.qsize() >= qdata.game_size:
@@ -443,6 +491,7 @@ class Ranked(commands.Cog):
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 60.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
+        logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
         logger.info(game)
         qdata = game_queues[game]
@@ -758,6 +807,7 @@ class Ranked(commands.Cog):
     @app_commands.choices(game=playable_games)
     @app_commands.command(name="clearmatch", description="Clears current running match")
     async def clearmatch(self, interaction: discord.Interaction, game: str):
+        logger.info(f"{interaction.user.name} called /clearmatch")
         qdata = game_queues[game]
 
         if 699094822132121662 in [y.id for y in interaction.user.roles]:
@@ -776,7 +826,8 @@ class Ranked(commands.Cog):
 
     @app_commands.command(name="rules", description="Posts a link the the rules")
     async def rules(self, interaction: discord.Interaction):
-        await interaction.response.send_message("The rules can be found here: https://bit.ly/SRCrules.")
+        logger.info(f"{interaction.user.name} called /rules")
+        await interaction.response.send_message("The rules can be found here: #event-rulebook")
 
 
 class Game:
