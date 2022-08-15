@@ -2,13 +2,9 @@ from discord import app_commands
 import random
 from queue import Queue
 from discord.utils import get
-from oauth2client.service_account import ServiceAccountCredentials
-import gspread
 import gspread_dataframe
 import discord
 from discord.ext import commands
-import asyncio
-import matplotlib.pyplot as plt
 from collections.abc import MutableSet
 import requests
 from dotenv import load_dotenv
@@ -86,26 +82,8 @@ class Ranked(commands.Cog):
         self.blue_captain = None
         self.clearmatch_message = None
         self.autoq = []
-
-        self.rejected_matches = []
-        wks = self.open_sheet("6-man Rankings + Elos", "User Index")
-        self.user_index = gspread_dataframe.get_as_dataframe(wks)
-        self.user_index.set_index("Id", inplace=True)
         self.past_winner = ""
 
-        wks = self.open_sheet("6-man Rankings + Elos", "User Index")
-        self.user_index = gspread_dataframe.get_as_dataframe(wks)
-        self.user_index.set_index("Id", inplace=True)
-        self.names_to_ids = {}
-        self.ids_to_names = {}
-        for index, row in self.user_index.iterrows():
-            self.names_to_ids.update({row["Name"]: str(index)[1:]})
-
-        wks = self.open_sheet("6-man Rankings + Elos", "Leaderboard")
-        self.ranks = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-
-        wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-        self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
 
     @app_commands.command(description="memes")
     @app_commands.checks.has_any_role("Event Staff")
@@ -301,16 +279,16 @@ class Ranked(commands.Cog):
     #         return False
     #     return True
 
-    @app_commands.command(description="Number of matches played")
-    async def numplayed(self, interaction: discord.Interaction, user: str):
-        print(self.elo_results)
-        await interaction.response.send_message(
-            len(self.elo_results[self.elo_results[1] == user]) +
-            len(self.elo_results[self.elo_results[2] == user]) +
-            len(self.elo_results[self.elo_results[3] == user]) +
-            len(self.elo_results[self.elo_results[4] == user]) +
-            len(self.elo_results[self.elo_results[5] == user]) +
-            len(self.elo_results[self.elo_results[6] == user]))
+    # @app_commands.command(description="Number of matches played")
+    # async def numplayed(self, interaction: discord.Interaction, user: str):
+    #     print(self.elo_results)
+    #     await interaction.response.send_message(
+    #         len(self.elo_results[self.elo_results[1] == user]) +
+    #         len(self.elo_results[self.elo_results[2] == user]) +
+    #         len(self.elo_results[self.elo_results[3] == user]) +
+    #         len(self.elo_results[self.elo_results[4] == user]) +
+    #         len(self.elo_results[self.elo_results[5] == user]) +
+    #         len(self.elo_results[self.elo_results[6] == user]))
 
     @app_commands.choices(game=playable_games)
     @app_commands.command(description="Start a game")
@@ -455,13 +433,6 @@ class Ranked(commands.Cog):
     #     blue_check = get(ctx.message.author.guild.roles, name="6 Mans Blue")
     #     await ctx.channel.send(f"{red_check.mention} {blue_check.mention}")
 
-    def open_sheet(self, sheet_name, tab_name):
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        credentials = ServiceAccountCredentials.from_json_keyfile_name('fantasy-first-260710-7fa1a0ed0b21.json', scope)
-        gc = gspread.authorize(credentials)
-        stuff = gc.open(sheet_name)
-        wks = stuff.worksheet(tab_name)
-        return wks
 
     @app_commands.choices(game=playable_games)
     @app_commands.command(description="Submit Score")
@@ -605,173 +576,132 @@ class Ranked(commands.Cog):
 
         await self.display_teams(interaction, qdata)
 
-    @commands.command(description="recent elo")
-    async def elolog(self, ctx, *players):
-        plt.style.use('dark_background')
-        for player in players:
-            # sets all matches to True
-            matches = self.elo_results.isin([player])
-            # Find locations of all Trues
-            outlist = [[i, matches.columns.tolist()[j]]
-                       for i, r in enumerate(matches.values)
-                       for j, c in enumerate(r)
-                       if c]
-            # Get values of elos
-            column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
-            elo_history = []
-            for match in outlist:
-                elo_history.append(self.elo_results.loc[match[0], column_to_label[match[1]]])
-            elo_history.reverse()
-            plt.plot(elo_history, label=player, )
-        plt.title(f"Elo history of {', '.join([player for player in players])}")
-        plt.legend()
-        plt.ylabel('ELO')
-        plt.xlabel('Match Number')
-        plt.savefig("Elo.png")
-        plt.close()
-        await ctx.channel.send(file=discord.File('Elo.png'))
 
-    @commands.command(description="Shows your current elo/ranking stats", aliases=["elocheck"])
-    async def checkelo(self, ctx):
-        privs = {699094822132121662, 637411162203619350}
-        wks = self.open_sheet("6-man Rankings + Elos", "Leaderboard")
-        self.ranks = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-        new_ranks = self.ranks[["Player", "#", "MMR", "Rank", "Wins", "Losses", "Ties"]]
-        colors = {"Challenger": 0xc7ffff, "Grandmaster": 0xeb8686, "Master": 0xf985cb, "Diamond": 0xc6d2ff,
-                  "Platinum": 0x54eac1, "Gold": 0xebce75, "Silver": 0xd9d9d9, "Bronze": 0xb8a25e, "Iron": 0xffffff,
-                  "Stone": 0x000000}
-
-        text_id = f"#{ctx.author.id}"
-        try:
-            player = self.user_index.loc[text_id]["Name"]
-        except:
-            await ctx.channel.send("Unable to find your data!")
-
-        # sets all matches to True
-        matches = self.elo_results.isin([player])
-        # Find locations of all Trues
-        outlist = [[i, matches.columns.tolist()[j]]
-                   for i, r in enumerate(matches.values)
-                   for j, c in enumerate(r)
-                   if c]
-        # Get values of elos
-        column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
-        elo_history = []
-        for match in outlist:
-            elo_history.append(self.elo_results.loc[match[0], column_to_label[match[1]]])
-
-        player_data = new_ranks.loc[new_ranks['Player'] == player]
-        elo_history.reverse()
-        plt.style.use('dark_background')
-
-        roles = set([y.id for y in ctx.message.author.roles])
-        if roles.intersection(privs):
-            plt.plot(elo_history, label=player, color='black')
-            ax = plt.gca()
-            ax.set_facecolor("white")
-        else:
-            plt.plot(elo_history, label=player, color='white')
-        plt.title(f"Elo history of {player}")
-        plt.legend()
-        plt.ylabel('ELO')
-        plt.xlabel('Match Number')
-        plt.savefig("Elo.png")
-        plt.close()
-        file = discord.File('Elo.png')
-
-        embed = discord.Embed(title=f"#{player_data.iloc[0]['#']} - {player}",
-                              color=colors[player_data.iloc[0]['Rank']],
-                              url="https://docs.google.com/spreadsheets/d/1Oz7PRidqPPe_aC6ApHA4xo9XTpuTmgj6z9z2sy3U6ds/edit#gid=1261790407")
-        embed.set_thumbnail(url=f"https://cdn.discordapp.com/avatars/{ctx.author.id}/{ctx.author.avatar}.png?size=1024")
-        if 715286195612942356 in [y.id for y in ctx.message.author.roles]:
-            embed.add_field(name="BETA TESTER", value=f"Thank you for your support!", inline=False)
-        embed.add_field(name="Placement", value=f"#{player_data.iloc[0]['#']}/{len(new_ranks.index)}", inline=True)
-        embed.add_field(name="Rank", value=f"{player_data.iloc[0]['Rank']}", inline=True)
-        embed.add_field(name="MMR", value=f"{round(player_data.iloc[0]['MMR'], 1)}", inline=True)
-        embed.add_field(name="Record",
-                        value=f"{round(player_data.iloc[0]['Wins'])}-{round(player_data.iloc[0]['Losses'])}-{round(player_data.iloc[0]['Ties'])}",
-                        inline=False)
-        embed.add_field(name="Win Rate",
-                        value=f"{round((player_data.iloc[0]['Wins'] / (player_data.iloc[0]['Wins'] + player_data.iloc[0]['Losses'])) * 100, 2)}%",
-                        inline=True)
-        embed.set_image(url="attachment://Elo.png")
-        await ctx.channel.send(file=file, embed=embed)
-
-    @commands.command(description="Updates names")
-    async def namecheck(self, ctx):
-
-        wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
-        self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-
-        wks = self.open_sheet("6-man Rankings + Elos", "User Index")
-        self.user_index = gspread_dataframe.get_as_dataframe(wks)
-        self.user_index.set_index("Id", inplace=True)
-        self.names_to_ids = {}
-        for index, row in self.user_index.iterrows():
-            self.names_to_ids.update({row["Name"]: str(index)[1:]})
-        await asyncio.sleep(.1)
-        wks = self.open_sheet("6-man Rankings + Elos", "Leaderboard")
-        ranks = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
-        new_ranks = ranks[["Player", "MMR", "Rank"]]
-        for member in self.names_to_ids.values():
-            try:
-                user = ctx.message.guild.get_member(int(member))
-                ranks_to_check = ["Challenger", "Grandmaster", "Master", "Diamond", "Platinum", "Gold", "Silver",
-                                  "Bronze", "Iron", "Stone"]
-                for rank in ranks_to_check:
-                    role2 = get(ctx.message.author.guild.roles, name=rank)
-                    if role2 in user.roles:
-                        await user.remove_roles(role2)
-            except:
-                pass
-        for index, row in new_ranks.iterrows():
-            await asyncio.sleep(.1)
-            try:
-                user = ctx.message.guild.get_member(int(self.names_to_ids[row['Player']]))
-                role = get(ctx.message.author.guild.roles, name=row["Rank"])
-                # print(role)
-                if role in user.roles:
-                    pass
-                    # print(f"{user} already has correct role")
-                else:
-                    ranks_to_check = ["Challenger", "Grandmaster", "Master", "Diamond", "Platinum", "Gold", "Silver",
-                                      "Bronze", "Iron", "Stone"]
-                    for rank in ranks_to_check:
-                        role2 = get(ctx.message.author.guild.roles, name=rank)
-                        if role2 in user.roles:
-                            await user.remove_roles(role2)
-                    await user.add_roles(role)
-                    # print(f"{user} updated")
-            except Exception as e:
-                try:
-                    user = ctx.message.guild.get_member(int(self.names_to_ids[row['Player']]))
-                    ranks_to_check = ["Challenger", "Grandmaster", "Master", "Diamond", "Platinum", "Gold", "Silver",
-                                      "Bronze", "Iron", "Stone"]
-                    for rank in ranks_to_check:
-                        role2 = get(ctx.message.author.guild.roles, name=rank)
-                        if role2 in user.roles:
-                            await user.remove_roles(role2)
-                except:
-                    print(f"Passed over {row['Player']} - {e}")
-        # print(new_ranks)
-        all_members = ctx.message.guild.members
-        await ctx.channel.send("Names updated")
+    # @commands.command(description="Shows your current elo/ranking stats", aliases=["elocheck"])
+    # async def checkelo(self, ctx):
+    #     privs = {699094822132121662, 637411162203619350}
+    #     wks = self.open_sheet("6-man Rankings + Elos", "Leaderboard")
+    #     self.ranks = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+    #     new_ranks = self.ranks[["Player", "#", "MMR", "Rank", "Wins", "Losses", "Ties"]]
+    #     colors = {"Challenger": 0xc7ffff, "Grandmaster": 0xeb8686, "Master": 0xf985cb, "Diamond": 0xc6d2ff,
+    #               "Platinum": 0x54eac1, "Gold": 0xebce75, "Silver": 0xd9d9d9, "Bronze": 0xb8a25e, "Iron": 0xffffff,
+    #               "Stone": 0x000000}
+    #
+    #     text_id = f"#{ctx.author.id}"
+    #     try:
+    #         player = self.user_index.loc[text_id]["Name"]
+    #     except:
+    #         await ctx.channel.send("Unable to find your data!")
+    #
+    #     # sets all matches to True
+    #     matches = self.elo_results.isin([player])
+    #     # Find locations of all Trues
+    #     outlist = [[i, matches.columns.tolist()[j]]
+    #                for i, r in enumerate(matches.values)
+    #                for j, c in enumerate(r)
+    #                if c]
+    #     # Get values of elos
+    #     column_to_label = {1: "fElo1", 2: "fElo2", 3: "fElo3", 4: "fElo4", 5: "fElo5", 6: "fElo6"}
+    #     elo_history = []
+    #     for match in outlist:
+    #         elo_history.append(self.elo_results.loc[match[0], column_to_label[match[1]]])
+    #
+    #     player_data = new_ranks.loc[new_ranks['Player'] == player]
+    #     elo_history.reverse()
+    #     plt.style.use('dark_background')
+    #
+    #     roles = set([y.id for y in ctx.message.author.roles])
+    #     if roles.intersection(privs):
+    #         plt.plot(elo_history, label=player, color='black')
+    #         ax = plt.gca()
+    #         ax.set_facecolor("white")
+    #     else:
+    #         plt.plot(elo_history, label=player, color='white')
+    #     plt.title(f"Elo history of {player}")
+    #     plt.legend()
+    #     plt.ylabel('ELO')
+    #     plt.xlabel('Match Number')
+    #     plt.savefig("Elo.png")
+    #     plt.close()
+    #     file = discord.File('Elo.png')
+    #
+    #     embed = discord.Embed(title=f"#{player_data.iloc[0]['#']} - {player}",
+    #                           color=colors[player_data.iloc[0]['Rank']],
+    #                           url="https://docs.google.com/spreadsheets/d/1Oz7PRidqPPe_aC6ApHA4xo9XTpuTmgj6z9z2sy3U6ds/edit#gid=1261790407")
+    #     embed.set_thumbnail(url=f"https://cdn.discordapp.com/avatars/{ctx.author.id}/{ctx.author.avatar}.png?size=1024")
+    #     if 715286195612942356 in [y.id for y in ctx.message.author.roles]:
+    #         embed.add_field(name="BETA TESTER", value=f"Thank you for your support!", inline=False)
+    #     embed.add_field(name="Placement", value=f"#{player_data.iloc[0]['#']}/{len(new_ranks.index)}", inline=True)
+    #     embed.add_field(name="Rank", value=f"{player_data.iloc[0]['Rank']}", inline=True)
+    #     embed.add_field(name="MMR", value=f"{round(player_data.iloc[0]['MMR'], 1)}", inline=True)
+    #     embed.add_field(name="Record",
+    #                     value=f"{round(player_data.iloc[0]['Wins'])}-{round(player_data.iloc[0]['Losses'])}-{round(player_data.iloc[0]['Ties'])}",
+    #                     inline=False)
+    #     embed.add_field(name="Win Rate",
+    #                     value=f"{round((player_data.iloc[0]['Wins'] / (player_data.iloc[0]['Wins'] + player_data.iloc[0]['Losses'])) * 100, 2)}%",
+    #                     inline=True)
+    #     embed.set_image(url="attachment://Elo.png")
+    #     await ctx.channel.send(file=file, embed=embed)
 
     # @commands.command(description="Updates names")
-    # async def namechecktest(self, ctx):
-    #     user = ctx.message.guild.get_member(236205925709512714)
-    #     role = get(ctx.message.author.guild.roles, name="Bronze")
-    #     if role in user.roles:
-    #         pass
-    #     else:
-    #         ranks_to_check = ["Challenger", "Grandmaster", "Master", "Diamond", "Platinum", "Gold", "Silver",
-    #                           "Bronze", "Iron"]
-    #         for rank in ranks_to_check:
-    #             role2 = get(ctx.message.author.guild.roles, name=rank)
-    #             if role2 in user.roles:
-    #                 await user.remove_roles(role2)
-    #     await user.add_roles(role)
-    #     print(user)
+    # async def namecheck(self, ctx):
+    #
+    #     wks = self.open_sheet("6-man Rankings + Elos", "ELO raw")
+    #     self.elo_results = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+    #
+    #     wks = self.open_sheet("6-man Rankings + Elos", "User Index")
+    #     self.user_index = gspread_dataframe.get_as_dataframe(wks)
+    #     self.user_index.set_index("Id", inplace=True)
+    #     self.names_to_ids = {}
+    #     for index, row in self.user_index.iterrows():
+    #         self.names_to_ids.update({row["Name"]: str(index)[1:]})
+    #     await asyncio.sleep(.1)
+    #     wks = self.open_sheet("6-man Rankings + Elos", "Leaderboard")
+    #     ranks = gspread_dataframe.get_as_dataframe(wks, evaluate_formulas=True)
+    #     new_ranks = ranks[["Player", "MMR", "Rank"]]
+    #     for member in self.names_to_ids.values():
+    #         try:
+    #             user = ctx.message.guild.get_member(int(member))
+    #             ranks_to_check = ["Challenger", "Grandmaster", "Master", "Diamond", "Platinum", "Gold", "Silver",
+    #                               "Bronze", "Iron", "Stone"]
+    #             for rank in ranks_to_check:
+    #                 role2 = get(ctx.message.author.guild.roles, name=rank)
+    #                 if role2 in user.roles:
+    #                     await user.remove_roles(role2)
+    #         except:
+    #             pass
+    #     for index, row in new_ranks.iterrows():
+    #         await asyncio.sleep(.1)
+    #         try:
+    #             user = ctx.message.guild.get_member(int(self.names_to_ids[row['Player']]))
+    #             role = get(ctx.message.author.guild.roles, name=row["Rank"])
+    #             # print(role)
+    #             if role in user.roles:
+    #                 pass
+    #                 # print(f"{user} already has correct role")
+    #             else:
+    #                 ranks_to_check = ["Challenger", "Grandmaster", "Master", "Diamond", "Platinum", "Gold", "Silver",
+    #                                   "Bronze", "Iron", "Stone"]
+    #                 for rank in ranks_to_check:
+    #                     role2 = get(ctx.message.author.guild.roles, name=rank)
+    #                     if role2 in user.roles:
+    #                         await user.remove_roles(role2)
+    #                 await user.add_roles(role)
+    #                 # print(f"{user} updated")
+    #         except Exception as e:
+    #             try:
+    #                 user = ctx.message.guild.get_member(int(self.names_to_ids[row['Player']]))
+    #                 ranks_to_check = ["Challenger", "Grandmaster", "Master", "Diamond", "Platinum", "Gold", "Silver",
+    #                                   "Bronze", "Iron", "Stone"]
+    #                 for rank in ranks_to_check:
+    #                     role2 = get(ctx.message.author.guild.roles, name=rank)
+    #                     if role2 in user.roles:
+    #                         await user.remove_roles(role2)
+    #             except:
+    #                 print(f"Passed over {row['Player']} - {e}")
+    #     # print(new_ranks)
+    #     all_members = ctx.message.guild.members
+    #     await ctx.channel.send("Names updated")
 
     async def display_teams(self, ctx, qdata):
         channel = ctx.channel
