@@ -170,9 +170,9 @@ class Ranked(commands.Cog):
                             ):
         logger.info(f"{interaction.user.name} called /launchserver")
 
-        server_path = "./server/xRC\\ Simulator.x86_64"
+        server_path = "./server/xRC Simulator.x86_64"
 
-        if not os.path.exists("./server/xRC Simulator.x86_64"):
+        if not os.path.exists(server_path):
             await interaction.response.send_message("⚠ xRC Sim server not found, use `/update` to update")
             return
 
@@ -225,7 +225,7 @@ class Ranked(commands.Cog):
             await interaction.response.send_message("⚠ No servers are running")
             return
 
-        await interaction.response.send_message("Servers running: " + ", ".join(servers_active.keys()))
+        await interaction.response.send_message("Servers running: " + ", ".join([str(port) for port in servers_active]))
 
     @app_commands.command(description="memes")
     @app_commands.checks.has_any_role("Event Staff")
