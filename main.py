@@ -6,6 +6,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+if not os.getenv('DISCORD_BOT_TOKEN'):
+    raise RuntimeError('DISCORD_BOT_TOKEN not found')
+if not os.getenv('SRC_API_TOKEN'):
+    raise RuntimeError('SRC_API_TOKEN not found')
+
 intents = discord.Intents.all()
 intents.message_content = True
 
