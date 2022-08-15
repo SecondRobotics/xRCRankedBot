@@ -38,6 +38,11 @@ playable_games = [
     Choice(name="Rapid React 1v1", value="RapidReact1v1"),
     Choice(name="Skystone 2v2", value="Skystone2v2"),
     Choice(name="Skystone 1v1", value="Skystone1v1"),
+    Choice(name="Infinite Recharge 3v3", value="InfiniteRecharge3v3"),
+    Choice(name="Infinite Recharge 2v2", value="InfiniteRecharge2v2"),
+    Choice(name="Infinite Recharge 1v1", value="InfiniteRecharge1v1"),
+    Choice(name="Spin Up 2v2", value="SpinUp2v2"),
+    Choice(name="Spin Up 1v1", value="SpinUp1v1"),
 
 ]
 
@@ -1033,6 +1038,11 @@ game_queues = {
     "RapidReact1v1": XrcGame("RapidReact", 2, "RR1v1"),
     "Skystone2v2": XrcGame("Skystone", 4, "SS2v2"),
     "Skystone1v1": XrcGame("Skystone", 2, "SS1v1"),
+    "InfiniteRecharge3v3": XrcGame("InfiniteRecharge", 6, "IR3v3"),
+    "InfiniteRecharge2v2": XrcGame("InfiniteRecharge", 4, "IR2v2"),
+    "InfiniteRecharge1v1": XrcGame("InfiniteRecharge", 2, "IR1v1"),
+    "SpinUp2v2": XrcGame("SpinUp", 4, "SU2v2"),
+    "SpinUp1v1": XrcGame("SpinUp", 2, "SU1v1"),
 }
 
 
