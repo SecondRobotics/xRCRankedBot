@@ -372,7 +372,7 @@ class Ranked(commands.Cog):
             qdata.queue.put(player)
 
             await interaction.response.send_message(
-                f"**{player.display_name}**\nadded to queue for __{game}__. *({qdata.queue.qsize()}/{qdata.game_size})*")
+                f"🟢**{player.display_name}**🟢\nadded to queue for __{game}__. *({qdata.queue.qsize()}/{qdata.game_size})*")
             if qdata.queue.qsize() >= qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
                     await interaction.channel.send("Queue is now full! Type /startmatch")
@@ -414,7 +414,7 @@ class Ranked(commands.Cog):
             if player in qdata.queue:
                 qdata.queue.remove(player)
                 await interaction.response.send_message(
-                    f"**{player.display_name}**\nremoved to queue for __{game}__. *({qdata.queue.qsize()}/{qdata.game_size})*")
+                    f"🔴**{player.display_name}**🔴\nremoved from queue for __{game}__. *({qdata.queue.qsize()}/{qdata.game_size})*")
                 return
             else:
                 await interaction.response.send_message("You aren't in this queue.", ephemeral=True)
