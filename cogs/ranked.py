@@ -83,18 +83,18 @@ async def remove_roles(ctx):
 
 
 class XrcGame():
-    def __init__(self, game, game_size, api_short):
+    def __init__(self, game, alliance_size, api_short):
         self.queue = PlayerQueue()
         self.game_type = game
         self.game = None
-        self.game_size = game_size
+        self.game_size = int(alliance_size)*2
         self.red_series = 2
         self.blue_series = 2
         self.red_captain = None
         self.blue_captain = None
         self.clearmatch_message = None
         self.autoq = []
-        self.team_size = int(game_size/2)
+        self.team_size = alliance_size
         self.api_short = api_short
         self.server_game = server_games[game]
         self.server_port = None
