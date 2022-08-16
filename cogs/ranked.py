@@ -37,25 +37,34 @@ games = requests.get("https://secondrobotics.org/api/ranked/").json()
 games_choices = [Choice(name=game['name'], value=game['short_code'])
                  for game in games]
 
-server_games = [
-    Choice(name="Splish Splash", value="0"),
-    Choice(name="Relic Recovery", value="1"),
-    Choice(name="Rover Ruckus", value="2"),
-    Choice(name="Skystone", value="3"),
-    Choice(name="Infinite Recharge", value="4"),
-    Choice(name="Change Up", value="5"),
-    Choice(name="Bot Royale", value="6"),
-    Choice(name="Ultimate Goal", value="7"),
-    Choice(name="Tipping Point", value="8"),
-    Choice(name="Freight Frenzy", value="9"),
-    Choice(name="Rapid React", value="10"),
-    Choice(name="Spin Up", value="11")
+server_games = {
+    "Splish Splash": "0",
+    "Relic Recovery": "1",
+    "Rover Ruckus": "2",
+    "Skystone": "3",
+    "Infinite Recharge": "4",
+    "Change Up": "5",
+    "Bot Royale": "6",
+    "Ultimate Goal": "7",
+    "Tipping Point": "8",
+    "Freight Frenzy": "9",
+    "Rapid React": "10",
+    "Spin Up": "11"
+}
+
+server_games_choices = [
+    Choice(name=game, value=server_games[game]) for game in server_games.keys()
 ]
 
 server_game_settings = {
     "4": "0:1:0:1:25:5:5100:0:1:1:1:1:1:1:1:14:7:1:1:1:0:15:100:0:1:2021:25",
     "7": "30:1:0:0:10:0",
     "9": "1:1:1:1:30:10",
+}
+
+server_restart_modes = {
+    "3": "3",
+    "4": "2",
 }
 
 
@@ -87,6 +96,8 @@ class XrcGame():
         self.autoq = []
         self.team_size = int(game_size/2)
         self.api_short = api_short
+        self.server_game = server_games[game]
+        self.server_port = None
 
 
 def create_game(game_type):
@@ -116,17 +127,17 @@ def download_file(url):
 
 
 def start_server_process(game: str, comment: str, password: str = "", admin: str = "Admin",
-                         restart_mode: int = 1, frame_rate: int = 120, update_time: int = 10,
+                         restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
                          tournament_mode: bool = True, start_when_ready: bool = True,
                          register: bool = True, spectators: int = 4
                          ):
     server_path = "./server/xRC Simulator.x86_64"
 
     if not os.path.exists(server_path):
-        return "⚠ xRC Sim server not found, use `/update` to update"
+        return "⚠ xRC Sim server not found, use `/update` to update", -1
 
     if len(servers_active) >= len(PORTS):
-        return "⚠ The maximum number of servers are already running"
+        return "⚠ The maximum number of servers are already running", -1
 
     for port in PORTS:
         if port not in servers_active:
@@ -135,6 +146,8 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
     logger.info(f"Launching server on port {port}")
 
     game_settings = server_game_settings[game] if game in server_game_settings else ""
+    if restart_mode == -1:
+        restart_mode = server_restart_modes[game] if game in server_restart_modes else 1
 
     servers_active[port] = subprocess.Popen(
         [server_path, "-batchmode", "-nographics", f"RouterPort={port}", f"Port={port}", f"Game={game}",
@@ -145,7 +158,7 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
     )
 
     logger.info(f"Server launched on port {port}")
-    return f"✅ Launched server on port {port}"
+    return f"✅ Launched server on port {port}", port
 
 
 def stop_server_process(port: int):
@@ -207,17 +220,17 @@ class Ranked(commands.Cog):
 
     @app_commands.command(description="Launches a new instance of xRC Sim server", name="launchserver")
     @app_commands.checks.has_any_role("Event Staff")
-    @app_commands.choices(game=server_games)
+    @app_commands.choices(game=server_games_choices)
     async def launch_server(self, interaction: discord.Interaction,
                             game: str, comment: str, password: str = "", admin: str = "Admin",
-                            restart_mode: int = 1, frame_rate: int = 120, update_time: int = 10,
+                            restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
                             tournament_mode: bool = True, start_when_ready: bool = True,
                             register: bool = True, spectators: int = 4,
                             ):
         logger.info(f"{interaction.user.name} called /launchserver")
 
-        result = start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
-                                      tournament_mode, start_when_ready, register, spectators)
+        result, _ = start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
+                                         tournament_mode, start_when_ready, register, spectators)
 
         await interaction.response.send_message(result)
 
@@ -458,6 +471,7 @@ class Ranked(commands.Cog):
     @app_commands.command(description="Start a game")
     async def startmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /startmatch")
+
         qdata = game_queues[game]
         logger.info(qdata.red_series)
         if not qdata.queue.qsize() >= qdata.game_size:
@@ -476,6 +490,15 @@ class Ranked(commands.Cog):
                 interaction.channel.id == 754569222260129832 or \
                 interaction.channel.id == 754569102873460776:
             return await self.random(interaction, game)
+
+        password = str(random.randint(100, 999))
+        message, port = start_server_process(
+            qdata.server_game, f"Ranked{game}", password)
+        if port == -1:
+            logger.warning("Server couldn't auto-start for ranked: " + message)
+        else:
+            qdata.server_port = port
+
         chooser = random.randint(1, 10)
         if chooser < 0:  # 6
             logger.info("Captains")
@@ -647,6 +670,9 @@ class Ranked(commands.Cog):
             await interaction.followup.send("🟥 Red Wins! 🟥")
             await remove_roles(interaction)
 
+            if qdata.server_port:
+                stop_server_process(qdata.server_port)
+
             # Kick players back to main lobby
             channel = self.bot.get_channel(824692157142269963)
             lobby = self.bot.get_channel(824692700364275743)
@@ -660,6 +686,9 @@ class Ranked(commands.Cog):
             # await self.queue_auto(interaction)
             await interaction.followup.send("🟦 Blue Wins! 🟦")
             await remove_roles(interaction)
+
+            if qdata.server_port:
+                stop_server_process(qdata.server_port)
 
             # Kick players back to lobby
             channel = self.bot.get_channel(824692157142269963)
@@ -894,8 +923,11 @@ class Ranked(commands.Cog):
                     logger.info(e)
                     pass
 
+        description = f"Server started for you on port {qdata.server_port}" if qdata.server_port else None
+
         logger.info(qdata.game.red)
-        embed = discord.Embed(color=0xcda03f, title="Teams have been picked!")
+        embed = discord.Embed(
+            color=0xcda03f, title="Teams have been picked!", description=description)
         embed.add_field(name='🟥 RED 🟥',
                         value="{}".format(
                             "\n".join([player.mention for player in qdata.game.red])),
@@ -920,6 +952,9 @@ class Ranked(commands.Cog):
     async def clearmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /clearmatch")
         qdata = game_queues[game]
+
+        if qdata.server_port:
+            stop_server_process(qdata.server_port)
 
         if 699094822132121662 in [y.id for y in interaction.user.roles]:
             qdata.red_series = 2
