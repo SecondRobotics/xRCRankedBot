@@ -98,6 +98,7 @@ class XrcGame():
         self.api_short = api_short
         self.server_game = server_games[game]
         self.server_port = None
+        self.server_password = None
 
 
 def create_game(game_type):
@@ -498,6 +499,7 @@ class Ranked(commands.Cog):
             logger.warning("Server couldn't auto-start for ranked: " + message)
         else:
             qdata.server_port = port
+            qdata.server_password = password
 
         chooser = random.randint(1, 10)
         if chooser < 0:  # 6
@@ -923,7 +925,7 @@ class Ranked(commands.Cog):
                     logger.info(e)
                     pass
 
-        description = f"Server started for you on port {qdata.server_port}" if qdata.server_port else None
+        description = f"Server started for you on port {qdata.server_port} with password {qdata.server_password}" if qdata.server_port else None
 
         logger.info(qdata.game.red)
         embed = discord.Embed(
