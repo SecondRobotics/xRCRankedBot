@@ -32,19 +32,10 @@ listener = commands.Cog.listener
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
-playable_games = [
-    Choice(name="Rapid React 3v3", value="RapidReact3v3"),
-    Choice(name="Rapid React 2v2", value="RapidReact2v2"),
-    Choice(name="Rapid React 1v1", value="RapidReact1v1"),
-    Choice(name="Skystone 2v2", value="Skystone2v2"),
-    Choice(name="Skystone 1v1", value="Skystone1v1"),
-    Choice(name="Infinite Recharge 3v3", value="InfiniteRecharge3v3"),
-    Choice(name="Infinite Recharge 2v2", value="InfiniteRecharge2v2"),
-    Choice(name="Infinite Recharge 1v1", value="InfiniteRecharge1v1"),
-    Choice(name="Spin Up 2v2", value="SpinUp2v2"),
-    Choice(name="Spin Up 1v1", value="SpinUp1v1"),
+games = requests.get("https://secondrobotics.org/api/ranked/").json()
 
-]
+games_choices = [Choice(name=game['name'], value=game['short_code'])
+                 for game in games]
 
 server_games = [
     Choice(name="Splish Splash", value="0"),
@@ -285,7 +276,7 @@ class Ranked(commands.Cog):
     #             "{} was autoqed. ({:d}/{:d})".format(member.display_name, qdata['queue'].qsize(),
     #                                                  qdata['team_size']))
 
-    @app_commands.choices(game=playable_games)
+    @app_commands.choices(game=games_choices)
     @app_commands.command(description="Force queue players")
     async def queueall(self, interaction: discord.Interaction,
                        game: str,
@@ -313,7 +304,7 @@ class Ranked(commands.Cog):
     # @commands.command(pass_context=True)
     # async def seriestest(self, ctx):
     #     await ctx.channel.send(f"{self.red_series} {self.blue_series}")
-    @app_commands.choices(game=playable_games)
+    @app_commands.choices(game=games_choices)
     @app_commands.command(name="queue", description="Add yourself to the queue")
     async def q(self, interaction: discord.Interaction, game: str):
         """Enter's player into queue for upcoming matches"""
@@ -362,7 +353,7 @@ class Ranked(commands.Cog):
                         "Queue is now full! You can start as soon as the current match concludes.")
 
     #
-    @app_commands.choices(game=playable_games)
+    @app_commands.choices(game=games_choices)
     @app_commands.command()
     async def queuestatus(self, interaction: discord.Interaction, game: str):
         """View who is currently in the queue"""
@@ -384,7 +375,7 @@ class Ranked(commands.Cog):
         except:
             await interaction.response.send_message(f"Nobody is in queue for {game}!", ephemeral=True)
 
-    @app_commands.choices(game=playable_games)
+    @app_commands.choices(game=games_choices)
     @app_commands.command(name="leave", description="Remove yourself from the queue")
     async def leave(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /leave")
@@ -401,7 +392,7 @@ class Ranked(commands.Cog):
                 await interaction.response.send_message("You aren't in this queue.", ephemeral=True)
                 return
 
-    @app_commands.choices(game=playable_games)
+    @app_commands.choices(game=games_choices)
     @app_commands.command(description="Remove someone else from the queue")
     @app_commands.checks.has_any_role("Event Staff")
     async def kick(self, interaction: discord.Interaction, player: discord.Member, game: str):
@@ -449,7 +440,7 @@ class Ranked(commands.Cog):
     #         len(self.elo_results[self.elo_results[5] == user]) +
     #         len(self.elo_results[self.elo_results[6] == user]))
 
-    @app_commands.choices(game=playable_games)
+    @app_commands.choices(game=games_choices)
     @app_commands.command(description="Start a game")
     async def startmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /startmatch")
@@ -593,7 +584,7 @@ class Ranked(commands.Cog):
     #     blue_check = get(ctx.message.author.guild.roles, name="6 Mans Blue")
     #     await ctx.channel.send(f"{red_check.mention} {blue_check.mention}")
 
-    @app_commands.choices(game=playable_games)
+    @app_commands.choices(game=games_choices)
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 60.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
@@ -910,7 +901,7 @@ class Ranked(commands.Cog):
     #     df = gspread_dataframe.get_as_dataframe(wks)
     #     logger.info(df["Match Number"].iloc[0])
 
-    @app_commands.choices(game=playable_games)
+    @app_commands.choices(game=games_choices)
     @app_commands.command(name="clearmatch", description="Clears current running match")
     async def clearmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /clearmatch")
@@ -1032,18 +1023,8 @@ class PlayerQueue(Queue):
             return item in self.queue
 
 
-game_queues = {
-    "RapidReact3v3": XrcGame("RapidReact", 6, "RR3v3"),
-    "RapidReact2v2": XrcGame("RapidReact", 4, "RR2v2"),
-    "RapidReact1v1": XrcGame("RapidReact", 2, "RR1v1"),
-    "Skystone2v2": XrcGame("Skystone", 4, "SS2v2"),
-    "Skystone1v1": XrcGame("Skystone", 2, "SS1v1"),
-    "InfiniteRecharge3v3": XrcGame("InfiniteRecharge", 6, "IR3v3"),
-    "InfiniteRecharge2v2": XrcGame("InfiniteRecharge", 4, "IR2v2"),
-    "InfiniteRecharge1v1": XrcGame("InfiniteRecharge", 2, "IR1v1"),
-    "SpinUp2v2": XrcGame("SpinUp", 4, "SU2v2"),
-    "SpinUp1v1": XrcGame("SpinUp", 2, "SU1v1"),
-}
+game_queues = {game['short_code']: XrcGame(
+    game['game'], game['players_per_alliance'], game['short_code']) for game in games}
 
 
 async def setup(bot: commands.Bot) -> None:
