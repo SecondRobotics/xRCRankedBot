@@ -975,7 +975,7 @@ class Ranked(commands.Cog):
     @app_commands.command(name="rules", description="Posts a link the the rules")
     async def rules(self, interaction: discord.Interaction):
         logger.info(f"{interaction.user.name} called /rules")
-        await interaction.response.send_message("The rules can be found here: #event-rulebook")
+        await interaction.response.send_message("The rules can be found here: <#700411727430418464>")
 
 
 class Game:
