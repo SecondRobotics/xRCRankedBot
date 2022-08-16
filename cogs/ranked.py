@@ -115,6 +115,52 @@ def download_file(url):
     return local_filename
 
 
+def start_server_process(game: str, comment: str, password: str = "", admin: str = "Admin",
+                         restart_mode: int = 1, frame_rate: int = 120, update_time: int = 10,
+                         tournament_mode: bool = True, start_when_ready: bool = True,
+                         register: bool = True, spectators: int = 4
+                         ):
+    server_path = "./server/xRC Simulator.x86_64"
+
+    if not os.path.exists(server_path):
+        return "⚠ xRC Sim server not found, use `/update` to update"
+
+    if len(servers_active) >= len(PORTS):
+        return "⚠ The maximum number of servers are already running"
+
+    for port in PORTS:
+        if port not in servers_active:
+            break
+
+    logger.info(f"Launching server on port {port}")
+
+    game_settings = server_game_settings[game] if game in server_game_settings else ""
+
+    servers_active[port] = subprocess.Popen(
+        [server_path, "-batchmode", "-nographics", f"RouterPort={port}", f"Port={port}", f"Game={game}",
+            f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
+            f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
+            f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
+            f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}"],
+    )
+
+    logger.info(f"Server launched on port {port}")
+    return f"✅ Launched server on port {port}"
+
+
+def stop_server_process(port: int):
+    if port not in servers_active:
+        return f"⚠ Server on port {port} not found"
+
+    logger.info(f"Shutting down server on port {port}")
+
+    servers_active[port].terminate()
+    del servers_active[port]
+
+    logger.info(f"Server on port {port} shut down")
+    return f"✅ Server on port {port} shut down"
+
+
 class Ranked(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -170,34 +216,10 @@ class Ranked(commands.Cog):
                             ):
         logger.info(f"{interaction.user.name} called /launchserver")
 
-        server_path = "./server/xRC Simulator.x86_64"
+        result = start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
+                                      tournament_mode, start_when_ready, register, spectators)
 
-        if not os.path.exists(server_path):
-            await interaction.response.send_message("⚠ xRC Sim server not found, use `/update` to update")
-            return
-
-        if len(servers_active) >= len(PORTS):
-            await interaction.response.send_message("⚠ The maximum number of servers are already running")
-            return
-
-        for port in PORTS:
-            if port not in servers_active:
-                break
-
-        logger.info(f"Launching server on port {port}")
-
-        game_settings = server_game_settings[game] if game in server_game_settings else ""
-
-        servers_active[port] = subprocess.Popen(
-            [server_path, "-batchmode", "-nographics", f"RouterPort={port}", f"Port={port}", f"Game={game}",
-             f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
-             f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
-             f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
-             f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}"],
-        )
-
-        await interaction.response.send_message(f"✅ Launched server on port {port}")
-        logger.info(f"Server launched on port {port}")
+        await interaction.response.send_message(result)
 
     @app_commands.command(description="Shutdown a running xRC Sim server", name="landserver")
     @app_commands.checks.has_any_role("Event Staff")
@@ -205,17 +227,9 @@ class Ranked(commands.Cog):
     async def land_server(self, interaction: discord.Interaction, port: int):
         logger.info(f"{interaction.user.name} called /landserver")
 
-        if port not in servers_active:
-            await interaction.response.send_message(f"⚠ Server on port {port} not found")
-            return
+        result = stop_server_process(port)
 
-        logger.info(f"Shutting down server on port {port}")
-
-        servers_active[port].terminate()
-        del servers_active[port]
-
-        await interaction.response.send_message(f"✅ Server on port {port} shut down")
-        logger.info(f"Server on port {port} shut down")
+        await interaction.response.send_message(result)
 
     @app_commands.command(description="Lists the running server instances", name="listservers")
     @app_commands.checks.has_any_role("Event Staff")
