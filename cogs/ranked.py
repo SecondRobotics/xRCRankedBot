@@ -728,7 +728,7 @@ class Ranked(commands.Cog):
         # Getting match Number
 
         embed = discord.Embed(
-            color=0xcda03f, title=f"Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
+            color=0x34eb3d, title=f"**[{game}]** Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
         red_out = "```diff\n"
         blue_out = "```diff\n"
         i = 0
@@ -929,7 +929,7 @@ class Ranked(commands.Cog):
 
         logger.info(qdata.game.red)
         embed = discord.Embed(
-            color=0xcda03f, title="Teams have been picked!", description=description)
+            color=0x34dceb, title="Teams have been picked!", description=description)
         embed.add_field(name='🟥 RED 🟥',
                         value="{}".format(
                             "\n".join([player.mention for player in qdata.game.red])),
