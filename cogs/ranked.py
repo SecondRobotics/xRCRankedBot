@@ -638,7 +638,7 @@ class Ranked(commands.Cog):
         if interaction.channel.id == 824691989366046750:  # FRC
             roles = [y.id for y in interaction.user.roles]
             ranked_roles = [699094822132121662,
-                            824711734069297152, 824711824011427841]
+                            qdata.red_role.id, qdata.blue_role.id]
             # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
             submit_check = bool(set(roles).intersection(ranked_roles))
             if submit_check:
@@ -918,9 +918,9 @@ class Ranked(commands.Cog):
         overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
                            qdata.blue_role: discord.PermissionOverwrite(connect=True)}
 
-        qdata.red_channel = await ctx.guild.create_voice_channel(name=f"🟥Red {qdata.full_game_name}🟥",
+        qdata.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
                                                                  category=category, overwrites=overwrites_red)
-        qdata.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦Blue {qdata.full_game_name}🟦",
+        qdata.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
                                                                   category=category, overwrites=overwrites_blue)
         logger.info(qdata.blue_role)
         logger.info(qdata.red_role)
@@ -957,7 +957,8 @@ class Ranked(commands.Cog):
 
         await ctx.response.send_message(embed=embed)
 
-        await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}")
+        msg = await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}")
+        await msg.delete(delay=30)
 
     # @commands.command(description="Submit Score (WIP)")
     # async def matchnum(self, ctx):
