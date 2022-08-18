@@ -52,6 +52,13 @@ server_games = {
     "Spin Up": "11"
 }
 
+game_logos = {
+    "Skystone": "https://i.redd.it/iblf4hi92vt21.png",
+    "Infinite Recharge": "https://upload.wikimedia.org/wikipedia/en/2/2b/Infinite_Recharge_Logo.png",
+    "Rapid React": "https://upload.wikimedia.org/wikipedia/en/thumb/0/08/Rapid_React_Logo.svg/1200px-Rapid_React_Logo.svg.png",
+    "Spin Up": "https://www.roboticseducation.org/app/uploads/2022/05/Spin-Up-Logo.png",
+}
+
 server_games_choices = [
     Choice(name=game, value=server_games[game]) for game in server_games.keys()
 ]
@@ -105,6 +112,10 @@ class XrcGame():
         self.blue_role = None
         self.red_channel = None
         self.blue_channel = None
+        try:
+            self.game_icon = game_logos[game]
+        except:
+            self.game_icon = None
 
 
 def create_game(game_type):
@@ -398,6 +409,8 @@ class Ranked(commands.Cog):
                     qdata.queue.put(player)
             embed = discord.Embed(
                 color=0xcda03f, title=f"Signed up players for {game}")
+
+            embed.set_thumbnail(url=qdata.game_icon)
             embed.add_field(name='Players',
                             value="{}".format(
                                 "\n".join([player.mention for player in players])),
@@ -737,6 +750,7 @@ class Ranked(commands.Cog):
         embed = discord.Embed(
             color=0x34eb3d, title=f"**[{qdata.full_game_name}]** "
                                   f"Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
+        embed.set_thumbnail(url=qdata.game_icon)
         red_out = "```diff\n"
         blue_out = "```diff\n"
         i = 0
@@ -946,6 +960,7 @@ class Ranked(commands.Cog):
         logger.info(qdata.game.red)
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description)
+        embed.set_thumbnail(url=qdata.game_icon)
         embed.add_field(name='🟥 RED 🟥',
                         value="{}".format(
                             "\n".join([player.mention for player in qdata.game.red])),
