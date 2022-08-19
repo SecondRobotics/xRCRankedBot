@@ -95,7 +95,7 @@ class XrcGame():
         self.queue = PlayerQueue()
         self.game_type = game
         self.game = None
-        self.game_size = int(alliance_size)*2
+        self.game_size = int(alliance_size) * 2
         self.red_series = 2
         self.blue_series = 2
         self.red_captain = None
@@ -169,10 +169,10 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
 
     servers_active[port] = subprocess.Popen(
         [server_path, "-batchmode", "-nographics", f"RouterPort={port}", f"Port={port}", f"Game={game}",
-            f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
-            f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
-            f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
-            f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}"],
+         f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
+         f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
+         f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
+         f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}"],
     )
 
     logger.info(f"Server launched on port {port}")
@@ -195,6 +195,30 @@ def stop_server_process(port: int):
 class Ranked(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.ranked_display = None
+
+    async def update_ranked_display(self):
+        if self.ranked_display is None:
+            logger.info("Finding Ranked Queue Display")
+
+            qstatus_channel = get(self.bot.get_all_channels(), id=1009630461393379438)
+            async for msg in qstatus_channel.history(limit=None):
+                if msg.author.id == self.bot.user.id:
+                    self.ranked_display = msg
+                    logger.info("Found Ranked Queue Display")
+                    break
+
+        embed = discord.Embed(title="xRC Sim Ranked Queues", description="Ranked queues are open!", color=0x00ff00)
+        embed.set_thumbnail(url="https://secondrobotics.org/logos/xRC%20Logo.png")
+        active_queues = 0
+        for qdata in game_queues.values():
+            if qdata.queue.qsize() > 0:
+                active_queues += 1
+                embed.add_field(name=qdata.full_game_name, value=f"*{qdata.queue.qsize()}/{qdata.game_size}*"
+                                                                 f" players in queue", inline=False)
+        if active_queues == 0:
+            embed.add_field(name="No current queues", value="Queue to get a match started!", inline=False)
+        await self.ranked_display.edit(embed=embed)
 
     @app_commands.command(description="Updates to the latest release version of xRC Sim")
     @app_commands.checks.has_any_role("Event Staff")
@@ -265,12 +289,11 @@ class Ranked(commands.Cog):
 
     @app_commands.command(description="memes")
     @app_commands.checks.has_any_role("Event Staff")
-    async def test(self, interaction: discord.Interaction, game: str):
+    async def test(self, interaction: discord.Interaction):
         logger.info(f"{interaction.user.name} called /test")
-        await interaction.guild.create_role(name=f"Red {game}")
-        await interaction.guild.create_role(name=f"Blue {game}")
 
-        await interaction.response.send_message("Done")
+        await self.update_ranked_display()
+        await interaction.response.send_message(f"Done", ephemeral=True)
 
     # borked
 
@@ -337,6 +360,7 @@ class Ranked(commands.Cog):
                                                     ephemeral=True)
         else:
             await interaction.response.send_message("Nerd.", ephemeral=True)
+        await self.update_ranked_display()
 
     # @commands.command(pass_context=True)
     # async def seriestest(self, ctx):
@@ -381,9 +405,8 @@ class Ranked(commands.Cog):
             else:
                 await interaction.response.send_message("You can't queue in this channel.", ephemeral=True)
 
-
             qdata.queue.put(player)
-
+            await self.update_ranked_display()
             await interaction.response.send_message(
                 f"🟢 **{player.display_name}** 🟢\nadded to queue for __{qdata.full_game_name}__."
                 f" *({qdata.queue.qsize()}/{qdata.game_size})*")
@@ -424,11 +447,13 @@ class Ranked(commands.Cog):
     async def leave(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /leave")
         qdata = game_queues[game]
+
         if interaction.channel.id in approved_channels:
             player = interaction.user
             logger.info(qdata.queue)
             if player in qdata.queue:
                 qdata.queue.remove(player)
+                await self.update_ranked_display()
                 await interaction.response.send_message(
                     f"🔴 **{player.display_name}** 🔴\nremoved from queue for __{qdata.full_game_name}__."
                     f" *({qdata.queue.qsize()}/{qdata.game_size})*")
@@ -446,6 +471,7 @@ class Ranked(commands.Cog):
         if interaction.channel.id in approved_channels:
             if player in qdata.queue:
                 qdata.queue.remove(player)
+                await self.update_ranked_display()
                 await interaction.response.send_message(
                     f"**{player.display_name}**\nremoved to queue for __{game}__. *({qdata.queue.qsize()}/{qdata.game_size})*")
                 return
@@ -517,7 +543,7 @@ class Ranked(commands.Cog):
         else:
             qdata.server_port = port
             qdata.server_password = password
-
+        await self.update_ranked_display()
         chooser = random.randint(1, 10)
         if chooser < 0:  # 6
             logger.info("Captains")
@@ -921,16 +947,19 @@ class Ranked(commands.Cog):
 
     async def display_teams(self, ctx, qdata):
         channel = ctx.channel
-        category = get(ctx.guild.categories, name="SRC Ranked Competitive")
+        category = get(ctx.guild.categories, id=824691912371470367)
+        staff = get(ctx.guild.roles, id=699094822132121662)
 
         qdata.red_role = await ctx.guild.create_role(name=f"Red {qdata.full_game_name}",
                                                      colour=discord.Color(0xFF0000))
         qdata.blue_role = await ctx.guild.create_role(name=f"Blue {qdata.full_game_name}",
                                                       colour=discord.Color(0x0000FF))
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                          qdata.red_role: discord.PermissionOverwrite(connect=True)}
+                          qdata.red_role: discord.PermissionOverwrite(connect=True),
+                          staff: discord.PermissionOverwrite(connect=True)}
         overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                           qdata.blue_role: discord.PermissionOverwrite(connect=True)}
+                           qdata.blue_role: discord.PermissionOverwrite(connect=True),
+                           staff: discord.PermissionOverwrite(connect=True)}
 
         qdata.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
                                                                  category=category, overwrites=overwrites_red)
