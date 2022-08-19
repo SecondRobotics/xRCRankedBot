@@ -391,7 +391,6 @@ class Ranked(commands.Cog):
                 await interaction.response.send_message("You are already in this queue.", ephemeral=True)
                 return
             if channel.id == 824691989366046750:  # FRC
-                logger.info(interaction.user)
                 roles = [y.id for y in interaction.user.roles]
                 if qdata.red_role is None:
                     pass
@@ -409,7 +408,7 @@ class Ranked(commands.Cog):
             await self.update_ranked_display()
             await interaction.response.send_message(
                 f"🟢 **{player.display_name}** 🟢\nadded to queue for __{qdata.full_game_name}__."
-                f" *({qdata.queue.qsize()}/{qdata.game_size})*")
+                f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
             if qdata.queue.qsize() >= qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
                     await interaction.channel.send("Queue is now full! Type /startmatch")
@@ -419,6 +418,7 @@ class Ranked(commands.Cog):
 
     #
     @app_commands.choices(game=games_choices)
+    @app_commands.checks.has_any_role("Event Staff")
     @app_commands.command()
     async def queuestatus(self, interaction: discord.Interaction, game: str):
         """View who is currently in the queue"""
@@ -450,13 +450,12 @@ class Ranked(commands.Cog):
 
         if interaction.channel.id in approved_channels:
             player = interaction.user
-            logger.info(qdata.queue)
             if player in qdata.queue:
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
                 await interaction.response.send_message(
                     f"🔴 **{player.display_name}** 🔴\nremoved from queue for __{qdata.full_game_name}__."
-                    f" *({qdata.queue.qsize()}/{qdata.game_size})*")
+                    f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
                 return
             else:
                 await interaction.response.send_message("You aren't in this queue.", ephemeral=True)
@@ -737,12 +736,10 @@ class Ranked(commands.Cog):
                 stop_server_process(qdata.server_port)
 
             # Kick players back to lobby
-            channel = self.bot.get_channel(824692157142269963)
             lobby = self.bot.get_channel(824692700364275743)
-            for member in channel.members:
+            for member in qdata.red_channel.members:
                 await member.move_to(lobby)
-            channel = self.bot.get_channel(824692212528840724)
-            for member in channel.members:
+            for member in qdata.blue_channel.members:
                 await member.move_to(lobby)
             await qdata.red_channel.delete()
             await qdata.blue_channel.delete()
