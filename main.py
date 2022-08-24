@@ -5,6 +5,7 @@ import os
 import logging
 import logging.handlers
 from dotenv import load_dotenv
+from discord.utils import get
 
 logger = logging.getLogger('discord')
 load_dotenv()
@@ -34,8 +35,19 @@ class RankedBot(commands.Bot):
     async def on_ready(self):
         logger.info("The bot is alive!")
         # Required to update all slash commands
-        await bot.change_presence(activity=discord.Game(name=str("xRC Sim Ranked Queue")))
+        await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching,
+                                                            name=str("xRC Sim Ranked Queue")))
+        # Purge any old messages
 
+        qstatus_channel = get(bot.get_all_channels(), id=1009630461393379438)
+        limit = 0
+        async for msg in qstatus_channel.history(limit=None):
+            limit += 1
+        await qstatus_channel.purge(limit=limit)
+        embed = discord.Embed(title="xRC Sim Ranked Queues", description="Ranked queues are open!", color=0x00ff00)
+        embed.set_thumbnail(url="https://secondrobotics.org/logos/xRC%20Logo.png")
+        embed.add_field(name="No current queues", value="Queue to get a match started!", inline=False)
+        await qstatus_channel.send(embed=embed)
 
 bot = RankedBot()
 #tree = app_commands.CommandTree(bot)
