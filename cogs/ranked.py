@@ -158,8 +158,8 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
             f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}"],
     )
 
-    logger.info(f"Server launched on port {port}")
-    return f"✅ Launched server on port {port}", port
+    logger.info(f"Server launched on port {port}: '{comment}'")
+    return f"✅ Launched server '{comment}' on port {port}", port
 
 
 def stop_server_process(port: int):
