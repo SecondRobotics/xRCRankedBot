@@ -514,11 +514,12 @@ class Ranked(commands.Cog):
     @app_commands.command(description="Start a game")
     async def startmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /startmatch")
+        await interaction.response.defer()
 
         qdata = game_queues[game]
         logger.info(qdata.red_series)
         if not qdata.queue.qsize() >= qdata.game_size:
-            await interaction.response.send_message("Queue is not full.", ephemeral=True)
+            await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
         if qdata.red_series == 2 or qdata.blue_series == 2:
             qdata.red_series = 0
@@ -527,7 +528,7 @@ class Ranked(commands.Cog):
 
             pass
         else:
-            await interaction.response.send_message("Current match incomplete.", ephemeral=True)
+            await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
         if interaction.channel.id == 712297302857089025 or \
                 interaction.channel.id == 754569222260129832 or \
@@ -996,7 +997,7 @@ class Ranked(commands.Cog):
                             "\n".join([player.mention for player in qdata.game.blue])),
                         inline=True)
 
-        await ctx.response.send_message(embed=embed)
+        await ctx.followup.send(embed=embed)
 
         msg = await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}")
         await msg.delete(delay=30)
