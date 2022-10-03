@@ -49,7 +49,8 @@ server_games = {
     "Tipping Point": "8",
     "Freight Frenzy": "9",
     "Rapid React": "10",
-    "Spin Up": "11"
+    "Spin Up": "11",
+    "Power Play": "12",
 }
 
 game_logos = {
