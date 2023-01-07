@@ -51,6 +51,7 @@ server_games = {
     "Rapid React": "10",
     "Spin Up": "11",
     "Power Play": "12",
+    "Charged Up": "13",
 }
 
 game_logos = {
@@ -58,6 +59,7 @@ game_logos = {
     "Infinite Recharge": "https://upload.wikimedia.org/wikipedia/en/2/2b/Infinite_Recharge_Logo.png",
     "Rapid React": "https://upload.wikimedia.org/wikipedia/en/thumb/0/08/Rapid_React_Logo.svg/1200px-Rapid_React_Logo.svg.png",
     "Spin Up": "https://www.roboticseducation.org/app/uploads/2022/05/Spin-Up-Logo.png",
+    "Charged Up": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b7/Charged_Up_Logo.svg/1024px-Charged_Up_Logo.svg.png",
 }
 
 server_games_choices = [
@@ -68,6 +70,7 @@ server_game_settings = {
     "4": "0:1:0:1:25:5:5100:0:1:1:1:1:1:1:1:14:7:1:1:1:0:15:100:0:1:2021:25",
     "7": "30:1:0:0:10:0",
     "9": "1:1:1:1:30:10",
+    "13": "1:30:1:4:0:1:1:1:1:1:1:1:14:7:1:1:1:0:15:100:1:5",
 }
 
 server_restart_modes = {
@@ -202,15 +205,18 @@ class Ranked(commands.Cog):
         if self.ranked_display is None:
             logger.info("Finding Ranked Queue Display")
 
-            qstatus_channel = get(self.bot.get_all_channels(), id=1009630461393379438)
+            qstatus_channel = get(
+                self.bot.get_all_channels(), id=1009630461393379438)
             async for msg in qstatus_channel.history(limit=None):
                 if msg.author.id == self.bot.user.id:
                     self.ranked_display = msg
                     logger.info("Found Ranked Queue Display")
                     break
 
-        embed = discord.Embed(title="xRC Sim Ranked Queues", description="Ranked queues are open!", color=0x00ff00)
-        embed.set_thumbnail(url="https://secondrobotics.org/logos/xRC%20Logo.png")
+        embed = discord.Embed(title="xRC Sim Ranked Queues",
+                              description="Ranked queues are open!", color=0x00ff00)
+        embed.set_thumbnail(
+            url="https://secondrobotics.org/logos/xRC%20Logo.png")
         active_queues = 0
         for qdata in game_queues.values():
             if qdata.queue.qsize() > 0:
@@ -218,7 +224,8 @@ class Ranked(commands.Cog):
                 embed.add_field(name=qdata.full_game_name, value=f"*{qdata.queue.qsize()}/{qdata.game_size}*"
                                                                  f" players in queue", inline=False)
         if active_queues == 0:
-            embed.add_field(name="No current queues", value="Queue to get a match started!", inline=False)
+            embed.add_field(name="No current queues",
+                            value="Queue to get a match started!", inline=False)
         await self.ranked_display.edit(embed=embed)
 
     @app_commands.command(description="Updates to the latest release version of xRC Sim")
