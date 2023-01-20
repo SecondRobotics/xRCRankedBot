@@ -37,6 +37,9 @@ games = requests.get("https://secondrobotics.org/api/ranked/").json()
 games_choices = [Choice(name=game['name'], value=game['short_code'])
                  for game in games]
 
+games_players = {game['short_code']: game['players_per_alliance'] * 2
+                 for game in games}
+
 server_games = {
     "Splish Splash": "0",
     "Relic Recovery": "1",
@@ -52,6 +55,23 @@ server_games = {
     "Spin Up": "11",
     "Power Play": "12",
     "Charged Up": "13",
+}
+
+default_game_players = {
+    "Splish Splash": 4,
+    "Relic Recovery": 4,
+    "Rover Ruckus": 4,
+    "Skystone": 4,
+    "Infinite Recharge": 6,
+    "Change Up": 4,
+    "Bot Royale": 6,
+    "Ultimate Goal": 4,
+    "Tipping Point": 4,
+    "Freight Frenzy": 4,
+    "Rapid React": 6,
+    "Spin Up": 4,
+    "Power Play": 4,
+    "Charged Up": 6,
 }
 
 game_logos = {
@@ -151,7 +171,7 @@ def download_file(url):
 def start_server_process(game: str, comment: str, password: str = "", admin: str = "Admin",
                          restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
                          tournament_mode: bool = True, start_when_ready: bool = True,
-                         register: bool = True, spectators: int = 4
+                         register: bool = True, spectators: int = 4, min_players: int = -1,
                          ):
     server_path = "./server/xRC Simulator.x86_64"
 
@@ -171,12 +191,15 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
     if restart_mode == -1:
         restart_mode = server_restart_modes[game] if game in server_restart_modes else 1
 
+    if min_players == -1:
+        min_players = default_game_players[game] if game in default_game_players else 4
+
     servers_active[port] = subprocess.Popen(
         [server_path, "-batchmode", "-nographics", f"RouterPort={port}", f"Port={port}", f"Game={game}",
          f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
          f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
          f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
-         f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}"],
+         f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}", f"MinPlayers={min_players}"]
     )
 
     logger.info(f"Server launched on port {port}: '{comment}'")
@@ -266,12 +289,12 @@ class Ranked(commands.Cog):
                             game: str, comment: str, password: str = "", admin: str = "Admin",
                             restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
                             tournament_mode: bool = True, start_when_ready: bool = True,
-                            register: bool = True, spectators: int = 4,
+                            register: bool = True, spectators: int = 4, min_players: int = -1
                             ):
         logger.info(f"{interaction.user.name} called /launchserver")
 
         result, _ = start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
-                                         tournament_mode, start_when_ready, register, spectators)
+                                         tournament_mode, start_when_ready, register, spectators, min_players)
 
         await interaction.response.send_message(result)
 
@@ -544,8 +567,9 @@ class Ranked(commands.Cog):
             return await self.random(interaction, game)
 
         password = str(random.randint(100, 999))
+        min_players = games_players[game]
         message, port = start_server_process(
-            qdata.server_game, f"Ranked{game}", password)
+            qdata.server_game, f"Ranked{game}", password, min_players=min_players)
         if port == -1:
             logger.warning("Server couldn't auto-start for ranked: " + message)
         else:
