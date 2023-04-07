@@ -1,3 +1,5 @@
+import asyncio
+from datetime import datetime
 import subprocess
 from typing import Dict, Optional
 from discord import app_commands
@@ -14,6 +16,9 @@ import os
 from discord.app_commands import Choice
 import zipfile
 import shutil
+from schedule import repeat, every, run_pending
+from threading import Thread
+from time import sleep
 
 logger = logging.getLogger('discord')
 load_dotenv()
@@ -498,7 +503,9 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /leave")
         qdata = game_queues[game]
 
-        if isinstance(interaction.channel, discord.TextChannel) and interaction.channel.id in approved_channels:
+        if (isinstance(interaction.channel, discord.TextChannel) and
+            isinstance(interaction.user, discord.Member) and
+                interaction.channel.id in approved_channels):
             player = interaction.user
             if player in qdata.queue:
                 qdata.queue.remove(player)
@@ -594,7 +601,6 @@ class Ranked(commands.Cog):
         else:
             qdata.server_port = port
             qdata.server_password = password
-        await self.update_ranked_display()
         chooser = random.randint(1, 10)
         if chooser < 0:  # 6
             logger.info("Captains")
@@ -1064,6 +1070,7 @@ class Ranked(commands.Cog):
 
         msg = await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}")
         await msg.delete(delay=30)
+        await self.update_ranked_display()
 
     # @commands.command(description="Submit Score (WIP)")
     # async def matchnum(self, ctx):
@@ -1186,20 +1193,28 @@ class OrderedSet(MutableSet):
         return set(self) == set(other)
 
 
+# dict of tuple of queue and player to timestamp when joined queue
+queue_joins = {}  # type: dict[tuple[PlayerQueue, discord.Member], datetime]
+# list of servers (port numbers) that were empty last time we checked
+empty_servers: list[int] = []
+
+
 class PlayerQueue(Queue):
     def _init(self, maxsize):
         self.queue = OrderedSet()
 
-    def _put(self, item):
+    def _put(self, item: discord.Member):
         self.queue.add(item)
+        queue_joins[(self, item)] = datetime.now()
 
     def _get(self):
         return self.queue.pop()
 
-    def remove(self, value):
+    def remove(self, value: discord.Member):
         self.queue.remove(value)
+        queue_joins.pop((self, value), None)
 
-    def __contains__(self, item):
+    def __contains__(self, item: discord.Member):
         with self.mutex:
             return item in self.queue
 
@@ -1213,3 +1228,34 @@ async def setup(bot: commands.Bot) -> None:
         Ranked(bot),
         guilds=[discord.Object(id=637407041048281098)]
     )
+
+
+@repeat(every(1).hour)
+def check_queue_joins():
+    """every hour, check if any queue_joins are older than 2 hours
+    if they are, remove them from the queue
+    if they are not, do nothing"""
+    to_remove: list[tuple[PlayerQueue, discord.Member]] = []
+    for (queue, player), timestamp in queue_joins.items():
+        if (datetime.now() - timestamp).total_seconds() > 60 * 60 * 2:
+            if player in queue:
+                queue.remove(player)
+                # send a message to the player
+                task = asyncio.create_task(player.send(
+                    "You have been removed from a queue because you have been in the queue for more than 2 hours."))
+                task.add_done_callback(lambda _: logger.info(
+                    f"Sent message to {player.name}"))
+            to_remove.append((queue, player))
+    for item in to_remove:
+        queue_joins.pop(item, None)
+
+
+class ScheduleThread(Thread):
+    @classmethod
+    def run(cls):
+        run_pending()
+        sleep(1)
+
+
+# background thread for running schedule tasks
+ScheduleThread().start()
