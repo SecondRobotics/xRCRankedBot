@@ -1,5 +1,5 @@
 import subprocess
-from typing import Dict
+from typing import Dict, Optional
 from discord import app_commands
 import random
 from queue import Queue
@@ -18,14 +18,19 @@ import shutil
 logger = logging.getLogger('discord')
 load_dotenv()
 
+SRC_API_TOKEN = os.getenv('SRC_API_TOKEN')
+if not SRC_API_TOKEN:
+    logger.fatal('SRC_API_TOKEN not found')
+    raise RuntimeError('SRC_API_TOKEN not found')
+
 team_size = 6
 team_size_alt = 4
 approved_channels = [824691989366046750, 712297302857089025,
                      650967104933330947, 754569102873460776, 754569222260129832]
-header = {"x-api-key": os.getenv("SRC_API_TOKEN")}
+header = {"x-api-key": SRC_API_TOKEN}
 
 PORTS = [11115, 11116, 11117, 11118, 11119, 11120]
-# dictionary mapping int to Popen object
+# dictionary mapping port number to process of running server
 servers_active: Dict[int, subprocess.Popen] = {}
 
 listener = commands.Cog.listener
@@ -40,6 +45,7 @@ games_choices = [Choice(name=game['name'], value=game['short_code'])
 games_players = {game['short_code']: game['players_per_alliance'] * 2
                  for game in games}
 
+# disctionary mapping game name to game number string
 server_games = {
     "Splish Splash": "0",
     "Relic Recovery": "1",
@@ -57,6 +63,7 @@ server_games = {
     "Charged Up": "13",
 }
 
+# dictionary mapping game name to default number of players
 default_game_players = {
     "Splish Splash": 4,
     "Relic Recovery": 4,
@@ -74,6 +81,7 @@ default_game_players = {
     "Charged Up": 6,
 }
 
+# dictionary mapping game name to game logo url
 game_logos = {
     "Skystone": "https://i.redd.it/iblf4hi92vt21.png",
     "Infinite Recharge": "https://upload.wikimedia.org/wikipedia/en/2/2b/Infinite_Recharge_Logo.png",
@@ -86,6 +94,7 @@ server_games_choices = [
     Choice(name=game, value=server_games[game]) for game in server_games.keys()
 ]
 
+# dictionary mapping game number string to game settings string
 server_game_settings = {
     "4": "0:1:0:1:25:5:5100:0:1:1:1:1:1:1:1:14:7:1:1:1:0:15:100:0:1:2021:25",
     "7": "30:1:0:0:10:0",
@@ -93,9 +102,10 @@ server_game_settings = {
     "13": "1:5:1:4:0:5:2:0:1:1:1:1:1:1:1:14:7:1:1:1:0:15:100",
 }
 
+# dictionary mapping game number string to game restart mode number
 server_restart_modes = {
-    "3": "3",
-    "4": "2",
+    "3": 3,
+    "4": 2,
 }
 
 
@@ -118,7 +128,7 @@ class XrcGame():
     def __init__(self, game, alliance_size, api_short, full_game_name):
         self.queue = PlayerQueue()
         self.game_type = game
-        self.game = None
+        self.game = None  # type: Game | None
         self.game_size = int(alliance_size) * 2
         self.red_series = 2
         self.blue_series = 2
@@ -129,13 +139,13 @@ class XrcGame():
         self.team_size = alliance_size
         self.api_short = api_short
         self.server_game = server_games[game]
-        self.server_port = None
-        self.server_password = None
+        self.server_port = None  # type: int | None
+        self.server_password = None  # type: str | None
         self.full_game_name = full_game_name
-        self.red_role = None
-        self.blue_role = None
-        self.red_channel = None
-        self.blue_channel = None
+        self.red_role = None  # type: discord.Role | None
+        self.blue_role = None  # type: discord.Role | None
+        self.red_channel = None  # type: discord.VoiceChannel | None
+        self.blue_channel = None  # type: discord.VoiceChannel | None
         try:
             self.game_icon = game_logos[game]
         except:
@@ -181,9 +191,13 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
     if len(servers_active) >= len(PORTS):
         return "⚠ The maximum number of servers are already running", -1
 
+    port = -1
     for port in PORTS:
         if port not in servers_active:
             break
+
+    if port == -1:
+        return "⚠ Could not find a port to run the server on", -1
 
     logger.info(f"Launching server on port {port}")
 
@@ -235,6 +249,9 @@ class Ranked(commands.Cog):
                     self.ranked_display = msg
                     logger.info("Found Ranked Queue Display")
                     break
+
+        if self.ranked_display is None:
+            return
 
         embed = discord.Embed(title="xRC Sim Ranked Queues",
                               description="Ranked queues are open!", color=0x00ff00)
@@ -326,36 +343,35 @@ class Ranked(commands.Cog):
         await self.update_ranked_display()
         await interaction.response.send_message(f"Done", ephemeral=True)
 
-    # borked
+    # FIXME
 
-    @commands.command(pass_context=True)
-    async def autoq(self, ctx, command=None, command_ctx=None):
-        if command is not None:
-            if 699094822132121662 in [y.id for y in ctx.message.author.roles]:
-                logger.info("trueee")
-                if command.lower() == "kick":
-                    if command_ctx is not None:
-                        self.autoq.remove(int(command_ctx))
-                        await ctx.channel.send(f"Removed <@{command_ctx}> to the autoq list")
-                        logger.info(command_ctx)
-                        return
-        if ctx.channel.id != 824691989366046750:
-            return
-        privs = {637411162203619350, 824727390873452634}
-        roles = set([y.id for y in ctx.message.author.roles])
-        if roles.intersection(privs):
-            if ctx.author.id in self.autoq:
-                await self.leave(ctx)
-                self.autoq.remove(ctx.author.id)
-                await ctx.channel.send(f"Removed {ctx.author.mention} from the autoq list")
-            else:
-                await self.q(ctx)
-                self.autoq.append(ctx.author.id)
-                await ctx.channel.send(f"Added {ctx.author.mention} to the autoq list")
-        else:
-            await ctx.channel.send(
-                f"Autoqing is only available to patreons. To become a patreon check out this link! https://www.patreon.com/BrennanB ")
-        logger.info(self.autoq)
+    # @commands.command(pass_context=True)
+    # async def autoq(self, ctx, command=None, command_ctx=None):
+    #     if command is not None:
+    #         if 699094822132121662 in [y.id for y in ctx.message.author.roles]:
+    #             if command.lower() == "kick":
+    #                 if command_ctx is not None:
+    #                     self.autoq.remove(int(command_ctx))
+    #                     await ctx.channel.send(f"Removed <@{command_ctx}> to the autoq list")
+    #                     logger.info(command_ctx)
+    #                     return
+    #     if ctx.channel.id != 824691989366046750:
+    #         return
+    #     privs = {637411162203619350, 824727390873452634}
+    #     roles = set([y.id for y in ctx.message.author.roles])
+    #     if roles.intersection(privs):
+    #         if ctx.author.id in self.autoq:
+    #             await self.leave(ctx)
+    #             self.autoq.remove(ctx.author.id)
+    #             await ctx.channel.send(f"Removed {ctx.author.mention} from the autoq list")
+    #         else:
+    #             await self.q(ctx)
+    #             self.autoq.append(ctx.author.id)
+    #             await ctx.channel.send(f"Added {ctx.author.mention} to the autoq list")
+    #     else:
+    #         await ctx.channel.send(
+    #             f"Autoqing is only available to patreons. To become a patreon check out this link! https://www.patreon.com/BrennanB ")
+    #     logger.info(self.autoq)
 
     # async def queue_auto(self, ctx):
     #
@@ -371,12 +387,12 @@ class Ranked(commands.Cog):
     @app_commands.command(description="Force queue players")
     async def queueall(self, interaction: discord.Interaction,
                        game: str,
-                       member1: discord.Member = None,
-                       member2: discord.Member = None,
-                       member3: discord.Member = None,
-                       member4: discord.Member = None,
-                       member5: discord.Member = None,
-                       member6: discord.Member = None):
+                       member1: Optional[discord.Member] = None,
+                       member2: Optional[discord.Member] = None,
+                       member3: Optional[discord.Member] = None,
+                       member4: Optional[discord.Member] = None,
+                       member5: Optional[discord.Member] = None,
+                       member6: Optional[discord.Member] = None):
         logger.info(f"{interaction.user.name} called /queueall")
         qdata = game_queues[game]
 
@@ -415,15 +431,17 @@ class Ranked(commands.Cog):
 
         qdata = game_queues[game]
 
-        if interaction.channel.id in approved_channels:
+        if (isinstance(interaction.channel, discord.TextChannel) and
+                interaction.channel.id in approved_channels and
+                isinstance(interaction.user, discord.Member)):
             player = interaction.user
             channel = interaction.channel
             if player in qdata.queue:
                 await interaction.response.send_message("You are already in this queue.", ephemeral=True)
                 return
-            if channel.id == 824691989366046750:  # FRC
+            if channel.id == 824691989366046750:
                 roles = [y.id for y in interaction.user.roles]
-                if qdata.red_role is None:
+                if qdata.red_role is None or qdata.blue_role is None:
                     pass
                 else:
                     ranked_roles = [qdata.red_role.id, qdata.blue_role.id]
@@ -456,6 +474,7 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /queuestatus")
         qdata = game_queues[game]
         try:
+            players = []
             for _ in range(0, 2):  # loop to not reverse order
                 players = [qdata.queue.get()
                            for _ in range(qdata.queue.qsize())]
@@ -479,7 +498,7 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /leave")
         qdata = game_queues[game]
 
-        if interaction.channel.id in approved_channels:
+        if isinstance(interaction.channel, discord.TextChannel) and interaction.channel.id in approved_channels:
             player = interaction.user
             if player in qdata.queue:
                 qdata.queue.remove(player)
@@ -498,7 +517,7 @@ class Ranked(commands.Cog):
     async def kick(self, interaction: discord.Interaction, player: discord.Member, game: str):
         logger.info(f"{interaction.user.name} called /kick")
         qdata = game_queues[game]
-        if interaction.channel.id in approved_channels:
+        if isinstance(interaction.channel, discord.TextChannel) and interaction.channel.id in approved_channels:
             if player in qdata.queue:
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
@@ -555,15 +574,15 @@ class Ranked(commands.Cog):
         if qdata.red_series == 2 or qdata.blue_series == 2:
             qdata.red_series = 0
             qdata.blue_series = 0
-            qdata.past_winner = ""
 
             pass
         else:
             await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
-        if interaction.channel.id == 712297302857089025 or \
-                interaction.channel.id == 754569222260129832 or \
-                interaction.channel.id == 754569102873460776:
+        if interaction.channel is not None and (
+                interaction.channel.id == 712297302857089025 or
+                interaction.channel.id == 754569222260129832 or
+                interaction.channel.id == 754569102873460776):
             return await self.random(interaction, game)
 
         password = str(random.randint(100, 999))
@@ -706,10 +725,16 @@ class Ranked(commands.Cog):
         await interaction.response.defer()
         logger.info(game)
         qdata = game_queues[game]
-        if interaction.channel.id == 824691989366046750:  # FRC
+        if (isinstance(interaction.channel, discord.TextChannel) and
+                interaction.channel.id == 824691989366046750 and
+                isinstance(interaction.user, discord.Member)):
             roles = [y.id for y in interaction.user.roles]
-            ranked_roles = [699094822132121662,
-                            qdata.red_role.id, qdata.blue_role.id]
+
+            if qdata.red_role and qdata.blue_role:
+                ranked_roles = [699094822132121662,
+                                qdata.red_role.id, qdata.blue_role.id]
+            else:
+                ranked_roles = [699094822132121662]
             # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
             submit_check = bool(set(roles).intersection(ranked_roles))
             if submit_check:
@@ -718,7 +743,6 @@ class Ranked(commands.Cog):
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
 
-        if interaction.channel.id == 824691989366046750:  # FRC
             logger.info(qdata.red_series)
             logger.info(qdata.blue_series)
             if qdata.red_series == 2 or qdata.blue_series == 2:
@@ -734,12 +758,11 @@ class Ranked(commands.Cog):
         # Red wins
         if int(red_score) > int(blue_score):
             qdata.red_series += 1
-            qdata.past_winner = "Red"
 
         # Blue wins
         elif int(red_score) < int(blue_score):
             qdata.blue_series += 1
-            qdata.past_winner = "Blue"
+
         logger.info(f"Red {qdata.red_series}")
         logger.info(f"Blue {qdata.blue_series}")
         if qdata.red_series == 2:
@@ -751,14 +774,15 @@ class Ranked(commands.Cog):
                 stop_server_process(qdata.server_port)
 
             # Kick players back to main lobby
-
             lobby = self.bot.get_channel(824692700364275743)
-            for member in qdata.red_channel.members:
-                await member.move_to(lobby)
-            for member in qdata.blue_channel.members:
-                await member.move_to(lobby)
-            await qdata.red_channel.delete()
-            await qdata.blue_channel.delete()
+            if qdata.red_channel:
+                for member in qdata.red_channel.members:
+                    await member.move_to(lobby)
+                await qdata.red_channel.delete()
+            if qdata.blue_channel:
+                for member in qdata.blue_channel.members:
+                    await member.move_to(lobby)
+                await qdata.blue_channel.delete()
 
         elif qdata.blue_series == 2:
             # await self.queue_auto(interaction)
@@ -770,12 +794,14 @@ class Ranked(commands.Cog):
 
             # Kick players back to lobby
             lobby = self.bot.get_channel(824692700364275743)
-            for member in qdata.red_channel.members:
-                await member.move_to(lobby)
-            for member in qdata.blue_channel.members:
-                await member.move_to(lobby)
-            await qdata.red_channel.delete()
-            await qdata.blue_channel.delete()
+            if qdata.red_channel:
+                for member in qdata.red_channel.members:
+                    await member.move_to(lobby)
+                await qdata.red_channel.delete()
+            if qdata.blue_channel:
+                for member in qdata.blue_channel.members:
+                    await member.move_to(lobby)
+                await qdata.blue_channel.delete()
         else:
             logger.info(interaction)
             await interaction.followup.send("Score Submitted")
@@ -784,12 +810,12 @@ class Ranked(commands.Cog):
         logger.info("Blah")
         # Finding player ids
         red_ids = []
-        for player in qdata.game.red:
-            red_ids.append(player.id)
-
         blue_ids = []
-        for player in qdata.game.blue:
-            blue_ids.append(player.id)
+        if qdata.game:
+            for player in qdata.game.red:
+                red_ids.append(player.id)
+            for player in qdata.game.blue:
+                blue_ids.append(player.id)
 
         url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/'
         json = {
@@ -833,6 +859,11 @@ class Ranked(commands.Cog):
     async def random(self, interaction, game_type):
         logger.info("randomizing")
         qdata = create_game(game_type)
+
+        if not qdata.game:
+            await interaction.followup.send("No game found", ephemeral=True)
+            return
+
         logger.info(f"players: {qdata.game.players}")
         logger.info(f"Team size {qdata.team_size}")
         red = random.sample(qdata.game.players, int(qdata.team_size))
@@ -1046,22 +1077,30 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /clearmatch")
         qdata = game_queues[game]
 
-        if qdata.server_port:
-            stop_server_process(qdata.server_port)
+        if (isinstance(interaction.user, discord.Member) and
+                699094822132121662 in [y.id for y in interaction.user.roles]):
+            if qdata.server_port:
+                stop_server_process(qdata.server_port)
 
-        if 699094822132121662 in [y.id for y in interaction.user.roles]:
             qdata.red_series = 2
             qdata.blue_series = 2
 
             await remove_roles(interaction, qdata)
+
+            # kick to lobby
             lobby = self.bot.get_channel(824692700364275743)
-            for member in qdata.red_channel.members:
-                await member.move_to(lobby)
-            for member in qdata.blue_channel.members:
-                await member.move_to(lobby)
+            if qdata.red_channel:
+                for member in qdata.red_channel.members:
+                    await member.move_to(lobby)
+                await qdata.red_channel.delete()
+            if qdata.blue_channel:
+                for member in qdata.blue_channel.members:
+                    await member.move_to(lobby)
+                await qdata.blue_channel.delete()
+
             await interaction.response.send_message("Cleared successfully!")
-            await qdata.red_channel.delete()
-            await qdata.blue_channel.delete()
+        else:
+            await interaction.response.send_message("You don't have permission to do that!", ephemeral=True)
 
     @app_commands.command(name="rules", description="Posts a link the the rules")
     async def rules(self, interaction: discord.Interaction):
