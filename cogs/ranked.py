@@ -125,11 +125,11 @@ async def remove_roles(ctx, qdata):
 
 
 class XrcGame():
-    def __init__(self, game, alliance_size, api_short, full_game_name):
+    def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
         self.queue = PlayerQueue()
         self.game_type = game
         self.game = None  # type: Game | None
-        self.game_size = int(alliance_size) * 2
+        self.game_size = alliance_size * 2
         self.red_series = 2
         self.blue_series = 2
         self.red_captain = None
@@ -460,10 +460,10 @@ class Ranked(commands.Cog):
                 f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
             if qdata.queue.qsize() >= qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
-                    await interaction.channel.send("Queue is now full! Type /startmatch")
+                    await interaction.channel.send(f"Queue for {qdata.full_game_name} is now full! Type /startmatch")
                 else:
                     await interaction.channel.send(
-                        "Queue is now full! You can start as soon as the current match concludes.")
+                        f"Queue for {qdata.full_game_name} is now full! You can start as soon as the current match concludes.")
 
     #
     @app_commands.choices(game=games_choices)
@@ -564,7 +564,6 @@ class Ranked(commands.Cog):
     @app_commands.command(description="Start a game")
     async def startmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /startmatch")
-        await interaction.response.defer()
 
         qdata = game_queues[game]
         logger.info(qdata.red_series)
@@ -574,11 +573,12 @@ class Ranked(commands.Cog):
         if qdata.red_series == 2 or qdata.blue_series == 2:
             qdata.red_series = 0
             qdata.blue_series = 0
-
-            pass
         else:
             await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
+
+        await interaction.response.defer()
+
         if interaction.channel is not None and (
                 interaction.channel.id == 712297302857089025 or
                 interaction.channel.id == 754569222260129832 or
