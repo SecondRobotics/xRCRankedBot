@@ -163,7 +163,8 @@ def create_game(game_type):
     logger.info(offset)
     logger.info(qdata.game_size)
     qsize = qdata.queue.qsize()
-    players = [qdata.queue.get() for _ in range(qsize)]
+    players = [qdata.queue.get()
+               for _ in range(qsize)]  # type: list[discord.Member]
     qdata.game = Game(players[0 + offset:qdata.game_size + offset])
     for player in players[0:offset]:
         qdata.queue.put(player)
@@ -1116,7 +1117,7 @@ class Ranked(commands.Cog):
 
 
 class Game:
-    def __init__(self, players):
+    def __init__(self, players: list[discord.Member]):
         self.players = set(players)
         if len(players) > 2:
             self.captains = random.sample(self.players, 2)
@@ -1230,6 +1231,39 @@ async def setup(bot: commands.Bot) -> None:
     )
 
 
+def shutdown_server_inactivity(server: int):
+    # if server is in a ranked queue, clear the match
+    for queue in game_queues.values():
+        if queue.server_port == server:
+            # queue.clear_match() # TODO: clear match
+            # TODO: send message to players
+            # TODO: punish players that dodged
+            return
+
+    # otherwise, just stop the process
+    stop_server_process(server)
+
+
+def server_has_players(server: int) -> bool:
+    return True  # TODO: read players from xrc server stdout
+
+
+# TODO: warn_server_inactivity should happen if a ranked match isn't full - not just if it is empty
+def warn_server_inactivity(server: int):
+    # if server is in a ranked queue, send a message to the players
+    for queue in game_queues.values():
+        if queue.server_port == server:
+            if queue.game:
+                for player in queue.game.players:
+                    # send a message to the players
+                    task = asyncio.create_task(player.send(
+                        "Your ranked match has been inactive - if it does not start within 10 minutes, it will be cancelled."))
+                    task.add_done_callback(lambda _: logger.info(
+                        f"Sent message to {player.name}"))
+                    pass
+            return
+
+
 @repeat(every(1).hour)
 def check_queue_joins():
     """every hour, check if any queue_joins are older than 2 hours
@@ -1248,6 +1282,30 @@ def check_queue_joins():
             to_remove.append((queue, player))
     for item in to_remove:
         queue_joins.pop(item, None)
+
+
+@repeat(every(10).minutes)
+def check_empty_servers():
+    """every 10 minutes, check if any servers are empty
+    if it is empty, add it to the list of empty servers
+    if it was empty last time we checked, stop the server
+    if it is not empty, remove it from the list of empty servers"""
+
+    # remove servers that have closed
+    for server in empty_servers.copy():
+        if server not in servers_active:
+            empty_servers.remove(server)
+
+    for server in servers_active:
+        if server not in empty_servers:
+            if not server_has_players(server):
+                empty_servers.append(server)
+                warn_server_inactivity(server)
+
+        else:
+            if not server_has_players(server):
+                shutdown_server_inactivity(server)
+            empty_servers.remove(server)
 
 
 class ScheduleThread(Thread):
