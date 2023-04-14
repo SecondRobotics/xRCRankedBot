@@ -592,7 +592,7 @@ class Ranked(commands.Cog):
             await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
 
-        if interaction.channel is None or interaction.channel.id == QUEUE_CHANNEL:
+        if interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL:
             await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
             return
 
