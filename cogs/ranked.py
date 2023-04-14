@@ -585,7 +585,6 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /startmatch")
 
         qdata = game_queues[game]
-        logger.info(qdata.red_series)
         if not qdata.queue.qsize() >= qdata.game_size:
             await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
@@ -734,7 +733,6 @@ class Ranked(commands.Cog):
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
-        logger.info(game)
         qdata = game_queues[game]
         if (isinstance(interaction.channel, discord.TextChannel) and
                 interaction.channel.id == QUEUE_CHANNEL and
@@ -754,19 +752,12 @@ class Ranked(commands.Cog):
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
 
-            logger.info(qdata.red_series)
-            logger.info(qdata.blue_series)
             if qdata.red_series == 2 or qdata.blue_series == 2:
-                logger.info("INSIDE")
-                logger.info(qdata.red_series)
-                logger.info(qdata.blue_series)
-                logger.info(interaction)
                 await interaction.followup.send("Series is complete already!", ephemeral=True)
                 return
         else:
             await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
             return
-        logger.info("Checking ")
         # Red wins
         if int(red_score) > int(blue_score):
             qdata.red_series += 1
@@ -775,8 +766,6 @@ class Ranked(commands.Cog):
         elif int(red_score) < int(blue_score):
             qdata.blue_series += 1
 
-        logger.info(f"Red {qdata.red_series}")
-        logger.info(f"Blue {qdata.blue_series}")
         gg = True
         if qdata.red_series == 2:
             # await self.queue_auto(interaction)
@@ -816,12 +805,9 @@ class Ranked(commands.Cog):
                     await member.move_to(lobby)
                 await qdata.blue_channel.delete()
         else:
-            logger.info(interaction)
             await interaction.followup.send("Score Submitted")
-            logger.info("got here")
             gg = False
 
-        logger.info("Blah")
         # Finding player ids
         red_ids = []
         blue_ids = []
@@ -885,25 +871,18 @@ class Ranked(commands.Cog):
             await interaction.channel.send(embed=embed)
 
     async def random(self, interaction, game_type):
-        logger.info("randomizing")
         qdata = create_game(game_type)
 
         if not qdata.game:
             await interaction.followup.send("No game found", ephemeral=True)
             return
 
-        logger.info(f"players: {qdata.game.players}")
-        logger.info(f"Team size {qdata.team_size}")
         red = random.sample(qdata.game.players, int(qdata.team_size))
-        logger.info(red)
         for player in red:
-            logger.info(player)
             qdata.game.add_to_red(player)
 
         blue = list(qdata.game.players)
-        logger.info(blue)
         for player in blue:
-            logger.info(player)
             qdata.game.add_to_blue(player)
 
         await self.display_teams(interaction, qdata)
@@ -1054,28 +1033,24 @@ class Ranked(commands.Cog):
                                                                  category=category, overwrites=overwrites_red)
         qdata.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
                                                                   category=category, overwrites=overwrites_blue)
-        logger.info(qdata.blue_role)
-        logger.info(qdata.red_role)
 
         for player in qdata.game.red:
             await player.add_roles(discord.utils.get(ctx.guild.roles, id=qdata.red_role.id))
             try:
                 await player.move_to(qdata.red_channel)
             except Exception as e:
-                logger.info(e)
+                logger.error(e)
                 pass
         for player in qdata.game.blue:
             await player.add_roles(discord.utils.get(ctx.guild.roles, id=qdata.blue_role.id))
             try:
                 await player.move_to(qdata.blue_channel)
             except Exception as e:
-                logger.info(e)
+                logger.error(e)
                 pass
-        logger.info("Roles Created")
 
         description = f"Server started for you on port {qdata.server_port} with password {qdata.server_password}" if qdata.server_port else None
 
-        logger.info(qdata.game.red)
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description)
         embed.set_thumbnail(url=qdata.game_icon)
@@ -1157,6 +1132,7 @@ class Ranked(commands.Cog):
     @check_queue_joins.before_loop
     async def before_check_queue_joins(self):
         await self.bot.wait_until_ready()
+        await asyncio.sleep(5)
 
     @tasks.loop(minutes=10)
     async def check_empty_servers(self):
@@ -1299,7 +1275,7 @@ guild = None  # type: discord.Guild | None
 
 async def setup(bot: commands.Bot) -> None:
     cog = Ranked(bot)
-    guild = bot.get_guild(GUILD_ID)
+    guild = await bot.fetch_guild(GUILD_ID)
     assert guild is not None
 
     await bot.add_cog(
