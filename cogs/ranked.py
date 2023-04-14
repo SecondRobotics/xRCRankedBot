@@ -1326,20 +1326,22 @@ async def server_has_players(server: int) -> bool:
 
     process.stdin.write(b"PLAYERS\n")
     process.stdin.flush()
+    process.stdin.write(b"PLAYERS\n")
+    process.stdin.flush()
 
     while True:
-        line = process.stdout.readline()
+        line = process.stdout.readline().decode("utf-8")
         logger.info(f"Server {server} stdout: {line}")
         if not line == b'_BEGIN_\n':
             break
 
     players = []
     while True:
-        line = process.stdout.readline()
+        line = process.stdout.readline().decode("utf-8")
         logger.info(f"Server {server} stdout: {line}")
         if line == b'_END_\n':
             break
-        players.append(line.decode().strip())
+        players.append(line.strip())
 
     logger.info(f"Server {server} players: {players}")
 
