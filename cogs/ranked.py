@@ -247,6 +247,7 @@ class Ranked(commands.Cog):
         self.bot = bot
         self.ranked_display = None
         self.check_queue_joins.start()
+        self.check_empty_servers.start()
 
     async def update_ranked_display(self):
         if self.ranked_display is None:
@@ -1156,6 +1157,33 @@ class Ranked(commands.Cog):
     async def before_check_queue_joins(self):
         await self.bot.wait_until_ready()
 
+    @tasks.loop(minutes=10)
+    async def check_empty_servers(self):
+        """every 10 minutes, check if any servers are empty
+        if it is empty, add it to the list of empty servers
+        if it was empty last time we checked, stop the server
+        if it is not empty, remove it from the list of empty servers"""
+
+        # remove servers that have closed
+        for server in empty_servers.copy():
+            if server not in servers_active:
+                empty_servers.remove(server)
+
+        for server in servers_active:
+            if server not in empty_servers:
+                if not server_has_players(server):
+                    empty_servers.append(server)
+                    warn_server_inactivity(server)
+
+            else:
+                if not server_has_players(server):
+                    shutdown_server_inactivity(server)
+                empty_servers.remove(server)
+
+    @check_empty_servers.before_loop
+    async def before_check_empty_servers(self):
+        await self.bot.wait_until_ready()
+
 
 class Game:
     def __init__(self, players: list[discord.Member]):
@@ -1278,9 +1306,6 @@ async def setup(bot: commands.Bot) -> None:
         guilds=[guild]
     )
 
-    # background thread for running schedule tasks
-    ScheduleThread().start()
-
 
 def shutdown_server_inactivity(server: int):
     # if server is in a ranked queue, clear the match
@@ -1332,58 +1357,3 @@ def warn_server_inactivity(server: int):
                         "Your ranked match has been inactive - if all players are not present within 10 minutes, the match will be cancelled."))
                     pass
             return
-
-
-@repeat(every(1).minute)
-def check_queue_joins():
-    """every hour, check if any queue_joins are older than 2 hours
-    if they are, remove them from the queue
-    if they are not, do nothing"""
-    logger.info("Checking queue joins...")
-    to_remove: list[tuple[PlayerQueue, discord.Member]] = []
-    for (queue, player), timestamp in queue_joins.items():
-        if (datetime.now() - timestamp).total_seconds() > 60:
-            logger.info("Found old queue join!")
-            if player in queue:
-                logger.info("Removing player from queue...")
-                queue.remove(player)
-                # send a message to the player
-                asyncio.create_task(player.send(
-                    "You have been removed from a queue because you have been in the queue for more than 2 hours."))
-            to_remove.append((queue, player))
-    for item in to_remove:
-        queue_joins.pop(item, None)
-
-    if cog:
-        asyncio.create_task(cog.update_ranked_display())
-
-
-@repeat(every(10).minutes)
-def check_empty_servers():
-    """every 10 minutes, check if any servers are empty
-    if it is empty, add it to the list of empty servers
-    if it was empty last time we checked, stop the server
-    if it is not empty, remove it from the list of empty servers"""
-
-    # remove servers that have closed
-    for server in empty_servers.copy():
-        if server not in servers_active:
-            empty_servers.remove(server)
-
-    for server in servers_active:
-        if server not in empty_servers:
-            if not server_has_players(server):
-                empty_servers.append(server)
-                warn_server_inactivity(server)
-
-        else:
-            if not server_has_players(server):
-                shutdown_server_inactivity(server)
-            empty_servers.remove(server)
-
-
-class ScheduleThread(Thread):
-    @classmethod
-    def run(cls):
-        run_pending()
-        sleep(1)
