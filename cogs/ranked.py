@@ -1147,7 +1147,7 @@ class Ranked(commands.Cog):
             if server not in servers_active:
                 empty_servers.remove(server)
 
-        for server in servers_active:
+        for server in servers_active.copy():
             if server not in empty_servers:
                 if not (await server_has_players(server)):
                     empty_servers.append(server)
@@ -1326,12 +1326,10 @@ async def server_has_players(server: int) -> bool:
 
     process.stdin.write(b"PLAYERS\\n")
     process.stdin.flush()
-    # process.stdin.write(b"PLAYERS\n")
-    # process.stdin.flush()
 
     while True:
         line = process.stdout.readline().decode("utf-8")
-        logger.info(f"Server {server} stdout: {line}")
+        logger.info(f"Server {server} (pre) stdout: {line}")
         if not line == b'_BEGIN_\n':
             break
 
