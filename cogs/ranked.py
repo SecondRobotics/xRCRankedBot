@@ -226,6 +226,8 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, shell=True
     )
 
+    last_active[port] = datetime.now()
+
     logger.info(f"Server launched on port {port}: '{comment}'")
     return f"✅ Launched server '{comment}' on port {port}", port
 
@@ -238,6 +240,7 @@ def stop_server_process(port: int):
 
     servers_active[port].terminate()
     del servers_active[port]
+    del last_active[port]
 
     logger.info(f"Server on port {port} shut down")
     return f"✅ Server on port {port} shut down"
@@ -1140,23 +1143,21 @@ class Ranked(commands.Cog):
         if it is empty, add it to the list of empty servers
         if it was empty last time we checked, stop the server
         if it is not empty, remove it from the list of empty servers"""
-        logger.info("Checking empty servers")
-
-        # remove servers that have closed
-        for server in empty_servers.copy():
-            if server not in servers_active:
-                empty_servers.remove(server)
 
         for server in servers_active.copy():
-            if server not in empty_servers:
-                if not (await server_has_players(server)):
-                    empty_servers.append(server)
-                    warn_server_inactivity(server)
-
+            if (await server_has_players(server)):
+                # server is active
+                last_active[server] = datetime.now()
             else:
-                if not (await server_has_players(server)):
-                    shutdown_server_inactivity(server)
-                empty_servers.remove(server)
+                # server is inactive
+                if server not in last_active:
+                    last_active[server] = datetime.now()
+                elif (datetime.now() - last_active[server]).total_seconds() > 60 * 15:
+                    # inactive for 15 minutes
+                    await shutdown_server_inactivity(server)
+                elif (datetime.now() - last_active[server]).total_seconds() > 60 * 10:
+                    # inactive for 10 minutes
+                    await warn_server_inactivity(server)
 
     @check_empty_servers.before_loop
     async def before_check_empty_servers(self):
@@ -1243,8 +1244,8 @@ class OrderedSet(MutableSet):
 
 # dict of tuple of queue and player to timestamp when joined queue
 queue_joins = {}  # type: dict[tuple[PlayerQueue, discord.Member], datetime]
-# list of servers (port numbers) that were empty last time we checked
-empty_servers: list[int] = []
+# dict of servers (port numbers) to the time they were last active
+last_active = {}  # type: dict[int, datetime]
 
 
 class PlayerQueue(Queue):
@@ -1285,20 +1286,20 @@ async def setup(bot: commands.Bot) -> None:
     )
 
 
-def shutdown_server_inactivity(server: int):
+async def shutdown_server_inactivity(server: int):
     # if server is in a ranked queue, clear the match
     for queue in game_queues.values():
         if queue.server_port == server:
             if cog and guild:
-                task = asyncio.create_task(cog.do_clear_match(guild, queue))
-                task.add_done_callback(lambda _: logger.info(
-                    f"Match cleared for server {server} due to inactivity"))
+                await cog.do_clear_match(guild, queue)
+                logger.info(
+                    f"Match cleared for server {server} due to inactivity")
 
             if queue.game:
                 for player in queue.game.players:
                     # send a message to the players
-                    asyncio.create_task(player.send(
-                        "Your ranked match has been cancelled due to inactivity."))
+                    await player.send(
+                        "Your ranked match has been cancelled due to inactivity.")
 
             # TODO: punish players that dodged
             return
@@ -1329,19 +1330,15 @@ async def server_has_players(server: int) -> bool:
 
     while True:
         line = process.stdout.readline().decode("utf-8")
-        logger.info(f"Server {server} (pre) stdout: {line}")
         if not line == b'_BEGIN_\n':
             break
 
     players = []
     while True:
         line = process.stdout.readline().decode("utf-8")
-        logger.info(f"Server {server} stdout: {line}")
         if line == b'_END_\n':
             break
         players.append(line.strip())
-
-    logger.info(f"Server {server} players: {players}")
 
     if len(players) >= needed_players:
         return True
@@ -1349,14 +1346,14 @@ async def server_has_players(server: int) -> bool:
     return False
 
 
-def warn_server_inactivity(server: int):
+async def warn_server_inactivity(server: int):
     # if server is in a ranked queue, send a message to the players
     for queue in game_queues.values():
         if queue.server_port == server:
             if queue.game:
                 for player in queue.game.players:
                     # send a message to the players
-                    asyncio.create_task(player.send(
-                        "Your ranked match has been inactive - if all players are not present within 10 minutes, the match will be cancelled."))
+                    await player.send(
+                        "Your ranked match has been inactive - if all players are not present within 5 minutes, the match will be cancelled.")
                     pass
             return
