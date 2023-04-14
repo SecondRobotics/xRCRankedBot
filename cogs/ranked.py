@@ -423,6 +423,9 @@ class Ranked(commands.Cog):
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="queue", description="Add yourself to the queue")
     async def q(self, interaction: discord.Interaction, game: str):
+        await self.queue_player(interaction, game)
+
+    async def queue_player(self, interaction: discord.Interaction, game: str):
         """Enter's player into queue for upcoming matches"""
         logger.info(f"{interaction.user.name} called /q")
 
@@ -859,7 +862,18 @@ class Ranked(commands.Cog):
         embed.add_field(name=f'🟦 BLUE 🟦 *({blue_score})*',
                         value=f"{blue_out}",
                         inline=True)
-        await interaction.channel.send(embed=embed)
+
+        class RejoinQueueView(discord.ui.View):
+            def __init__(self, qdata: XrcGame, cog: Ranked):
+                super().__init__()
+                self.qdata = qdata
+                self.cog = cog
+
+            @discord.ui.button(label="Rejoin Queue", style=discord.ButtonStyle.blurple)
+            async def rejoin_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
+                await self.cog.queue_player(interaction, self.qdata.api_short)
+
+        await interaction.channel.send(embed=embed, view=RejoinQueueView(qdata, self))
 
     async def random(self, interaction, game_type):
         logger.info("randomizing")
@@ -1077,8 +1091,8 @@ class Ranked(commands.Cog):
     #     df = gspread_dataframe.get_as_dataframe(wks)
     #     logger.info(df["Match Number"].iloc[0])
 
-    @app_commands.choices(game=games_choices)
-    @app_commands.command(name="clearmatch", description="Clears current running match")
+    @ app_commands.choices(game=games_choices)
+    @ app_commands.command(name="clearmatch", description="Clears current running match")
     async def clearmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /clearmatch")
         qdata = game_queues[game]
@@ -1108,7 +1122,7 @@ class Ranked(commands.Cog):
         else:
             await interaction.response.send_message("You don't have permission to do that!", ephemeral=True)
 
-    @app_commands.command(name="rules", description="Posts a link the the rules")
+    @ app_commands.command(name="rules", description="Posts a link the the rules")
     async def rules(self, interaction: discord.Interaction):
         logger.info(f"{interaction.user.name} called /rules")
         await interaction.response.send_message("The rules can be found here: <#700411727430418464>")
