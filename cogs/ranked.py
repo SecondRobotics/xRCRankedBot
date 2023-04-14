@@ -1127,7 +1127,7 @@ class Ranked(commands.Cog):
         await interaction.response.send_message("The rules can be found here: <#700411727430418464>")
 
     @tasks.loop(minutes=1)
-    async def check_queue_joins():
+    async def check_queue_joins(self):
         """every hour, check if any queue_joins are older than 2 hours
         if they are, remove them from the queue
         if they are not, do nothing"""
