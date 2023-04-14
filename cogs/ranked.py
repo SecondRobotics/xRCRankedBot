@@ -1134,12 +1134,13 @@ class Ranked(commands.Cog):
         await self.bot.wait_until_ready()
         await asyncio.sleep(5)
 
-    @tasks.loop(minutes=10)
+    @tasks.loop(minutes=1)
     async def check_empty_servers(self):
         """every 10 minutes, check if any servers are empty
         if it is empty, add it to the list of empty servers
         if it was empty last time we checked, stop the server
         if it is not empty, remove it from the list of empty servers"""
+        logger.info("Checking empty servers")
 
         # remove servers that have closed
         for server in empty_servers.copy():
@@ -1327,14 +1328,14 @@ async def server_has_players(server: int) -> bool:
     process.stdin.flush()
 
     while True:
-        line = await process.stdout.readline()
+        line = process.stdout.readline()
         logger.info(f"Server {server} stdout: {line}")
         if not line == b'_BEGIN_\n':
             break
 
     players = []
     while True:
-        line = await process.stdout.readline()
+        line = process.stdout.readline()
         logger.info(f"Server {server} stdout: {line}")
         if line == b'_END_\n':
             break
