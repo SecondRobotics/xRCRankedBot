@@ -23,11 +23,8 @@ if not SRC_API_TOKEN:
     logger.fatal('SRC_API_TOKEN not found')
     raise RuntimeError('SRC_API_TOKEN not found')
 
-team_size = 6
-team_size_alt = 4
-approved_channels = [824691989366046750, 712297302857089025,
-                     650967104933330947, 754569102873460776, 754569222260129832]
-header = {"x-api-key": SRC_API_TOKEN}
+QUEUE_CHANNEL = 824691989366046750
+HEADER = {"x-api-key": SRC_API_TOKEN}
 
 PORTS = [11115, 11116, 11117, 11118, 11119, 11120]
 # dictionary mapping port number to process of running server
@@ -155,8 +152,6 @@ class XrcGame():
 def create_game(game_type):
     qdata = game_queues[game_type]
     offset = qdata.queue.qsize() - qdata.game_size
-    logger.info(offset)
-    logger.info(qdata.game_size)
     qsize = qdata.queue.qsize()
     players = [qdata.queue.get() for _ in range(qsize)]
     qdata.game = Game(players[0 + offset:qdata.game_size + offset])
@@ -165,6 +160,14 @@ def create_game(game_type):
     players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
     for player in players:
         qdata.queue.put(player)
+
+    # Remove selected players from all other queues
+    for game in game_queues.values():
+        if game.game_type != game_type:
+            for player in qdata.game.players:
+                if player in game.queue:
+                    game.queue.remove(player)
+
     return qdata
 
 
@@ -420,10 +423,10 @@ class Ranked(commands.Cog):
 
         url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
 
-        x = requests.get(url, headers=header)
-        thing = x.json()
+        x = requests.get(url, headers=HEADER)
+        res = x.json()
 
-        if not thing["exists"]:
+        if not res["exists"]:
             await interaction.response.send_message(
                 "You must register for an account at <https://www.secondrobotics.org/login> before you can queue.",
                 ephemeral=True)
@@ -432,26 +435,24 @@ class Ranked(commands.Cog):
         qdata = game_queues[game]
 
         if (isinstance(interaction.channel, discord.TextChannel) and
-                interaction.channel.id in approved_channels and
+                interaction.channel.id == QUEUE_CHANNEL and
                 isinstance(interaction.user, discord.Member)):
             player = interaction.user
             channel = interaction.channel
             if player in qdata.queue:
                 await interaction.response.send_message("You are already in this queue.", ephemeral=True)
                 return
-            if channel.id == 824691989366046750:
-                roles = [y.id for y in interaction.user.roles]
-                if qdata.red_role is None or qdata.blue_role is None:
-                    pass
-                else:
-                    ranked_roles = [qdata.red_role.id, qdata.blue_role.id]
-                    # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
-                    queue_check = bool(set(roles).intersection(ranked_roles))
-                    if queue_check:
-                        await interaction.response.send_message("You are already playing in a game!", ephemeral=True)
-                        return
+
+            roles = [y.id for y in interaction.user.roles]
+            if qdata.red_role is None or qdata.blue_role is None:
+                pass
             else:
-                await interaction.response.send_message("You can't queue in this channel.", ephemeral=True)
+                ranked_roles = [qdata.red_role.id, qdata.blue_role.id]
+                # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
+                queue_check = bool(set(roles).intersection(ranked_roles))
+                if queue_check:
+                    await interaction.response.send_message("You are already playing in a game!", ephemeral=True)
+                    return
 
             qdata.queue.put(player)
             await self.update_ranked_display()
@@ -464,6 +465,8 @@ class Ranked(commands.Cog):
                 else:
                     await interaction.channel.send(
                         f"Queue for {qdata.full_game_name} is now full! You can start as soon as the current match concludes.")
+        else:
+            await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
 
     #
     @app_commands.choices(game=games_choices)
@@ -498,7 +501,7 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /leave")
         qdata = game_queues[game]
 
-        if isinstance(interaction.channel, discord.TextChannel) and interaction.channel.id in approved_channels:
+        if isinstance(interaction.channel, discord.TextChannel) and interaction.channel.id == QUEUE_CHANNEL:
             player = interaction.user
             if player in qdata.queue:
                 qdata.queue.remove(player)
@@ -510,6 +513,8 @@ class Ranked(commands.Cog):
             else:
                 await interaction.response.send_message("You aren't in this queue.", ephemeral=True)
                 return
+        else:
+            await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Remove someone else from the queue")
@@ -517,7 +522,7 @@ class Ranked(commands.Cog):
     async def kick(self, interaction: discord.Interaction, player: discord.Member, game: str):
         logger.info(f"{interaction.user.name} called /kick")
         qdata = game_queues[game]
-        if isinstance(interaction.channel, discord.TextChannel) and interaction.channel.id in approved_channels:
+        if isinstance(interaction.channel, discord.TextChannel) and interaction.channel.id == QUEUE_CHANNEL:
             if player in qdata.queue:
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
@@ -577,13 +582,11 @@ class Ranked(commands.Cog):
             await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
 
-        await interaction.response.defer()
+        if interaction.channel is None or interaction.channel.id == QUEUE_CHANNEL:
+            await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
+            return
 
-        if interaction.channel is not None and (
-                interaction.channel.id == 712297302857089025 or
-                interaction.channel.id == 754569222260129832 or
-                interaction.channel.id == 754569102873460776):
-            return await self.random(interaction, game)
+        await interaction.response.defer()
 
         password = str(random.randint(100, 999))
         min_players = games_players[game]
@@ -595,13 +598,7 @@ class Ranked(commands.Cog):
             qdata.server_port = port
             qdata.server_password = password
         await self.update_ranked_display()
-        chooser = random.randint(1, 10)
-        if chooser < 0:  # 6
-            logger.info("Captains")
-            # await self.captains(interaction)
-        else:
-            logger.info("Randoms")
-            await self.random(interaction, game)
+        await self.random(interaction, game)
 
     # async def captains(self, ctx):
     #     qdata = self.get_queue(ctx)
@@ -726,7 +723,7 @@ class Ranked(commands.Cog):
         logger.info(game)
         qdata = game_queues[game]
         if (isinstance(interaction.channel, discord.TextChannel) and
-                interaction.channel.id == 824691989366046750 and
+                interaction.channel.id == QUEUE_CHANNEL and
                 isinstance(interaction.user, discord.Member)):
             roles = [y.id for y in interaction.user.roles]
 
@@ -753,6 +750,7 @@ class Ranked(commands.Cog):
                 await interaction.followup.send("Series is complete already!", ephemeral=True)
                 return
         else:
+            await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
             return
         logger.info("Checking ")
         # Red wins
@@ -824,7 +822,7 @@ class Ranked(commands.Cog):
             "red_score": red_score,
             "blue_score": blue_score
         }
-        x = requests.post(url, json=json, headers=header)
+        x = requests.post(url, json=json, headers=HEADER)
         logger.info(x.json())
         response = x.json()
         # Getting match Number
@@ -1064,6 +1062,7 @@ class Ranked(commands.Cog):
 
         msg = await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}")
         await msg.delete(delay=30)
+        await self.update_ranked_display()
 
     # @commands.command(description="Submit Score (WIP)")
     # async def matchnum(self, ctx):
