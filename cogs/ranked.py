@@ -222,7 +222,8 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
          f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
          f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
          f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
-         f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}", f"MinPlayers={min_players}"]
+         f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}", f"MinPlayers={min_players}"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, shell=False
     )
 
     logger.info(f"Server launched on port {port}: '{comment}'")
@@ -1171,12 +1172,12 @@ class Ranked(commands.Cog):
 
         for server in servers_active:
             if server not in empty_servers:
-                if not server_has_players(server):
+                if not (await server_has_players(server)):
                     empty_servers.append(server)
                     warn_server_inactivity(server)
 
             else:
-                if not server_has_players(server):
+                if not (await server_has_players(server)):
                     shutdown_server_inactivity(server)
                 empty_servers.remove(server)
 
@@ -1329,7 +1330,7 @@ def shutdown_server_inactivity(server: int):
     stop_server_process(server)
 
 
-def server_has_players(server: int) -> bool:
+async def server_has_players(server: int) -> bool:
     """
     Check if the server has players on it
     For casual matches, this is just if at least one player is present
@@ -1341,9 +1342,34 @@ def server_has_players(server: int) -> bool:
             needed_players = queue.game_size
             break
 
-    # TODO: read players from xrc server stdout
+    # read players from xrc server stdout
+    process = servers_active.get(server, None)
+    if process is None or process.poll() is not None or process.stdout is None or process.stdin is None:
+        return False
 
-    return True
+    process.stdin.write(b"PLAYERS\n")
+    process.stdin.flush()
+
+    while True:
+        line = await process.stdout.readline()
+        logger.info(f"Server {server} stdout: {line}")
+        if not line == b'_BEGIN_\n':
+            break
+
+    players = []
+    while True:
+        line = await process.stdout.readline()
+        logger.info(f"Server {server} stdout: {line}")
+        if line == b'_END_\n':
+            break
+        players.append(line.decode().strip())
+
+    logger.info(f"Server {server} players: {players}")
+
+    if len(players) >= needed_players:
+        return True
+
+    return False
 
 
 def warn_server_inactivity(server: int):
