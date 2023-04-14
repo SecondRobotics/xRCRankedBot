@@ -1147,6 +1147,10 @@ class Ranked(commands.Cog):
                     queue_joins.pop((queue, player))
         await self.update_ranked_display()
 
+    @check_queue_joins.before_loop
+    async def before_check_queue_joins(self):
+        await self.bot.wait_until_ready()
+
 
 class Game:
     def __init__(self, players):
