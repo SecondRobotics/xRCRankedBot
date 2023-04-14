@@ -26,7 +26,13 @@ if not SRC_API_TOKEN:
     logger.fatal('SRC_API_TOKEN not found')
     raise RuntimeError('SRC_API_TOKEN not found')
 
+GUILD_ID = 637407041048281098
 QUEUE_CHANNEL = 824691989366046750
+
+team_size = 6
+team_size_alt = 4
+approved_channels = [824691989366046750, 712297302857089025,
+                     650967104933330947, 754569102873460776, 754569222260129832]
 HEADER = {"x-api-key": SRC_API_TOKEN}
 
 PORTS = [11115, 11116, 11117, 11118, 11119, 11120]
@@ -109,21 +115,6 @@ server_restart_modes = {
 }
 
 
-async def remove_roles(ctx, qdata):
-    # Remove any current roles
-
-    red_check = get(ctx.user.guild.roles, name=f"Red {qdata.full_game_name}")
-    blue_check = get(ctx.user.guild.roles, name=f"Blue {qdata.full_game_name}")
-    for player in red_check.members:
-        to_change = get(ctx.user.guild.roles, name="Ranked Red")
-        await player.remove_roles(to_change)
-    for player in blue_check.members:
-        to_change = get(ctx.user.guild.roles, name="Ranked Blue")
-        await player.remove_roles(to_change)
-    await qdata.red_role.delete()
-    await qdata.blue_role.delete()
-
-
 class XrcGame():
     def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
         self.queue = PlayerQueue()
@@ -152,11 +143,23 @@ class XrcGame():
             self.game_icon = None
 
 
+async def remove_roles(guild: discord.Guild, qdata: XrcGame):
+    # Remove any current roles
+
+    red_check = get(guild.roles, name=f"Red {qdata.full_game_name}")
+    blue_check = get(guild.roles, name=f"Blue {qdata.full_game_name}")
+    if red_check:
+        await red_check.delete()
+    if blue_check:
+        await blue_check.delete()
+
+
 def create_game(game_type):
     qdata = game_queues[game_type]
     offset = qdata.queue.qsize() - qdata.game_size
     qsize = qdata.queue.qsize()
-    players = [qdata.queue.get() for _ in range(qsize)]
+    players = [qdata.queue.get()
+               for _ in range(qsize)]  # type: list[discord.Member]
     qdata.game = Game(players[0 + offset:qdata.game_size + offset])
     for player in players[0:offset]:
         qdata.queue.put(player)
@@ -219,7 +222,8 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
          f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
          f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
          f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
-         f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}", f"MinPlayers={min_players}"]
+         f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}", f"MinPlayers={min_players}"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, shell=False
     )
 
     logger.info(f"Server launched on port {port}: '{comment}'")
@@ -244,6 +248,7 @@ class Ranked(commands.Cog):
         self.bot = bot
         self.ranked_display = None
         self.check_queue_joins.start()
+        self.check_empty_servers.start()
 
     async def update_ranked_display(self):
         if self.ranked_display is None:
@@ -580,7 +585,6 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /startmatch")
 
         qdata = game_queues[game]
-        logger.info(qdata.red_series)
         if not qdata.queue.qsize() >= qdata.game_size:
             await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
@@ -729,7 +733,6 @@ class Ranked(commands.Cog):
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
-        logger.info(game)
         qdata = game_queues[game]
         if (isinstance(interaction.channel, discord.TextChannel) and
                 interaction.channel.id == QUEUE_CHANNEL and
@@ -749,19 +752,12 @@ class Ranked(commands.Cog):
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
 
-            logger.info(qdata.red_series)
-            logger.info(qdata.blue_series)
             if qdata.red_series == 2 or qdata.blue_series == 2:
-                logger.info("INSIDE")
-                logger.info(qdata.red_series)
-                logger.info(qdata.blue_series)
-                logger.info(interaction)
                 await interaction.followup.send("Series is complete already!", ephemeral=True)
                 return
         else:
             await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
             return
-        logger.info("Checking ")
         # Red wins
         if int(red_score) > int(blue_score):
             qdata.red_series += 1
@@ -770,13 +766,11 @@ class Ranked(commands.Cog):
         elif int(red_score) < int(blue_score):
             qdata.blue_series += 1
 
-        logger.info(f"Red {qdata.red_series}")
-        logger.info(f"Blue {qdata.blue_series}")
         gg = True
         if qdata.red_series == 2:
             # await self.queue_auto(interaction)
             await interaction.followup.send("🟥 Red Wins! 🟥")
-            await remove_roles(interaction, qdata)
+            await remove_roles(interaction.user.guild, qdata)
 
             if qdata.server_port:
                 stop_server_process(qdata.server_port)
@@ -795,7 +789,7 @@ class Ranked(commands.Cog):
         elif qdata.blue_series == 2:
             # await self.queue_auto(interaction)
             await interaction.followup.send("🟦 Blue Wins! 🟦")
-            await remove_roles(interaction, qdata)
+            await remove_roles(interaction.user.guild, qdata)
 
             if qdata.server_port:
                 stop_server_process(qdata.server_port)
@@ -811,12 +805,9 @@ class Ranked(commands.Cog):
                     await member.move_to(lobby)
                 await qdata.blue_channel.delete()
         else:
-            logger.info(interaction)
             await interaction.followup.send("Score Submitted")
-            logger.info("got here")
             gg = False
 
-        logger.info("Blah")
         # Finding player ids
         red_ids = []
         blue_ids = []
@@ -880,25 +871,18 @@ class Ranked(commands.Cog):
             await interaction.channel.send(embed=embed)
 
     async def random(self, interaction, game_type):
-        logger.info("randomizing")
         qdata = create_game(game_type)
 
         if not qdata.game:
             await interaction.followup.send("No game found", ephemeral=True)
             return
 
-        logger.info(f"players: {qdata.game.players}")
-        logger.info(f"Team size {qdata.team_size}")
         red = random.sample(qdata.game.players, int(qdata.team_size))
-        logger.info(red)
         for player in red:
-            logger.info(player)
             qdata.game.add_to_red(player)
 
         blue = list(qdata.game.players)
-        logger.info(blue)
         for player in blue:
-            logger.info(player)
             qdata.game.add_to_blue(player)
 
         await self.display_teams(interaction, qdata)
@@ -1049,28 +1033,24 @@ class Ranked(commands.Cog):
                                                                  category=category, overwrites=overwrites_red)
         qdata.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
                                                                   category=category, overwrites=overwrites_blue)
-        logger.info(qdata.blue_role)
-        logger.info(qdata.red_role)
 
         for player in qdata.game.red:
             await player.add_roles(discord.utils.get(ctx.guild.roles, id=qdata.red_role.id))
             try:
                 await player.move_to(qdata.red_channel)
             except Exception as e:
-                logger.info(e)
+                logger.error(e)
                 pass
         for player in qdata.game.blue:
             await player.add_roles(discord.utils.get(ctx.guild.roles, id=qdata.blue_role.id))
             try:
                 await player.move_to(qdata.blue_channel)
             except Exception as e:
-                logger.info(e)
+                logger.error(e)
                 pass
-        logger.info("Roles Created")
 
         description = f"Server started for you on port {qdata.server_port} with password {qdata.server_password}" if qdata.server_port else None
 
-        logger.info(qdata.game.red)
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description)
         embed.set_thumbnail(url=qdata.game_icon)
@@ -1103,28 +1083,30 @@ class Ranked(commands.Cog):
 
         if (isinstance(interaction.user, discord.Member) and
                 699094822132121662 in [y.id for y in interaction.user.roles]):
-            if qdata.server_port:
-                stop_server_process(qdata.server_port)
-
-            qdata.red_series = 2
-            qdata.blue_series = 2
-
-            await remove_roles(interaction, qdata)
-
-            # kick to lobby
-            lobby = self.bot.get_channel(824692700364275743)
-            if qdata.red_channel:
-                for member in qdata.red_channel.members:
-                    await member.move_to(lobby)
-                await qdata.red_channel.delete()
-            if qdata.blue_channel:
-                for member in qdata.blue_channel.members:
-                    await member.move_to(lobby)
-                await qdata.blue_channel.delete()
-
+            await self.do_clear_match(interaction.user.guild, qdata)
             await interaction.response.send_message("Cleared successfully!")
         else:
             await interaction.response.send_message("You don't have permission to do that!", ephemeral=True)
+
+    async def do_clear_match(self, guild: discord.Guild, qdata: XrcGame):
+        if qdata.server_port:
+            stop_server_process(qdata.server_port)
+
+        qdata.red_series = 2
+        qdata.blue_series = 2
+
+        await remove_roles(guild, qdata)
+
+        # kick to lobby
+        lobby = self.bot.get_channel(824692700364275743)
+        if qdata.red_channel:
+            for member in qdata.red_channel.members:
+                await member.move_to(lobby)
+            await qdata.red_channel.delete()
+        if qdata.blue_channel:
+            for member in qdata.blue_channel.members:
+                await member.move_to(lobby)
+            await qdata.blue_channel.delete()
 
     @ app_commands.command(name="rules", description="Posts a link the the rules")
     async def rules(self, interaction: discord.Interaction):
@@ -1150,10 +1132,38 @@ class Ranked(commands.Cog):
     @check_queue_joins.before_loop
     async def before_check_queue_joins(self):
         await self.bot.wait_until_ready()
+        await asyncio.sleep(5)
+
+    @tasks.loop(minutes=10)
+    async def check_empty_servers(self):
+        """every 10 minutes, check if any servers are empty
+        if it is empty, add it to the list of empty servers
+        if it was empty last time we checked, stop the server
+        if it is not empty, remove it from the list of empty servers"""
+
+        # remove servers that have closed
+        for server in empty_servers.copy():
+            if server not in servers_active:
+                empty_servers.remove(server)
+
+        for server in servers_active:
+            if server not in empty_servers:
+                if not (await server_has_players(server)):
+                    empty_servers.append(server)
+                    warn_server_inactivity(server)
+
+            else:
+                if not (await server_has_players(server)):
+                    shutdown_server_inactivity(server)
+                empty_servers.remove(server)
+
+    @check_empty_servers.before_loop
+    async def before_check_empty_servers(self):
+        await self.bot.wait_until_ready()
 
 
 class Game:
-    def __init__(self, players):
+    def __init__(self, players: list[discord.Member]):
         self.players = set(players)
         if len(players) > 2:
             self.captains = random.sample(self.players, 2)
@@ -1259,9 +1269,93 @@ class PlayerQueue(Queue):
 game_queues = {game['short_code']: XrcGame(
     game['game'], game['players_per_alliance'], game['short_code'], game['name']) for game in games}
 
+cog = None  # type: Ranked | None
+guild = None  # type: discord.Guild | None
+
 
 async def setup(bot: commands.Bot) -> None:
+    cog = Ranked(bot)
+    guild = await bot.fetch_guild(GUILD_ID)
+    assert guild is not None
+
     await bot.add_cog(
-        Ranked(bot),
-        guilds=[discord.Object(id=637407041048281098)]
+        cog,
+        guilds=[guild]
     )
+
+
+def shutdown_server_inactivity(server: int):
+    # if server is in a ranked queue, clear the match
+    for queue in game_queues.values():
+        if queue.server_port == server:
+            if cog and guild:
+                task = asyncio.create_task(cog.do_clear_match(guild, queue))
+                task.add_done_callback(lambda _: logger.info(
+                    f"Match cleared for server {server} due to inactivity"))
+
+            if queue.game:
+                for player in queue.game.players:
+                    # send a message to the players
+                    asyncio.create_task(player.send(
+                        "Your ranked match has been cancelled due to inactivity."))
+
+            # TODO: punish players that dodged
+            return
+
+    # otherwise, just stop the process
+    stop_server_process(server)
+
+
+async def server_has_players(server: int) -> bool:
+    """
+    Check if the server has players on it
+    For casual matches, this is just if at least one player is present
+    For ranked matches, this is if the match is full
+    """
+    needed_players = 1
+    for queue in game_queues.values():
+        if queue.server_port == server:
+            needed_players = queue.game_size
+            break
+
+    # read players from xrc server stdout
+    process = servers_active.get(server, None)
+    if process is None or process.poll() is not None or process.stdout is None or process.stdin is None:
+        return False
+
+    process.stdin.write(b"PLAYERS\n")
+    process.stdin.flush()
+
+    while True:
+        line = await process.stdout.readline()
+        logger.info(f"Server {server} stdout: {line}")
+        if not line == b'_BEGIN_\n':
+            break
+
+    players = []
+    while True:
+        line = await process.stdout.readline()
+        logger.info(f"Server {server} stdout: {line}")
+        if line == b'_END_\n':
+            break
+        players.append(line.decode().strip())
+
+    logger.info(f"Server {server} players: {players}")
+
+    if len(players) >= needed_players:
+        return True
+
+    return False
+
+
+def warn_server_inactivity(server: int):
+    # if server is in a ranked queue, send a message to the players
+    for queue in game_queues.values():
+        if queue.server_port == server:
+            if queue.game:
+                for player in queue.game.players:
+                    # send a message to the players
+                    asyncio.create_task(player.send(
+                        "Your ranked match has been inactive - if all players are not present within 10 minutes, the match will be cancelled."))
+                    pass
+            return
