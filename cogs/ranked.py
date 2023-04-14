@@ -246,6 +246,7 @@ class Ranked(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.ranked_display = None
+        self.check_queue_joins.start()
 
     async def update_ranked_display(self):
         if self.ranked_display is None:
