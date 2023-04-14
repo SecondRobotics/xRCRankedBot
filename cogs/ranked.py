@@ -410,7 +410,7 @@ class Ranked(commands.Cog):
         members = [member1, member2, member3, member4, member5, member6]
         members_clean = [i for i in members if i]
         added_players = ""
-        if interaction.user.id == 118000175816900615:
+        if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
             for member in members_clean:
                 qdata.queue.put(member)
                 added_players += f"{member.display_name}\n"
