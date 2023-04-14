@@ -1126,25 +1126,20 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /rules")
         await interaction.response.send_message("The rules can be found here: <#700411727430418464>")
 
-    @tasks.loop(minutes=1)
+    @tasks.loop(seconds=20)
     async def check_queue_joins(self):
         """every hour, check if any queue_joins are older than 2 hours
         if they are, remove them from the queue
         if they are not, do nothing"""
-        logger.info("Checking queue joins...")
-        to_remove: list[tuple[PlayerQueue, discord.Member]] = []
-        for (queue, player), timestamp in queue_joins.items():
-            if (datetime.now() - timestamp).total_seconds() > 60:
-                logger.info("Found old queue join!")
+        for (queue, player), timestamp in queue_joins.copy().items():
+            if (datetime.now() - timestamp).total_seconds() > 10:
                 if player in queue:
-                    logger.info("Removing player from queue...")
                     queue.remove(player)
                     # send a message to the player
                     await player.send(
                         "You have been removed from a queue because you have been in the queue for more than 2 hours.")
-                to_remove.append((queue, player))
-        for item in to_remove:
-            queue_joins.pop(item, None)
+                else:
+                    queue_joins.pop((queue, player))
 
 
 class Game:
