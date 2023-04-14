@@ -1243,14 +1243,14 @@ async def setup(bot: commands.Bot) -> None:
     )
 
 
-@repeat(every(1).hour)
+@repeat(every(1).minute)
 def check_queue_joins():
     """every hour, check if any queue_joins are older than 2 hours
     if they are, remove them from the queue
     if they are not, do nothing"""
     to_remove: list[tuple[PlayerQueue, discord.Member]] = []
     for (queue, player), timestamp in queue_joins.items():
-        if (datetime.now() - timestamp).total_seconds() > 60 * 60 * 2:
+        if (datetime.now() - timestamp).total_seconds() > 60:
             if player in queue:
                 queue.remove(player)
                 # send a message to the player
