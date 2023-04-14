@@ -16,9 +16,7 @@ import os
 from discord.app_commands import Choice
 import zipfile
 import shutil
-from schedule import repeat, every, run_pending
-from threading import Thread
-from time import sleep
+from discord.ext import tasks
 
 logger = logging.getLogger('discord')
 load_dotenv()
@@ -1127,6 +1125,26 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /rules")
         await interaction.response.send_message("The rules can be found here: <#700411727430418464>")
 
+    @tasks.loop(minutes=1)
+    async def check_queue_joins():
+        """every hour, check if any queue_joins are older than 2 hours
+        if they are, remove them from the queue
+        if they are not, do nothing"""
+        logger.info("Checking queue joins...")
+        to_remove: list[tuple[PlayerQueue, discord.Member]] = []
+        for (queue, player), timestamp in queue_joins.items():
+            if (datetime.now() - timestamp).total_seconds() > 60:
+                logger.info("Found old queue join!")
+                if player in queue:
+                    logger.info("Removing player from queue...")
+                    queue.remove(player)
+                    # send a message to the player
+                    await player.send(
+                        "You have been removed from a queue because you have been in the queue for more than 2 hours.")
+                to_remove.append((queue, player))
+        for item in to_remove:
+            queue_joins.pop(item, None)
+
 
 class Game:
     def __init__(self, players):
@@ -1241,37 +1259,3 @@ async def setup(bot: commands.Bot) -> None:
         Ranked(bot),
         guilds=[discord.Object(id=637407041048281098)]
     )
-
-
-@repeat(every(1).minute)
-def check_queue_joins():
-    """every hour, check if any queue_joins are older than 2 hours
-    if they are, remove them from the queue
-    if they are not, do nothing"""
-    logger.info("Checking queue joins...")
-    to_remove: list[tuple[PlayerQueue, discord.Member]] = []
-    for (queue, player), timestamp in queue_joins.items():
-        if (datetime.now() - timestamp).total_seconds() > 60:
-            logger.info("Found old queue join!")
-            if player in queue:
-                logger.info("Removing player from queue...")
-                queue.remove(player)
-                # send a message to the player
-                task = asyncio.create_task(player.send(
-                    "You have been removed from a queue because you have been in the queue for more than 2 hours."))
-                task.add_done_callback(lambda _: logger.info(
-                    f"Sent message to {player.name}"))
-            to_remove.append((queue, player))
-    for item in to_remove:
-        queue_joins.pop(item, None)
-
-
-class ScheduleThread(Thread):
-    @classmethod
-    def run(cls):
-        run_pending()
-        sleep(1)
-
-
-# background thread for running schedule tasks
-ScheduleThread().start()
