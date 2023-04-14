@@ -772,6 +772,7 @@ class Ranked(commands.Cog):
 
         logger.info(f"Red {qdata.red_series}")
         logger.info(f"Blue {qdata.blue_series}")
+        gg = True
         if qdata.red_series == 2:
             # await self.queue_auto(interaction)
             await interaction.followup.send("🟥 Red Wins! 🟥")
@@ -813,6 +814,7 @@ class Ranked(commands.Cog):
             logger.info(interaction)
             await interaction.followup.send("Score Submitted")
             logger.info("got here")
+            gg = False
 
         logger.info("Blah")
         # Finding player ids
@@ -872,7 +874,10 @@ class Ranked(commands.Cog):
             async def rejoin_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await self.cog.queue_player(interaction, self.qdata.api_short)
 
-        await interaction.channel.send(embed=embed, view=RejoinQueueView(qdata, self))
+        if gg:
+            await interaction.channel.send(embed=embed, view=RejoinQueueView(qdata, self))
+        else:
+            await interaction.channel.send(embed=embed)
 
     async def random(self, interaction, game_type):
         logger.info("randomizing")
