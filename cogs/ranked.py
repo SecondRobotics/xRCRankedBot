@@ -1324,9 +1324,9 @@ async def server_has_players(server: int) -> bool:
     if process is None or process.poll() is not None or process.stdout is None or process.stdin is None:
         return False
 
-    process.stdin.write(b"PLAYERS\\n")
+    process.stdin.write("PLAYERS\\n")
     process.stdin.flush()
-    process.stdin.write(b"PLAYERS\\n")
+    process.stdin.write("PLAYERS\n")
     process.stdin.flush()
 
     while True:
