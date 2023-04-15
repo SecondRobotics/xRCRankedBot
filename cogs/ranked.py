@@ -223,7 +223,8 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
          f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
          f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
          f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}", f"MinPlayers={min_players}"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, shell=True
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, shell=False
+        # FIXME: shell=True needed for stdin to work
     )
 
     last_active[port] = datetime.now()
@@ -251,7 +252,7 @@ class Ranked(commands.Cog):
         self.bot = bot
         self.ranked_display = None
         self.check_queue_joins.start()
-        self.check_empty_servers.start()
+        # self.check_empty_servers.start() # FIXME: Disabled for now
 
     async def update_ranked_display(self):
         if self.ranked_display is None:
@@ -357,8 +358,6 @@ class Ranked(commands.Cog):
 
         await self.update_ranked_display()
         await interaction.response.send_message(f"Done", ephemeral=True)
-
-    # FIXME
 
     # @commands.command(pass_context=True)
     # async def autoq(self, ctx, command=None, command_ctx=None):
