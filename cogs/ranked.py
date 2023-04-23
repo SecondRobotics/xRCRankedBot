@@ -220,7 +220,7 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
         min_players = default_game_players[game] if game in default_game_players else 4
 
     # Open log file in append mode
-    f = open(f"server_logs/{port}.txt", "a")
+    f = open(f"./server_logs/{port}.log", "a")
     log_files[port] = f
     f.write(f"Server started at {datetime.now()}")
 
