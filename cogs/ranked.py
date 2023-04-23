@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+from io import TextIOWrapper
 import subprocess
 from typing import Dict, Optional
 from discord import app_commands
@@ -38,6 +39,7 @@ HEADER = {"x-api-key": SRC_API_TOKEN}
 PORTS = [11115, 11116, 11117, 11118, 11119, 11120]
 # dictionary mapping port number to process of running server
 servers_active: Dict[int, subprocess.Popen] = {}
+log_files: Dict[int, TextIOWrapper] = {}
 
 listener = commands.Cog.listener
 
@@ -217,14 +219,19 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
     if min_players == -1:
         min_players = default_game_players[game] if game in default_game_players else 4
 
+    # Open log file in append mode
+    f = open(f"server_logs/{port}.txt", "a")
+    log_files[port] = f
+    f.write(f"Server started at {datetime.now()}")
+
     servers_active[port] = subprocess.Popen(
         [server_path, "-batchmode", "-nographics", f"RouterPort={port}", f"Port={port}", f"Game={game}",
          f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
          f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
          f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
          f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}", f"MinPlayers={min_players}"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, shell=False
-        # FIXME: shell=True needed for stdin to work
+        stdout=f, stderr=f, shell=False
+        # FIXME: shell=True needed for stdin (stdin=subprocess.PIPE) to work
     )
 
     last_active[port] = datetime.now()
@@ -238,10 +245,13 @@ def stop_server_process(port: int):
         return f"⚠ Server on port {port} not found"
 
     logger.info(f"Shutting down server on port {port}")
+    log_files[port].write(f"Server shut down at {datetime.now()}")
 
     servers_active[port].terminate()
+    log_files[port].close()
     del servers_active[port]
     del last_active[port]
+    del log_files[port]
 
     logger.info(f"Server on port {port} shut down")
     return f"✅ Server on port {port} shut down"
