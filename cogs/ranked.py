@@ -761,8 +761,7 @@ class Ranked(commands.Cog):
         if 'error' in response:
             await interaction.followup.send(f"Error: {response['error']}")
         else:
-            await interaction.followup.send(f"Match edited successfully. Note: the series will \
-                                            not be updated to reflect this change, but elo will.")
+            await interaction.followup.send(f"Most recent match edited successfully. Note: the series will not be updated to reflect this change, but elo will.")
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Submit Score")
