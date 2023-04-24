@@ -740,6 +740,31 @@ class Ranked(commands.Cog):
     #     await ctx.channel.send(f"{red_check.mention} {blue_check.mention}")
 
     @app_commands.choices(game=games_choices)
+    @app_commands.command(description="Edits the last match score (in the event of a human error)", name="editmatch")
+    @app_commands.checks.has_any_role("Event Staff")
+    @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
+    async def edit_match(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
+        logger.info(f"{interaction.user.name} called /editmatch")
+        await interaction.response.defer()
+
+        qdata = game_queues[game]
+
+        url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
+        json = {
+            "red_score": red_score,
+            "blue_score": blue_score
+        }
+        x = requests.patch(url, json=json, headers=HEADER)
+        response = x.json()
+        logger.info(response)
+
+        if 'error' in response:
+            await interaction.followup.send(f"Error: {response['error']}")
+        else:
+            await interaction.followup.send(f"Match edited successfully. Note: the series will \
+                                            not be updated to reflect this change, but elo will.")
+
+    @app_commands.choices(game=games_choices)
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
