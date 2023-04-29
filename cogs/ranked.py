@@ -1049,7 +1049,7 @@ class Ranked(commands.Cog):
     #     all_members = ctx.message.guild.members
     #     await ctx.channel.send("Names updated")
 
-    async def display_teams(self, ctx, qdata):
+    async def display_teams(self, ctx, qdata: XrcGame):
         channel = ctx.channel
         category = get(ctx.guild.categories, id=824691912371470367)
         staff = get(ctx.guild.roles, id=699094822132121662)
@@ -1070,6 +1070,10 @@ class Ranked(commands.Cog):
         qdata.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
                                                                   category=category, overwrites=overwrites_blue)
 
+        if not qdata.game:
+            await channel.send("Error: No game found")
+            return
+
         for player in qdata.game.red:
             await player.add_roles(discord.utils.get(ctx.guild.roles, id=qdata.red_role.id))
             try:
@@ -1085,7 +1089,9 @@ class Ranked(commands.Cog):
                 logger.error(e)
                 pass
 
-        description = f"Server started for you on port {qdata.server_port} with password {qdata.server_password}" if qdata.server_port else None
+        ip = requests.get('https://api.ipify.org').text
+
+        description = f"""Server "Ranked{qdata.api_short}" started for you with password {qdata.server_password}\n|| IP: {ip} Port: {qdata.server_port} ||""" if qdata.server_port else None
 
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description)
