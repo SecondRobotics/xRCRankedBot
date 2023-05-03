@@ -1053,6 +1053,7 @@ class Ranked(commands.Cog):
         channel = ctx.channel
         category = get(ctx.guild.categories, id=824691912371470367)
         staff = get(ctx.guild.roles, id=699094822132121662)
+        bots = get(ctx.guild.roles, id=646560019034406912)
 
         qdata.red_role = await ctx.guild.create_role(name=f"Red {qdata.full_game_name}",
                                                      colour=discord.Color(0xFF0000))
@@ -1060,10 +1061,12 @@ class Ranked(commands.Cog):
                                                       colour=discord.Color(0x0000FF))
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
                           qdata.red_role: discord.PermissionOverwrite(connect=True),
-                          staff: discord.PermissionOverwrite(connect=True)}
+                          staff: discord.PermissionOverwrite(connect=True),
+                          bots: discord.PermissionOverwrite(connect=True)}
         overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
                            qdata.blue_role: discord.PermissionOverwrite(connect=True),
-                           staff: discord.PermissionOverwrite(connect=True)}
+                           staff: discord.PermissionOverwrite(connect=True),
+                           bots: discord.PermissionOverwrite(connect=True)}
 
         qdata.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
                                                                  category=category, overwrites=overwrites_red)
