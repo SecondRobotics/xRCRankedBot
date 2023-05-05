@@ -600,6 +600,7 @@ class Ranked(commands.Cog):
     @app_commands.command(description="Start a game")
     async def startmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /startmatch")
+        await interaction.response.defer()
 
         qdata = game_queues[game]
         if not qdata.queue.qsize() >= qdata.game_size:
@@ -615,8 +616,6 @@ class Ranked(commands.Cog):
         if interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL:
             await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
             return
-
-        await interaction.response.defer()
 
         password = str(random.randint(100, 999))
         min_players = games_players[game]
