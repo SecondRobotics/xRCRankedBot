@@ -860,24 +860,24 @@ class Ranked(commands.Cog):
         for player in response['red_player_elos']:
             red_out += f"{response['red_display_names'][i]} [{round(player['elo'], 2)}]\n" \
                        f"{'%+d' % (round(response['red_elo_changes'][i], 2))}\n"
-            fancy_red += f"[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})\n" \
-                         f"```diff\n[{round(player['elo'], 2)}] {'%+d' % (round(response['red_elo_changes'][i], 2))}\n```\n"
+            fancy_red += f"[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})" \
+                         f"```diff\n{'%+d' % (round(response['red_elo_changes'][i], 2))} [{round(player['elo'], 2)}]\n```"
             i += 1
         i = 0
         for player in response['blue_player_elos']:
             blue_out += f"{response['blue_display_names'][i]} [{round(player['elo'], 2)}]\n" \
                         f"{'%+d' % (round(response['blue_elo_changes'][i], 2))}\n"
-            fancy_blue += f"[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})\n" \
-                          f"```diff\n[{round(player['elo'], 2)}] {'%+d' % (round(response['blue_elo_changes'][i], 2))}\n```\n"
+            fancy_blue += f"[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})" \
+                          f"```diff\n{'%+d' % (round(response['blue_elo_changes'][i], 2))} [{round(player['elo'], 2)}]\n```"
             i += 1
         red_out += "```"
         blue_out += "```"
 
         embed.add_field(name=f'🟥 RED 🟥 *({red_score})*',
-                        value=f"{red_out}\n{fancy_red}",
+                        value=f"{fancy_red}",
                         inline=True)
         embed.add_field(name=f'🟦 BLUE 🟦 *({blue_score})*',
-                        value=f"{blue_out}\n{fancy_blue}",
+                        value=f"{fancy_blue}",
                         inline=True)
 
         class RejoinQueueView(discord.ui.View):
