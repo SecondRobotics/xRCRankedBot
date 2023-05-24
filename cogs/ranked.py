@@ -448,7 +448,7 @@ class Ranked(commands.Cog):
     async def queue_player(self, interaction: discord.Interaction, game: str):
         """Enter's player into queue for upcoming matches"""
         logger.info(f"{interaction.user.name} called /q")
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
         url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
 
@@ -467,7 +467,6 @@ class Ranked(commands.Cog):
                 interaction.channel.id == QUEUE_CHANNEL and
                 isinstance(interaction.user, discord.Member)):
             player = interaction.user
-            channel = interaction.channel
             if player in qdata.queue:
                 await interaction.followup.send("You are already in this queue.", ephemeral=True)
                 return
@@ -494,6 +493,8 @@ class Ranked(commands.Cog):
                 else:
                     await interaction.channel.send(
                         f"Queue for {qdata.full_game_name} is now full! You can start as soon as the current match concludes.")
+            else:
+                await interaction.channel.send(f"Queue for {qdata.full_game_name} is now {qdata.queue.qsize()}/{qdata.game_size}")
         else:
             await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
 
