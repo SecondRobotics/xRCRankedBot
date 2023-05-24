@@ -296,7 +296,11 @@ class Ranked(commands.Cog):
         if active_queues == 0:
             embed.add_field(name="No current queues",
                             value="Queue to get a match started!", inline=False)
-        await self.ranked_display.edit(embed=embed)
+        try:
+            await self.ranked_display.edit(embed=embed)
+        except Exception as e:
+            logger.error(e)
+            self.ranked_display = None
 
     @app_commands.command(description="Updates to the latest release version of xRC Sim")
     @app_commands.checks.has_any_role("Event Staff")
@@ -489,7 +493,8 @@ class Ranked(commands.Cog):
                 f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
             if qdata.queue.qsize() == qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
-                    await interaction.channel.send(f"Queue for __{qdata.full_game_name}__ is now full! Type /startmatch")
+                    qnotice = await interaction.channel.send(f"Queue for __{qdata.full_game_name}__ is now full! Type /startmatch")
+                    await qnotice.delete(delay=60)
                 else:
                     await interaction.channel.send(
                         f"Queue for __{qdata.full_game_name}__ is now full! You can start as soon as the current match concludes.")
@@ -1109,11 +1114,11 @@ class Ranked(commands.Cog):
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description)
         embed.set_thumbnail(url=qdata.game_icon)
-        embed.add_field(name='🟥 RED 🟥',
+        embed.add_field(name='# 🟥 RED 🟥',
                         value="{}".format(
                             "\n".join([f"🟥{player.mention}" for player in qdata.game.red])),
                         inline=True)
-        embed.add_field(name='🟦 BLUE 🟦',
+        embed.add_field(name='# 🟦 BLUE 🟦',
                         value="{}".format(
                             "\n".join([f"🟦{player.mention}" for player in qdata.game.blue])),
                         inline=True)
