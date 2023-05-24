@@ -456,7 +456,7 @@ class Ranked(commands.Cog):
         res = x.json()
 
         if not res["exists"]:
-            await interaction.followup.send_message(
+            await interaction.followup.send(
                 "You must register for an account at <https://www.secondrobotics.org/login> before you can queue.",
                 ephemeral=True)
             return
@@ -469,7 +469,7 @@ class Ranked(commands.Cog):
             player = interaction.user
             channel = interaction.channel
             if player in qdata.queue:
-                await interaction.followup.send_message("You are already in this queue.", ephemeral=True)
+                await interaction.followup.send("You are already in this queue.", ephemeral=True)
                 return
 
             roles = [y.id for y in interaction.user.roles]
@@ -480,12 +480,12 @@ class Ranked(commands.Cog):
                 # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
                 queue_check = bool(set(roles).intersection(ranked_roles))
                 if queue_check:
-                    await interaction.followup.send_message("You are already playing in a game!", ephemeral=True)
+                    await interaction.followup.send("You are already playing in a game!", ephemeral=True)
                     return
 
             qdata.queue.put(player)
             await self.update_ranked_display()
-            await interaction.followup.send_message(
+            await interaction.followup.send(
                 f"🟢 **{player.display_name}** 🟢\nadded to queue for __{qdata.full_game_name}__."
                 f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
             if qdata.queue.qsize() == qdata.game_size:
