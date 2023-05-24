@@ -860,12 +860,12 @@ class Ranked(commands.Cog):
         for player in response['red_player_elos']:
             red_out += f"{response['red_display_names'][i]} [{round(player['elo'], 2)}]\n" \
                        f"{'%+d' % (round(response['red_elo_changes'][i], 2))}\n"
-            fancy_red += f"[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})" \
+            fancy_red += f"🟥[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})" \
                          f"```diff\n{'%+d' % (round(response['red_elo_changes'][i], 2))} [{round(player['elo'], 2)}]\n```"
             i += 1
         i = 0
         for player in response['blue_player_elos']:
-            blue_out += f"{response['blue_display_names'][i]} [{round(player['elo'], 2)}]\n" \
+            blue_out += f"🟦{response['blue_display_names'][i]} [{round(player['elo'], 2)}]\n" \
                         f"{'%+d' % (round(response['blue_elo_changes'][i], 2))}\n"
             fancy_blue += f"[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})" \
                           f"```diff\n{'%+d' % (round(response['blue_elo_changes'][i], 2))} [{round(player['elo'], 2)}]\n```"
