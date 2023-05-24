@@ -266,6 +266,7 @@ class Ranked(commands.Cog):
         self.bot = bot
         self.ranked_display = None
         self.check_queue_joins.start()
+        self.lobby = self.bot.get_channel(824692700364275743)
         # self.check_empty_servers.start() # FIXME: Disabled for now
 
     async def update_ranked_display(self):
@@ -824,7 +825,7 @@ class Ranked(commands.Cog):
                 stop_server_process(qdata.server_port)
 
             # Kick players back to main lobby
-            lobby = self.bot.get_channel(824692700364275743)
+            lobby = self.lobby
             if qdata.red_channel:
                 for member in qdata.red_channel.members:
                     await member.move_to(lobby)
@@ -843,7 +844,7 @@ class Ranked(commands.Cog):
                 stop_server_process(qdata.server_port)
 
             # Kick players back to lobby
-            lobby = self.bot.get_channel(824692700364275743)
+            lobby = self.lobby
             if qdata.red_channel:
                 for member in qdata.red_channel.members:
                     await member.move_to(lobby)
@@ -1070,6 +1071,23 @@ class Ranked(commands.Cog):
         if self.bots is None:
             self.bots = get(ctx.guild.roles, id=646560019034406912)
 
+        ip = requests.get('https://api.ipify.org').text
+
+        description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**\n|| IP: {ip} Port: {qdata.server_port} ||""" if qdata.server_port else None
+
+        embed = discord.Embed(
+            color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description)
+        embed.set_thumbnail(url=qdata.game_icon)
+        embed.add_field(name='RED',
+                        value="{}".format(
+                            "\n".join([f"🟥{player.mention}" for player in qdata.game.red])),
+                        inline=True)
+        embed.add_field(name='BLUE',
+                        value="{}".format(
+                            "\n".join([f"🟦{player.mention}" for player in qdata.game.blue])),
+                        inline=True)
+        await ctx.followup.send(embed=embed)
+
         qdata.red_role = await ctx.guild.create_role(name=f"Red {qdata.full_game_name}",
                                                      colour=discord.Color(0xFF0000))
         qdata.blue_role = await ctx.guild.create_role(name=f"Blue {qdata.full_game_name}",
@@ -1107,22 +1125,7 @@ class Ranked(commands.Cog):
                 logger.error(e)
                 pass
 
-        ip = requests.get('https://api.ipify.org').text
 
-        description = f"""Server "Ranked{qdata.api_short}" started for you with password {qdata.server_password}\n|| IP: {ip} Port: {qdata.server_port} ||""" if qdata.server_port else None
-
-        embed = discord.Embed(
-            color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description)
-        embed.set_thumbnail(url=qdata.game_icon)
-        embed.add_field(name='# 🟥 RED 🟥',
-                        value="{}".format(
-                            "\n".join([f"🟥{player.mention}" for player in qdata.game.red])),
-                        inline=True)
-        embed.add_field(name='# 🟦 BLUE 🟦',
-                        value="{}".format(
-                            "\n".join([f"🟦{player.mention}" for player in qdata.game.blue])),
-                        inline=True)
-        await ctx.followup.send(embed=embed)
 
         msg = await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}")
         await msg.delete(delay=30)
@@ -1157,7 +1160,7 @@ class Ranked(commands.Cog):
         await remove_roles(guild, qdata)
 
         # kick to lobby
-        lobby = self.bot.get_channel(824692700364275743)
+        lobby = self.lobby
         if qdata.red_channel:
             for member in qdata.red_channel.members:
                 await member.move_to(lobby)
@@ -1174,16 +1177,16 @@ class Ranked(commands.Cog):
 
     @tasks.loop(minutes=10)
     async def check_queue_joins(self):
-        """every hour, check if any queue_joins are older than 2 hours
+        """every hour, check if any queue_joins are older than 1 hour
         if they are, remove them from the queue
         if they are not, do nothing"""
         for (queue, player), timestamp in queue_joins.copy().items():
-            if (datetime.now() - timestamp).total_seconds() > 60 * 60 * 2:
+            if (datetime.now() - timestamp).total_seconds() > 60 * 60 * 1:
                 if player in queue:
                     queue.remove(player)
                     # send a message to the player
                     await player.send(
-                        "You have been removed from a queue because you have been in the queue for more than 2 hours.")
+                        "You have been removed from a queue because you have been in the queue for more than 1 hour.")
                 else:
                     queue_joins.pop((queue, player))
         await self.update_ranked_display()
