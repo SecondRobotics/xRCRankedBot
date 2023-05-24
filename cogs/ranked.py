@@ -140,7 +140,6 @@ class XrcGame():
         self.red_channel = None  # type: discord.VoiceChannel | None
         self.blue_channel = None  # type: discord.VoiceChannel | None
 
-
         try:
             self.game_icon = game_logos[game]
         except:
@@ -449,6 +448,7 @@ class Ranked(commands.Cog):
     async def queue_player(self, interaction: discord.Interaction, game: str):
         """Enter's player into queue for upcoming matches"""
         logger.info(f"{interaction.user.name} called /q")
+        await interaction.response.defer()
 
         url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
 
@@ -456,7 +456,7 @@ class Ranked(commands.Cog):
         res = x.json()
 
         if not res["exists"]:
-            await interaction.response.send_message(
+            await interaction.followup.send_message(
                 "You must register for an account at <https://www.secondrobotics.org/login> before you can queue.",
                 ephemeral=True)
             return
@@ -469,7 +469,7 @@ class Ranked(commands.Cog):
             player = interaction.user
             channel = interaction.channel
             if player in qdata.queue:
-                await interaction.response.send_message("You are already in this queue.", ephemeral=True)
+                await interaction.followup.send_message("You are already in this queue.", ephemeral=True)
                 return
 
             roles = [y.id for y in interaction.user.roles]
@@ -480,15 +480,15 @@ class Ranked(commands.Cog):
                 # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
                 queue_check = bool(set(roles).intersection(ranked_roles))
                 if queue_check:
-                    await interaction.response.send_message("You are already playing in a game!", ephemeral=True)
+                    await interaction.followup.send_message("You are already playing in a game!", ephemeral=True)
                     return
 
             qdata.queue.put(player)
             await self.update_ranked_display()
-            await interaction.response.send_message(
+            await interaction.followup.send_message(
                 f"🟢 **{player.display_name}** 🟢\nadded to queue for __{qdata.full_game_name}__."
                 f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
-            if qdata.queue.qsize() >= qdata.game_size:
+            if qdata.queue.qsize() == qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
                     await interaction.channel.send(f"Queue for {qdata.full_game_name} is now full! Type /startmatch")
                 else:
@@ -531,7 +531,7 @@ class Ranked(commands.Cog):
         qdata = game_queues[game]
 
         if (isinstance(interaction.channel, discord.TextChannel) and
-            isinstance(interaction.user, discord.Member) and
+                isinstance(interaction.user, discord.Member) and
                 interaction.channel.id == QUEUE_CHANNEL):
             player = interaction.user
             if player in qdata.queue:
@@ -765,7 +765,8 @@ class Ranked(commands.Cog):
         if 'error' in response:
             await interaction.followup.send(f"Error: {response['error']}")
         else:
-            await interaction.followup.send(f"Most recent match edited successfully. Note: the series will not be updated to reflect this change, but elo will.")
+            await interaction.followup.send(
+                f"Most recent match edited successfully. Note: the series will not be updated to reflect this change, but elo will.")
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Submit Score")
@@ -1062,7 +1063,6 @@ class Ranked(commands.Cog):
         if self.bots is None:
             self.bots = get(ctx.guild.roles, id=646560019034406912)
 
-
         qdata.red_role = await ctx.guild.create_role(name=f"Red {qdata.full_game_name}",
                                                      colour=discord.Color(0xFF0000))
         qdata.blue_role = await ctx.guild.create_role(name=f"Blue {qdata.full_game_name}",
@@ -1086,14 +1086,14 @@ class Ranked(commands.Cog):
             return
 
         for player in qdata.game.red:
-            await player.add_roles(discord.utils.get(ctx.guild.roles, id=qdata.red_role.id))
+            await player.add_roles(qdata.red_role)
             try:
                 await player.move_to(qdata.red_channel)
             except Exception as e:
                 logger.error(e)
                 pass
         for player in qdata.game.blue:
-            await player.add_roles(discord.utils.get(ctx.guild.roles, id=qdata.blue_role.id))
+            await player.add_roles(qdata.blue_role)
             try:
                 await player.move_to(qdata.blue_channel)
             except Exception as e:
@@ -1128,8 +1128,8 @@ class Ranked(commands.Cog):
     #     df = gspread_dataframe.get_as_dataframe(wks)
     #     logger.info(df["Match Number"].iloc[0])
 
-    @ app_commands.choices(game=games_choices)
-    @ app_commands.command(name="clearmatch", description="Clears current running match")
+    @app_commands.choices(game=games_choices)
+    @app_commands.command(name="clearmatch", description="Clears current running match")
     async def clearmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /clearmatch")
         qdata = game_queues[game]
@@ -1161,7 +1161,7 @@ class Ranked(commands.Cog):
                 await member.move_to(lobby)
             await qdata.blue_channel.delete()
 
-    @ app_commands.command(name="rules", description="Posts a link the the rules")
+    @app_commands.command(name="rules", description="Posts a link the the rules")
     async def rules(self, interaction: discord.Interaction):
         logger.info(f"{interaction.user.name} called /rules")
         await interaction.response.send_message("The rules can be found here: <#700411727430418464>")
