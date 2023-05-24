@@ -489,12 +489,13 @@ class Ranked(commands.Cog):
                 f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
             if qdata.queue.qsize() == qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
-                    await interaction.channel.send(f"Queue for {qdata.full_game_name} is now full! Type /startmatch")
+                    await interaction.channel.send(f"Queue for __{qdata.full_game_name}__ is now full! Type /startmatch")
                 else:
                     await interaction.channel.send(
-                        f"Queue for {qdata.full_game_name} is now full! You can start as soon as the current match concludes.")
+                        f"Queue for __{qdata.full_game_name}__ is now full! You can start as soon as the current match concludes.")
             else:
-                await interaction.channel.send(f"Queue for {qdata.full_game_name} is now {qdata.queue.qsize()}/{qdata.game_size}")
+                qstatus = await interaction.channel.send(f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**")
+                await qstatus.delete(delay=60)
         else:
             await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
 
@@ -1110,13 +1111,12 @@ class Ranked(commands.Cog):
         embed.set_thumbnail(url=qdata.game_icon)
         embed.add_field(name='🟥 RED 🟥',
                         value="{}".format(
-                            "\n".join([player.mention for player in qdata.game.red])),
+                            "\n".join([f"🟥{player.mention}" for player in qdata.game.red])),
                         inline=True)
         embed.add_field(name='🟦 BLUE 🟦',
                         value="{}".format(
-                            "\n".join([player.mention for player in qdata.game.blue])),
+                            "\n".join([f"🟦{player.mention}" for player in qdata.game.blue])),
                         inline=True)
-
         await ctx.followup.send(embed=embed)
 
         msg = await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}")
