@@ -819,40 +819,10 @@ class Ranked(commands.Cog):
         if qdata.red_series == 2:
             # await self.queue_auto(interaction)
             await interaction.followup.send("🟥 Red Wins! 🟥")
-            await remove_roles(interaction.user.guild, qdata)
-
-            if qdata.server_port:
-                stop_server_process(qdata.server_port)
-
-            # Kick players back to main lobby
-            lobby = self.lobby
-            if qdata.red_channel:
-                for member in qdata.red_channel.members:
-                    await member.move_to(lobby)
-                await qdata.red_channel.delete()
-            if qdata.blue_channel:
-                for member in qdata.blue_channel.members:
-                    await member.move_to(lobby)
-                await qdata.blue_channel.delete()
-
         elif qdata.blue_series == 2:
             # await self.queue_auto(interaction)
             await interaction.followup.send("🟦 Blue Wins! 🟦")
-            await remove_roles(interaction.user.guild, qdata)
 
-            if qdata.server_port:
-                stop_server_process(qdata.server_port)
-
-            # Kick players back to lobby
-            lobby = self.lobby
-            if qdata.red_channel:
-                for member in qdata.red_channel.members:
-                    await member.move_to(lobby)
-                await qdata.red_channel.delete()
-            if qdata.blue_channel:
-                for member in qdata.blue_channel.members:
-                    await member.move_to(lobby)
-                await qdata.blue_channel.delete()
         else:
             await interaction.followup.send("Score Submitted")
             gg = False
@@ -901,7 +871,7 @@ class Ranked(commands.Cog):
                         value=f"{red_out}",
                         inline=True)
         embed.add_field(name=f'🟦 BLUE 🟦 *({blue_score})*',
-                        value=f"{blue_out}",
+                        value=f"{blue_out}\n[SRC](https://secondrobotics.org/ranked/)\n```[SRC2](https://secondrobotics.org/ranked/)```",
                         inline=True)
 
         class RejoinQueueView(discord.ui.View):
@@ -910,12 +880,28 @@ class Ranked(commands.Cog):
                 self.qdata = qdata
                 self.cog = cog
 
-            @discord.ui.button(label="Rejoin Queue", style=discord.ButtonStyle.blurple)
+            @discord.ui.button(label="Rejoin Queue", style=discord.ButtonStyle.blurple, emoji="🔄")
             async def rejoin_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
                 await self.cog.queue_player(interaction, self.qdata.api_short)
 
         if gg:
             await interaction.channel.send(embed=embed, view=RejoinQueueView(qdata, self))
+
+            await remove_roles(interaction.user.guild, qdata)
+
+            if qdata.server_port:
+                stop_server_process(qdata.server_port)
+
+            # Kick players back to lobby
+            lobby = self.bot.get_channel(824692700364275743)
+            if qdata.red_channel:
+                for member in qdata.red_channel.members:
+                    await member.move_to(lobby)
+                await qdata.red_channel.delete()
+            if qdata.blue_channel:
+                for member in qdata.blue_channel.members:
+                    await member.move_to(lobby)
+                await qdata.blue_channel.delete()
         else:
             await interaction.channel.send(embed=embed)
 
@@ -1125,8 +1111,6 @@ class Ranked(commands.Cog):
                 logger.error(e)
                 pass
 
-
-
         msg = await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}")
         await msg.delete(delay=30)
         await self.update_ranked_display()
@@ -1160,7 +1144,7 @@ class Ranked(commands.Cog):
         await remove_roles(guild, qdata)
 
         # kick to lobby
-        lobby = self.lobby
+        lobby = self.bot.get_channel(824692700364275743)
         if qdata.red_channel:
             for member in qdata.red_channel.members:
                 await member.move_to(lobby)
