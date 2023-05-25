@@ -18,7 +18,6 @@ from discord.app_commands import Choice
 import zipfile
 import shutil
 from discord.ext import tasks
-from collections import deque
 
 logger = logging.getLogger('discord')
 load_dotenv()
@@ -507,8 +506,6 @@ class Ranked(commands.Cog):
             await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
 
     #
-    from collections import deque
-
     @app_commands.choices(game=games_choices)
     @app_commands.checks.has_any_role("Event Staff")
     @app_commands.command()
@@ -516,18 +513,23 @@ class Ranked(commands.Cog):
         """View who is currently in the queue"""
         logger.info(f"{interaction.user.name} called /queuestatus")
         qdata = game_queues[game]
-
         try:
-            players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
-            qdata.queue = list(players)  # Reassign the queue with a list of players
+            players = []
+            for _ in range(0, 2):  # loop to not reverse order
+                players = [qdata.queue.get()
+                           for _ in range(qdata.queue.qsize())]
+                for player in players:
+                    qdata.queue.put(player)
+            embed = discord.Embed(
+                color=0xcda03f, title=f"Signed up players for {game}")
 
-            embed = discord.Embed(color=0xcda03f, title=f"Signed up players for {game}")
             embed.set_thumbnail(url=qdata.game_icon)
-            players_mentions = "\n".join([player.mention for player in players])
-            embed.add_field(name='Players', value=players_mentions, inline=False)
-
+            embed.add_field(name='Players',
+                            value="{}".format(
+                                "\n".join([player.mention for player in players])),
+                            inline=False)
             await interaction.response.send_message(embed=embed, ephemeral=True)
-        except IndexError:
+        except:
             await interaction.response.send_message(f"Nobody is in queue for {game}!", ephemeral=True)
 
     @app_commands.choices(game=games_choices)
