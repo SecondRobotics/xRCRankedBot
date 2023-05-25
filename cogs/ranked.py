@@ -1104,32 +1104,33 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /clearmatch")
         qdata = game_queues[game]
 
-        if (isinstance(interaction.user, discord.Member) and
-                699094822132121662 in [y.id for y in interaction.user.roles]):
+        ephemeral = False
+        if isinstance(interaction.user, discord.Member) and 699094822132121662 in [y.id for y in
+                                                                                   interaction.user.roles]:
+            await interaction.response.defer(ephemeral=True)
             await self.do_clear_match(interaction.user.guild, qdata)
-            await interaction.response.send_message("Cleared successfully!")
+            message = "Cleared successfully!"
         else:
-            await interaction.response.send_message("You don't have permission to do that!", ephemeral=True)
+            message = "You don't have permission to do that!"
+            ephemeral = True
+
+        await interaction.followup.send(message, ephemeral=ephemeral)
 
     async def do_clear_match(self, guild: discord.Guild, qdata: XrcGame):
         if qdata.server_port:
             stop_server_process(qdata.server_port)
 
-        qdata.red_series = 2
-        qdata.blue_series = 2
+        qdata.red_series = qdata.blue_series = 2
 
         await remove_roles(guild, qdata)
 
-        # kick to lobby
+        # Kick to lobby
         lobby = self.bot.get_channel(824692700364275743)
-        if qdata.red_channel:
-            for member in qdata.red_channel.members:
-                await member.move_to(lobby)
-            await qdata.red_channel.delete()
-        if qdata.blue_channel:
-            for member in qdata.blue_channel.members:
-                await member.move_to(lobby)
-            await qdata.blue_channel.delete()
+        for channel in [qdata.red_channel, qdata.blue_channel]:
+            if channel:
+                for member in channel.members:
+                    await member.move_to(lobby)
+                await channel.delete()
 
     @app_commands.command(name="rules", description="Posts a link the the rules")
     async def rules(self, interaction: discord.Interaction):
