@@ -482,8 +482,8 @@ class Ranked(commands.Cog):
         if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
             for member in members_clean:
                 qdata.queue.put(member)
-                added_players += f"{member.display_name}\n"
-            await interaction.response.send_message(f"Successfully added\n{added_players} to the queue.",
+                added_players += f"\n{member.display_name}"
+            await interaction.response.send_message(f"Successfully added{added_players} to the queue.",
                                                     ephemeral=True)
         else:
             await interaction.response.send_message("Nerd.", ephemeral=True)
@@ -680,13 +680,11 @@ class Ranked(commands.Cog):
         await interaction.response.defer()
 
         qdata = game_queues[game]
-        if not qdata.queue.qsize() >= qdata.game_size:
+        if qdata.queue.qsize() < qdata.game_size:
             await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
-        if qdata.red_series == 2 or qdata.blue_series == 2:
-            qdata.red_series = 0
-            qdata.blue_series = 0
-        else:
+
+        if qdata.red_series != 2 and qdata.blue_series != 2:
             await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
 
