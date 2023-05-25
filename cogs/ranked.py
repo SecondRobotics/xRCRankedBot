@@ -1123,7 +1123,7 @@ class Ranked(commands.Cog):
          [Adjust Display Name](https://secondrobotics.org/user/settings/) """ if qdata.server_port else None
 
         embed = discord.Embed(
-            color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description
+            color=0x34dceb, title=f"Teams have been picked for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})!", description=description
         )
         embed.set_thumbnail(url=qdata.game_icon)
         embed.add_field(name='RED', value=red_field, inline=True)
