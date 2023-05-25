@@ -848,32 +848,23 @@ class Ranked(commands.Cog):
         response = x.json()
         # Getting match Number
 
-        embed = discord.Embed(
-            color=0x34eb3d, title=f"**[{qdata.full_game_name}]** "
-                                  f"Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
+        embed = discord.Embed(color=0x34eb3d,
+                              title=f"[{qdata.full_game_name}] Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
         embed.set_thumbnail(url=qdata.game_icon)
-        red_out = "```diff\n"
-        blue_out = "```diff\n"
-        fancy_red = ""
-        fancy_blue = ""
-        i = 0
-        for player in response['red_player_elos']:
-            fancy_red += f"🟥[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})" \
-                         f"```diff\n{'%+d' % (round(response['red_elo_changes'][i], 3))} [{round(player['elo'], 2)}]\n```"
-            i += 1
-        i = 0
-        for player in response['blue_player_elos']:
-            fancy_blue += f"🟦[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})" \
-                          f"```diff\n{'%+d' % (round(response['blue_elo_changes'][i], 3))} [{round(player['elo'], 2)}]\n```"
-            i += 1
-        red_out += "```"
-        blue_out += "```"
 
-        embed.add_field(name=f'RED 🟥 *({red_score})*',
-                        value=f"{fancy_red}",
+        fancy_red = ""
+        for i, player in enumerate(response['red_player_elos']):
+            fancy_red += f"🟥[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})```diff\n{'%+d' % (round(response['red_elo_changes'][i], 3))} [{round(player['elo'], 2)}]\n```"
+
+        fancy_blue = ""
+        for i, player in enumerate(response['blue_player_elos']):
+            fancy_blue += f"🟦[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})```diff\n{'%+d' % (round(response['blue_elo_changes'][i], 3))} [{round(player['elo'], 2)}]\n```"
+
+        embed.add_field(name=f'RED 🟥 ({red_score})',
+                        value=fancy_red,
                         inline=True)
-        embed.add_field(name=f'BLUE 🟦 *({blue_score})*',
-                        value=f"{fancy_blue}",
+        embed.add_field(name=f'BLUE 🟦 ({blue_score})',
+                        value=fancy_blue,
                         inline=True)
 
         class RejoinQueueView(discord.ui.View):
