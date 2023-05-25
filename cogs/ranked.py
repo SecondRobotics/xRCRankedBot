@@ -304,7 +304,7 @@ class Ranked(commands.Cog):
             self.ranked_display = None
 
     @app_commands.choices(game=server_games_choices)
-    @app_commands.command(name="RankedPings", description="Toggle ranked pings for a game")
+    @app_commands.command(name="rankedping", description="Toggle ranked pings for a game")
     async def rankedping(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /rankedping {game}")
         guild = interaction.guild
