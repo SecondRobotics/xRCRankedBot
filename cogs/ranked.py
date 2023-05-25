@@ -304,7 +304,7 @@ class Ranked(commands.Cog):
             self.ranked_display = None
 
     server_game_names = [
-        Choice(name=game, value=value) for game, value in server_games.items()
+        Choice(name=game, value=game) for game in server_games.keys()
     ]
 
     @app_commands.choices(game=server_game_names)
