@@ -117,6 +117,8 @@ server_restart_modes = {
 }
 
 
+
+
 class XrcGame():
     def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
         self.queue = PlayerQueue()
@@ -268,21 +270,24 @@ class Ranked(commands.Cog):
         self.check_queue_joins.start()
         self.lobby = self.bot.get_channel(824692700364275743)
 
-        async def create_ping_roles():
-            guild_id = 637407041048281098  # Guild ID of the desired guild
-            guild = bot.get_guild(guild_id)  # Replace `bot` with your actual bot instance
-            if guild is None:
-                print(f"Guild with ID {guild_id} not found!")
-                return
 
-            games = server_games  # Use the server_games dictionary
-            for game in games.keys():
-                role_name = f"{game} Ping"
-                existing_role = discord.utils.get(guild.roles, name=role_name)
-                if existing_role is None:
-                    await guild.create_role(name=role_name)
-        await create_ping_roles()  # Create ping roles if required
         # self.check_empty_servers.start() # FIXME: Disabled for now
+
+    async def create_ping_roles(self):
+        guild_id = 637407041048281098  # Guild ID of the desired guild
+        guild = self.bot.get_guild(guild_id)  # Replace `bot` with your actual bot instance
+        if guild is None:
+            print(f"Guild with ID {guild_id} not found!")
+            return
+
+        games = server_games  # Use the server_games dictionary
+        for game in games.keys():
+            role_name = f"{game} Ping"
+            existing_role = discord.utils.get(guild.roles, name=role_name)
+            if existing_role is None:
+                await guild.create_role(name=role_name)
+
+    await create_ping_roles()  # Create ping roles if required
 
     async def update_ranked_display(self):
         if self.ranked_display is None:
