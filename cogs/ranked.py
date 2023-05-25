@@ -1039,28 +1039,24 @@ class Ranked(commands.Cog):
 
     async def display_teams(self, ctx, qdata: XrcGame):
         channel = ctx.channel
-        if self.category is None:
-            self.category = get(ctx.guild.categories, id=824691912371470367)
-        if self.staff is None:
-            self.staff = get(ctx.guild.roles, id=699094822132121662)
-        if self.bots is None:
-            self.bots = get(ctx.guild.roles, id=646560019034406912)
+        self.category = self.category or get(ctx.guild.categories, id=824691912371470367)
+        self.staff = self.staff or get(ctx.guild.roles, id=699094822132121662)
+        self.bots = self.bots or get(ctx.guild.roles, id=646560019034406912)
 
         ip = requests.get('https://api.ipify.org').text
+
+        red_field = "\n".join([f"🟥{player.mention}" for player in qdata.game.red])
+        blue_field = "\n".join([f"🟦{player.mention}" for player in qdata.game.blue])
 
         description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**\n|| IP: {ip} Port: {qdata.server_port} ||""" if qdata.server_port else None
 
         embed = discord.Embed(
-            color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description)
+            color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description
+        )
         embed.set_thumbnail(url=qdata.game_icon)
-        embed.add_field(name='RED',
-                        value="{}".format(
-                            "\n".join([f"🟥{player.mention}" for player in qdata.game.red])),
-                        inline=True)
-        embed.add_field(name='BLUE',
-                        value="{}".format(
-                            "\n".join([f"🟦{player.mention}" for player in qdata.game.blue])),
-                        inline=True)
+        embed.add_field(name='RED', value=red_field, inline=True)
+        embed.add_field(name='BLUE', value=blue_field, inline=True)
+
         await ctx.followup.send(embed=embed)
 
         qdata.red_role = await ctx.guild.create_role(name=f"Red {qdata.full_game_name}",
@@ -1085,23 +1081,15 @@ class Ranked(commands.Cog):
             await channel.send("Error: No game found")
             return
 
-        for player in qdata.game.red:
-            await player.add_roles(qdata.red_role)
+        for player in qdata.game.red | qdata.game.blue:
+            await player.add_roles(qdata.red_role if player in qdata.game.red else qdata.blue_role)
             try:
-                await player.move_to(qdata.red_channel)
-            except Exception as e:
-                logger.error(e)
-                pass
-        for player in qdata.game.blue:
-            await player.add_roles(qdata.blue_role)
-            try:
-                await player.move_to(qdata.blue_channel)
+                await player.move_to(qdata.red_channel if player in qdata.game.red else qdata.blue_channel)
             except Exception as e:
                 logger.error(e)
                 pass
 
-        msg = await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}")
-        await msg.delete(delay=30)
+        await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
 
     # @commands.command(description="Submit Score (WIP)")
