@@ -53,7 +53,7 @@ games_choices = [Choice(name=game['name'], value=game['short_code'])
 games_players = {game['short_code']: game['players_per_alliance'] * 2
                  for game in games}
 
-# disctionary mapping game name to game number string
+# dictionary mapping game name to game number string
 server_games = {
     "Splish Splash": "0",
     "Relic Recovery": "1",
@@ -267,6 +267,12 @@ class Ranked(commands.Cog):
         self.ranked_display = None
         self.check_queue_joins.start()
         self.lobby = self.bot.get_channel(824692700364275743)
+
+        for game in games.keys():
+            role_name = f"{game} Ping"
+            existing_role = discord.utils.get(guild.roles, name=role_name)
+            if existing_role is None:
+                await guild.create_role(name=role_name)
         # self.check_empty_servers.start() # FIXME: Disabled for now
 
     async def update_ranked_display(self):
