@@ -918,23 +918,24 @@ class Ranked(commands.Cog):
         embed = discord.Embed(color=0x34eb3d,
                               title=f"[{qdata.full_game_name}] Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
         embed.set_thumbnail(url=qdata.game_icon)
-        embed.set_footer(text="Adjust Display Name", icon_url="https://secondrobotics.org/user/settings/")
 
-        fancy_red = ""
-        for i, player in enumerate(response['red_player_elos']):
-            fancy_red += f"[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})" \
-                         f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response['red_elo_changes'][i], 3))}\n```"
+        red = "\n".join(
+            f"[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']}) "
+            f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response['red_elo_changes'][i], 3))}\n```"
+            for i, player in enumerate(response['red_player_elos'])
+        )
 
-        fancy_blue = ""
-        for i, player in enumerate(response['blue_player_elos']):
-            fancy_blue += f"[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})" \
-                          f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response['blue_elo_changes'][i], 3))}\n```"
+        blue = "\n".join(
+            f"[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']}) "
+            f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response['blue_elo_changes'][i], 3))}\n```"
+            for i, player in enumerate(response['blue_player_elos'])
+        )
 
         embed.add_field(name=f'RED 🟥 ({red_score})',
-                        value=fancy_red,
+                        value=red,
                         inline=True)
         embed.add_field(name=f'BLUE 🟦 ({blue_score})',
-                        value=fancy_blue,
+                        value=blue,
                         inline=True)
 
         class RejoinQueueView(discord.ui.View):
