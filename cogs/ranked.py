@@ -847,7 +847,7 @@ class Ranked(commands.Cog):
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Submit Score")
-    @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
+    @app_commands.checks.cooldown(1, 20.0, key=lambda i: f"{i.guild_id}-{i.game}")
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
@@ -860,8 +860,7 @@ class Ranked(commands.Cog):
             roles = [role.id for role in interaction.user.roles]
 
             if qdata.red_role and qdata.blue_role:
-                ranked_roles = [699094822132121662,
-                                qdata.red_role.id, qdata.blue_role.id]
+                ranked_roles = [699094822132121662, qdata.red_role.id, qdata.blue_role.id]
             else:
                 ranked_roles = [699094822132121662]
 
