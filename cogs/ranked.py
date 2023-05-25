@@ -538,8 +538,9 @@ class Ranked(commands.Cog):
             qdata.queue.put(player)
             await self.update_ranked_display()
             await interaction.followup.send(
-                f"🟢 **{player.display_name}** 🟢\nadded to queue for __{qdata.full_game_name}__."
-                f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
+                f"🟢 **{res['display_name']}** 🟢\nadded to queue for __{qdata.full_game_name}__."
+                f" *({qdata.queue.qsize()}/{qdata.game_size})*\n"
+                f"[Edit Display Name](https://secondrobotics.org/user/settings/)", ephemeral=True)
 
             if (qdata.queue.qsize() == 3 and qdata.game_size == 4) or (
                     qdata.queue.qsize() == 4 and qdata.game_size == 6):
@@ -555,7 +556,6 @@ class Ranked(commands.Cog):
                     if ping_role is not None:
                         await interaction.channel.send(
                             f"{ping_role.mention} Queue for __{qdata.full_game_name}__ is now {qdata.queue.qsize()}/{qdata.game_size}!")
-
 
             if qdata.queue.qsize() == qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
