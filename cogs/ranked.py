@@ -538,6 +538,8 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /leave")
         qdata = game_queues[game]
 
+        ephemeral = False
+
         if (isinstance(interaction.channel, discord.TextChannel) and
                 isinstance(interaction.user, discord.Member) and
                 interaction.channel.id == QUEUE_CHANNEL):
@@ -545,15 +547,15 @@ class Ranked(commands.Cog):
             if player in qdata.queue:
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
-                await interaction.response.send_message(
-                    f"🔴 **{player.display_name}** 🔴\nremoved from queue for __{qdata.full_game_name}__."
-                    f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
-                return
+                message = f"🔴 **{player.display_name}** 🔴\nremoved from the queue for __{qdata.full_game_name}__. *({qdata.queue.qsize()}/{qdata.game_size})*"
             else:
-                await interaction.response.send_message("You aren't in this queue.", ephemeral=True)
-                return
+                message = "You aren't in this queue."
+                ephemeral = True
         else:
-            await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
+            message = f"<#{QUEUE_CHANNEL}> >:("
+            ephemeral = True
+
+        await interaction.response.send_message(message, ephemeral=ephemeral)
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Remove someone else from the queue")
@@ -1050,7 +1052,7 @@ class Ranked(commands.Cog):
         blue_field = "\n".join([f"🟦{player.mention}" for player in qdata.game.blue])
 
         description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**\n
-        || IP: {ip} Port: {qdata.server_port}||\n
+        || IP: {ip} Port: {qdata.server_port}||
          [Adjust Display Name](https://secondrobotics.org/user/settings/) """ if qdata.server_port else None
 
         embed = discord.Embed(
