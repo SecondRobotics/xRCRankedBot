@@ -1054,7 +1054,7 @@ class Ranked(commands.Cog):
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description
         )
-        embed.set_footer(text="Adjust Display Name", icon_url="https://secondrobotics.org/user/settings/")
+        embed.set_footer(text="[Adjust Display Name](https://secondrobotics.org/user/settings/)")
         embed.set_thumbnail(url=qdata.game_icon)
         embed.add_field(name='RED', value=red_field, inline=True)
         embed.add_field(name='BLUE', value=blue_field, inline=True)
