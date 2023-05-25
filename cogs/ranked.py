@@ -303,6 +303,33 @@ class Ranked(commands.Cog):
             logger.error(e)
             self.ranked_display = None
 
+    @app_commands.choices(game=server_games_choices)
+    @app_commands.command(name="Ranked Pings", description="Toggle ranked pings for a game")
+    async def rankedping(self, interaction: discord.Interaction, game: str):
+        logger.info(f"{interaction.user.name} called /rankedping {game}")
+        guild = interaction.guild
+
+        # Check if the ping role exists for the selected game
+        ping_role_name = f"{game} Ping"
+        ping_role = discord.utils.get(guild.roles, name=ping_role_name)
+
+        if ping_role is None:
+            # The ping role doesn't exist, create it
+            ping_role = await guild.create_role(name=ping_role_name)
+
+        # Check if the user already has the ping role
+        member = interaction.user
+        if ping_role in member.roles:
+            # User has the role, remove it
+            await member.remove_roles(ping_role)
+            await interaction.response.send_message(f"You have been removed from the {ping_role_name} role.",
+                                                    ephemeral=True)
+        else:
+            # User doesn't have the role, add it
+            await member.add_roles(ping_role)
+            await interaction.response.send_message(f"You have been added to the {ping_role_name} role!",
+                                                    ephemeral=True)
+
     @app_commands.command(description="Updates to the latest release version of xRC Sim")
     @app_commands.checks.has_any_role("Event Staff")
     async def update(self, interaction: discord.Interaction):
