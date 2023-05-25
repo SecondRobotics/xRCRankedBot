@@ -850,6 +850,7 @@ class Ranked(commands.Cog):
         embed = discord.Embed(color=0x34eb3d,
                               title=f"[{qdata.full_game_name}] Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
         embed.set_thumbnail(url=qdata.game_icon)
+        embed.set_footer(text="Adjust Display Name", icon_url="https://secondrobotics.org/user/settings/")
 
         fancy_red = ""
         for i, player in enumerate(response['red_player_elos']):
@@ -1107,7 +1108,7 @@ class Ranked(commands.Cog):
         ephemeral = False
         if isinstance(interaction.user, discord.Member) and 699094822132121662 in [y.id for y in
                                                                                    interaction.user.roles]:
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer()
             await self.do_clear_match(interaction.user.guild, qdata)
             message = "Cleared successfully!"
         else:
