@@ -540,6 +540,7 @@ class Ranked(commands.Cog):
                 f"🟢 **{player.display_name}** 🟢\nadded to queue for __{qdata.full_game_name}__."
                 f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
 
+            logger.info(f"qsize: {qdata.queue.qsize()}, game_size: {qdata.game_size}")
             if (qdata.queue.qsize() == 3 and qdata.game_size == 4) or (
                     qdata.queue.qsize() == 4 and qdata.game_size == 6):
                 # Check if the ping for this game was made in the last hour
