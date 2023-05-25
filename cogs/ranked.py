@@ -141,6 +141,7 @@ class XrcGame():
         self.blue_role = None  # type: discord.Role | None
         self.red_channel = None  # type: discord.VoiceChannel | None
         self.blue_channel = None  # type: discord.VoiceChannel | None
+        self.last_ping_time = None  # type: datetime.datetime | None
 
         try:
             self.game_icon = game_logos[game]
@@ -335,10 +336,6 @@ class Ranked(commands.Cog):
         # Check if the ping role exists for the selected game
         ping_role_name = f"{game} Ping"
         ping_role = discord.utils.get(guild.roles, name=ping_role_name)
-
-        if ping_role is None:
-            # The ping role doesn't exist, create it
-            ping_role = await guild.create_role(name=ping_role_name)
 
         # Check if the user already has the ping role
         member = interaction.user
@@ -542,6 +539,23 @@ class Ranked(commands.Cog):
             await interaction.followup.send(
                 f"🟢 **{player.display_name}** 🟢\nadded to queue for __{qdata.full_game_name}__."
                 f" *({qdata.queue.qsize()}/{qdata.game_size})*", ephemeral=True)
+
+            if (qdata.queue.qsize() == 3 and qdata.game_size == 4) or (
+                    qdata.queue.qsize() == 4 and qdata.game_size == 6):
+                # Check if the ping for this game was made in the last hour
+                current_time = datetime.now()
+                if qdata.last_ping_time is None or (current_time - qdata.last_ping_time).total_seconds() > 3600:
+                    qdata.last_ping_time = current_time
+
+                    # Ping the game's ping role
+                    ping_role_name = f"{game} Ping"
+                    logger.info(f"Pinging {ping_role_name}")
+                    ping_role = discord.utils.get(interaction.guild.roles, name=ping_role_name)
+                    if ping_role is not None:
+                        await interaction.channel.send(
+                            f"{ping_role.mention} Queue for __{qdata.full_game_name}__ is now {qdata.queue.qsize()}/{qdata.game_size}!")
+
+
             if qdata.queue.qsize() == qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
                     qnotice = await interaction.channel.send(f"Queue for __{qdata.full_game_name}__ is now full! Type /startmatch")
