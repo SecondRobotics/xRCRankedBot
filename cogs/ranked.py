@@ -556,6 +556,8 @@ class Ranked(commands.Cog):
             ephemeral = True
 
         await interaction.response.send_message(message, ephemeral=ephemeral)
+        await interaction.channel.send(
+            f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**", delete_after=60)
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Remove someone else from the queue")
