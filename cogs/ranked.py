@@ -854,11 +854,13 @@ class Ranked(commands.Cog):
 
         fancy_red = ""
         for i, player in enumerate(response['red_player_elos']):
-            fancy_red += f"🟥[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})```diff\n{'%+d' % (round(response['red_elo_changes'][i], 3))} [{round(player['elo'], 2)}]\n```"
+            fancy_red += f"🟥[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})" \
+                         f"```diff\n{'%+.2f' % (round(response['red_elo_changes'][i], 3))} [{round(player['elo'], 2)}]\n```"
 
         fancy_blue = ""
         for i, player in enumerate(response['blue_player_elos']):
-            fancy_blue += f"🟦[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})```diff\n{'%+d' % (round(response['blue_elo_changes'][i], 3))} [{round(player['elo'], 2)}]\n```"
+            fancy_blue += f"🟦[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})" \
+                          f"```diff\n{'%+.2f' % (round(response['blue_elo_changes'][i], 3))} [{round(player['elo'], 2)}]\n```"
 
         embed.add_field(name=f'RED 🟥 ({red_score})',
                         value=fancy_red,
@@ -879,22 +881,17 @@ class Ranked(commands.Cog):
 
         if gg:
             await interaction.channel.send(embed=embed, view=RejoinQueueView(qdata, self))
-
             await remove_roles(interaction.user.guild, qdata)
 
             if qdata.server_port:
                 stop_server_process(qdata.server_port)
 
-            # Kick players back to lobby
             lobby = self.bot.get_channel(824692700364275743)
-            if qdata.red_channel:
-                for member in qdata.red_channel.members:
-                    await member.move_to(lobby)
-                await qdata.red_channel.delete()
-            if qdata.blue_channel:
-                for member in qdata.blue_channel.members:
-                    await member.move_to(lobby)
-                await qdata.blue_channel.delete()
+            for channel in [qdata.red_channel, qdata.blue_channel]:
+                if channel:
+                    for member in channel.members:
+                        await member.move_to(lobby)
+                    await channel.delete()
         else:
             await interaction.channel.send(embed=embed)
 
