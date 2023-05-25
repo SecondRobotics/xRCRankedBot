@@ -513,23 +513,18 @@ class Ranked(commands.Cog):
         """View who is currently in the queue"""
         logger.info(f"{interaction.user.name} called /queuestatus")
         qdata = game_queues[game]
-        try:
-            players = []
-            for _ in range(0, 2):  # loop to not reverse order
-                players = [qdata.queue.get()
-                           for _ in range(qdata.queue.qsize())]
-                for player in players:
-                    qdata.queue.put(player)
-            embed = discord.Embed(
-                color=0xcda03f, title=f"Signed up players for {game}")
 
+        try:
+            players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
+            qdata.queue.queue.extend(players)  # Re-add players to the queue
+
+            embed = discord.Embed(color=0xcda03f, title=f"Signed up players for {game}")
             embed.set_thumbnail(url=qdata.game_icon)
-            embed.add_field(name='Players',
-                            value="{}".format(
-                                "\n".join([player.mention for player in players])),
-                            inline=False)
+            players_mentions = "\n".join([player.mention for player in players])
+            embed.add_field(name='Players', value=players_mentions, inline=False)
+
             await interaction.response.send_message(embed=embed, ephemeral=True)
-        except:
+        except IndexError:
             await interaction.response.send_message(f"Nobody is in queue for {game}!", ephemeral=True)
 
     @app_commands.choices(game=games_choices)
