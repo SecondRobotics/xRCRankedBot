@@ -549,7 +549,7 @@ class Ranked(commands.Cog):
                     qdata.last_ping_time = current_time
 
                     # Ping the game's ping role
-                    ping_role_name = f"{game} Ping"
+                    ping_role_name = f"{qdata.game_type} Ping"
                     logger.info(f"Pinging {ping_role_name}")
                     ping_role = discord.utils.get(interaction.guild.roles, name=ping_role_name)
                     if ping_role is not None:
