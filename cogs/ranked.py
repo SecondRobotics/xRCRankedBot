@@ -519,7 +519,7 @@ class Ranked(commands.Cog):
 
         try:
             players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
-            qdata.queue.queue.extend(deque(players))  # Re-add players to the queue
+            qdata.queue = list(players)  # Reassign the queue with a list of players
 
             embed = discord.Embed(color=0xcda03f, title=f"Signed up players for {game}")
             embed.set_thumbnail(url=qdata.game_icon)
