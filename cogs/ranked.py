@@ -287,7 +287,6 @@ class Ranked(commands.Cog):
             if existing_role is None:
                 await guild.create_role(name=role_name)
 
-    await create_ping_roles()  # Create ping roles if required
 
     async def update_ranked_display(self):
         if self.ranked_display is None:
@@ -1214,6 +1213,7 @@ class Ranked(commands.Cog):
     async def before_check_queue_joins(self):
         await self.bot.wait_until_ready()
         await asyncio.sleep(5)
+        await self.create_ping_roles()
 
     @tasks.loop(minutes=1)
     async def check_empty_servers(self):
