@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import TextIOWrapper
 import subprocess
 from typing import Dict, Optional
@@ -828,13 +828,8 @@ class Ranked(commands.Cog):
             gg = False
 
         # Finding player ids
-        red_ids = []
-        blue_ids = []
-        if qdata.game:
-            for player in qdata.game.red:
-                red_ids.append(player.id)
-            for player in qdata.game.blue:
-                blue_ids.append(player.id)
+        red_ids = [player.id for player in qdata.game.red] if qdata.game else []
+        blue_ids = [player.id for player in qdata.game.blue] if qdata.game else []
 
         url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/'
         json = {
@@ -1151,18 +1146,17 @@ class Ranked(commands.Cog):
 
     @tasks.loop(minutes=10)
     async def check_queue_joins(self):
-        """every hour, check if any queue_joins are older than 1 hour
-        if they are, remove them from the queue
-        if they are not, do nothing"""
+        cutoff_time = datetime.now() - timedelta(hours=1)
+
         for (queue, player), timestamp in queue_joins.copy().items():
-            if (datetime.now() - timestamp).total_seconds() > 60 * 60 * 1:
+            if timestamp < cutoff_time:
                 if player in queue:
                     queue.remove(player)
-                    # send a message to the player
                     await player.send(
                         "You have been removed from a queue because you have been in the queue for more than 1 hour.")
                 else:
                     queue_joins.pop((queue, player))
+
         await self.update_ranked_display()
 
     @check_queue_joins.before_loop
