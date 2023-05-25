@@ -18,6 +18,7 @@ from discord.app_commands import Choice
 import zipfile
 import shutil
 from discord.ext import tasks
+from collections import deque
 
 logger = logging.getLogger('discord')
 load_dotenv()
@@ -506,6 +507,8 @@ class Ranked(commands.Cog):
             await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
 
     #
+    from collections import deque
+
     @app_commands.choices(game=games_choices)
     @app_commands.checks.has_any_role("Event Staff")
     @app_commands.command()
@@ -516,7 +519,7 @@ class Ranked(commands.Cog):
 
         try:
             players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
-            qdata.queue.queue.extend(players)  # Re-add players to the queue
+            qdata.queue.queue.extend(deque(players))  # Re-add players to the queue
 
             embed = discord.Embed(color=0xcda03f, title=f"Signed up players for {game}")
             embed.set_thumbnail(url=qdata.game_icon)
