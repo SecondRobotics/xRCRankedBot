@@ -854,13 +854,13 @@ class Ranked(commands.Cog):
 
         fancy_red = ""
         for i, player in enumerate(response['red_player_elos']):
-            fancy_red += f"[{response['red_display_names'][i]} [{round(player['elo'], 2)}]](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})" \
-                         f"```diff\n{'%+.2f' % (round(response['red_elo_changes'][i], 3))}\n```"
+            fancy_red += f"[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})" \
+                         f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response['red_elo_changes'][i], 3))}\n```"
 
         fancy_blue = ""
         for i, player in enumerate(response['blue_player_elos']):
-            fancy_blue += f"[{response['blue_display_names'][i]} [{round(player['elo'], 2)}]](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})" \
-                          f"```diff\n{'%+.2f' % (round(response['blue_elo_changes'][i], 3))}\n```"
+            fancy_blue += f"[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})" \
+                          f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response['blue_elo_changes'][i], 3))}\n```"
 
         embed.add_field(name=f'RED 🟥 ({red_score})',
                         value=fancy_red,
@@ -1054,6 +1054,7 @@ class Ranked(commands.Cog):
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for __{qdata.full_game_name}__!", description=description
         )
+        embed.set_footer(text="Adjust Display Name", icon_url="https://secondrobotics.org/user/settings/")
         embed.set_thumbnail(url=qdata.game_icon)
         embed.add_field(name='RED', value=red_field, inline=True)
         embed.add_field(name='BLUE', value=blue_field, inline=True)
