@@ -783,18 +783,22 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
         qdata = game_queues[game]
-        if (isinstance(interaction.channel, discord.TextChannel) and
-                interaction.channel.id == QUEUE_CHANNEL and
-                isinstance(interaction.user, discord.Member)):
-            roles = [y.id for y in interaction.user.roles]
+        if (
+                isinstance(interaction.channel, discord.TextChannel)
+                and interaction.channel.id == QUEUE_CHANNEL
+                and isinstance(interaction.user, discord.Member)
+        ):
+            roles = [role.id for role in interaction.user.roles]
 
             if qdata.red_role and qdata.blue_role:
                 ranked_roles = [699094822132121662,
                                 qdata.red_role.id, qdata.blue_role.id]
             else:
                 ranked_roles = [699094822132121662]
+
             # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
-            submit_check = bool(set(roles).intersection(ranked_roles))
+            submit_check = any(role in ranked_roles for role in roles)
+
             if submit_check:
                 pass
             else:
@@ -807,6 +811,7 @@ class Ranked(commands.Cog):
         else:
             await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
             return
+
         # Red wins
         if int(red_score) > int(blue_score):
             qdata.red_series += 1
@@ -832,15 +837,14 @@ class Ranked(commands.Cog):
         blue_ids = [player.id for player in qdata.game.blue] if qdata.game else []
 
         url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/'
-        json = {
+        json_data = {
             "red_alliance": red_ids,
             "blue_alliance": blue_ids,
             "red_score": red_score,
             "blue_score": blue_score
         }
-        x = requests.post(url, json=json, headers=HEADER)
-        logger.info(x.json())
-        response = x.json()
+        response = requests.post(url, json=json_data, headers=HEADER).json()
+        logger.info(response)
         # Getting match Number
 
         embed = discord.Embed(color=0x34eb3d,
@@ -849,13 +853,13 @@ class Ranked(commands.Cog):
 
         fancy_red = ""
         for i, player in enumerate(response['red_player_elos']):
-            fancy_red += f"🟥[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})" \
-                         f"```diff\n{'%+.2f' % (round(response['red_elo_changes'][i], 3))} [{round(player['elo'], 2)}]\n```"
+            fancy_red += f"[{response['red_display_names'][i]} [{round(player['elo'], 2)}]](https://secondrobotics.org/ranked/{qdata.api_short}/{response['red_player_elos'][i]['player']})" \
+                         f"```diff\n{'%+.2f' % (round(response['red_elo_changes'][i], 3))}\n```"
 
         fancy_blue = ""
         for i, player in enumerate(response['blue_player_elos']):
-            fancy_blue += f"🟦[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})" \
-                          f"```diff\n{'%+.2f' % (round(response['blue_elo_changes'][i], 3))} [{round(player['elo'], 2)}]\n```"
+            fancy_blue += f"[{response['blue_display_names'][i]} [{round(player['elo'], 2)}]](https://secondrobotics.org/ranked/{qdata.api_short}/{response['blue_player_elos'][i]['player']})" \
+                          f"```diff\n{'%+.2f' % (round(response['blue_elo_changes'][i], 3))}\n```"
 
         embed.add_field(name=f'RED 🟥 ({red_score})',
                         value=fancy_red,
