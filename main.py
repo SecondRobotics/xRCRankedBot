@@ -34,6 +34,7 @@ class RankedBot(commands.Bot):
 
     async def setup_hook(self):
         await self.load_extension(f"cogs.ranked")
+        await self.load_extension(f"cogs.general")
         await bot.tree.sync(guild=discord.Object(id=637407041048281098))
 
     async def on_ready(self):
