@@ -1,3 +1,5 @@
+import asyncio
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -6,6 +8,7 @@ from dotenv import load_dotenv
 import logging
 import os
 import threading
+import aiohttp
 
 GUILD_ID = 637407041048281098
 
@@ -35,21 +38,24 @@ class General(commands.Cog):
 
     @app_commands.command(description="Player Info")
     async def playerinfo(self, interaction: discord.Interaction, user: discord.Member = None):
-
         await interaction.response.defer()
+
         if user is None:
             user = interaction.user
         user_id = user.id
 
         url = f'https://secondrobotics.org/api/ranked/player/{user_id}'
-        x = requests.get(url, headers=HEADER)
-        res = x.json()
-        logger.info(res)
+        async with aiohttp.ClientSession(headers=HEADER) as session:
+            async with session.get(url) as response:
+                res = await response.json()
+                logger.info(res)
+
         if not res["exists"]:
             await interaction.followup.send(
-                "You must register for an account at <https://www.secondrobotics.org/login> before you can queue.",
+                "The player you requested register for an account at <https://www.secondrobotics.org/login> before you can get info.",
                 ephemeral=True)
             return
+
         embed = discord.Embed(title="Player Information", color=0x34eb3d)
         embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url)
         embed.set_thumbnail(url=res['avatar'])
@@ -59,14 +65,14 @@ class General(commands.Cog):
         total_losses = 0
         total_ties = 0
         total_points = 0
+        best_elo = 0
+        best_game = None
 
-        lock = threading.Lock()  # Lock to synchronize updates to total variables
-
-        def process_game(game):
+        async def process_game(game):
             url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
-            x = requests.get(url, headers=HEADER)
-            gamedata = x.json()
-            logger.info(gamedata)
+            async with session.get(url) as response:
+                gamedata = await response.json()
+                logger.info(gamedata)
 
             if "error" not in gamedata:
                 total_score = "{:,}".format(gamedata['total_score'])
@@ -75,43 +81,64 @@ class General(commands.Cog):
                                                                                                'matches_played'] > 0 else 0
                 win_rate = round(win_rate, 2)
 
-                with lock:
-                    nonlocal total_wins, total_losses, total_ties, total_points
-                    total_wins += gamedata['matches_won']
-                    total_losses += gamedata['matches_lost']
-                    total_ties += gamedata['matches_drawn']
-                    total_points += gamedata['total_score']
+                nonlocal total_wins, total_losses, total_ties, total_points, best_elo, best_game
+                total_wins += gamedata['matches_won']
+                total_losses += gamedata['matches_lost']
+                total_ties += gamedata['matches_drawn']
+                total_points += gamedata['total_score']
+
+                if gamedata['elo'] > best_elo:
+                    best_elo = gamedata['elo']
+                    best_game = gamedata['name']
 
                 return (
-                gamedata['name'], round(gamedata['elo'], 2), record, gamedata['matches_played'], win_rate, total_score)
+                    gamedata['name'], round(gamedata['elo'], 2), record, gamedata['matches_played'], win_rate,
+                    total_score
+                )
             else:
                 return None
 
-        threads = []
+        tasks = []
         game_results = []
 
-        for game in short_codes_sorted:
-            t = threading.Thread(target=lambda: game_results.append(process_game(game)))
-            threads.append(t)
-            t.start()
+        async with aiohttp.ClientSession(headers=HEADER) as session:
+            for game in short_codes_sorted:
+                tasks.append(process_game(game))
 
-        for t in threads:
-            t.join()
+            game_results = await asyncio.gather(*tasks)
+
+        favorite_game = None
+        favorite_game_matches_played = 0
 
         for result in game_results:
             if result is not None:
                 name, elo, record, matches_played, win_rate, total_score = result
-                embed.add_field(name=f"{name} [{elo}]",
-                                value=f"{record} [{matches_played}] ({win_rate}%)\n"
-                                      f"Total Points Scored: {total_score}", inline=True)
+                win_rate_str = f"{win_rate}%"
+                if win_rate > 60:
+                    win_rate_str += " :crown:"
+                embed.add_field(
+                    name=f"{name} [{elo}]",
+                    value=f"{record} [{matches_played}] ({win_rate_str})\nTotal Points Scored: {total_score}",
+                    inline=True,
+                )
+
+                if matches_played > favorite_game_matches_played:
+                    favorite_game = name
+                    favorite_game_matches_played = matches_played
 
         total_matches = total_wins + total_losses + total_ties
         win_rate = (total_wins / total_matches) * 100 if total_matches > 0 else 0
-        win_rate = round(win_rate, 2)
+        win_rate_str = f"{round(win_rate, 2)}%"
+        if win_rate > 60:
+            win_rate_str += " :crown:"
 
-        summary = f"Record: {total_wins}-{total_losses}-{total_ties}\n" \
-                  f"Total Points Scored: {total_points:,}\n" \
-                  f"Win Rate: {win_rate}%"
+        summary = (
+            f"Record: {total_wins}-{total_losses}-{total_ties} [{total_matches}]\n"
+            f"Total Points Scored: {total_points:,}\n"
+            f"Win Rate: {win_rate_str}\n"
+            f"Favorite Game: {favorite_game}\n"
+            f"Best Game: {best_game} ({round(best_elo,2)})"
+        )
         embed.add_field(name="Summary", value=summary, inline=False)
 
         await interaction.followup.send(embed=embed)
