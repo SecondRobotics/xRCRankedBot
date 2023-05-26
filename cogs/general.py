@@ -5,6 +5,7 @@ import requests
 from dotenv import load_dotenv
 import logging
 import os
+import threading
 
 GUILD_ID = 637407041048281098
 
@@ -59,7 +60,9 @@ class General(commands.Cog):
         total_ties = 0
         total_points = 0
 
-        for game in short_codes_sorted:
+        lock = threading.Lock()  # Lock to synchronize updates to total variables
+
+        def process_game(game):
             url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
             x = requests.get(url, headers=HEADER)
             gamedata = x.json()
@@ -68,14 +71,39 @@ class General(commands.Cog):
             if "error" not in gamedata:
                 total_score = "{:,}".format(gamedata['total_score'])
                 record = f"{gamedata['matches_won']}-{gamedata['matches_lost']}-{gamedata['matches_drawn']}"
-                embed.add_field(name=f"{gamedata['name']} [{round(gamedata['elo'], 2)}]",
-                                value=f"Record: {record} [{gamedata['matches_played']}]\n"
-                                      f"Total Points Scored: {total_score}", inline=True)
+                win_rate = (gamedata['matches_won'] / gamedata['matches_played']) * 100 if gamedata[
+                                                                                               'matches_played'] > 0 else 0
+                win_rate = round(win_rate, 2)
 
-                total_wins += gamedata['matches_won']
-                total_losses += gamedata['matches_lost']
-                total_ties += gamedata['matches_drawn']
-                total_points += gamedata['total_score']
+                with lock:
+                    nonlocal total_wins, total_losses, total_ties, total_points
+                    total_wins += gamedata['matches_won']
+                    total_losses += gamedata['matches_lost']
+                    total_ties += gamedata['matches_drawn']
+                    total_points += gamedata['total_score']
+
+                return (
+                gamedata['name'], round(gamedata['elo'], 2), record, gamedata['matches_played'], win_rate, total_score)
+            else:
+                return None
+
+        threads = []
+        game_results = []
+
+        for game in short_codes_sorted:
+            t = threading.Thread(target=lambda: game_results.append(process_game(game)))
+            threads.append(t)
+            t.start()
+
+        for t in threads:
+            t.join()
+
+        for result in game_results:
+            if result is not None:
+                name, elo, record, matches_played, win_rate, total_score = result
+                embed.add_field(name=f"{name} [{elo}]",
+                                value=f"{record} [{matches_played}] ({win_rate}%)\n"
+                                      f"Total Points Scored: {total_score}", inline=True)
 
         total_matches = total_wins + total_losses + total_ties
         win_rate = (total_wins / total_matches) * 100 if total_matches > 0 else 0
