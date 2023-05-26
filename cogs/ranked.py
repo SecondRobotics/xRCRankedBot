@@ -871,7 +871,7 @@ class Ranked(commands.Cog):
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
 
-            if qdata.red_series == 2 or qdata.blue_series == 2:
+            if qdata.red_series != 2 or qdata.blue_series != 2:
                 await interaction.followup.send("Series is complete already!", ephemeral=True)
                 return
         else:
@@ -1118,10 +1118,10 @@ class Ranked(commands.Cog):
 
         description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**\n
         || IP: {ip} Port: {qdata.server_port}||
-         [Adjust Display Name](https://secondrobotics.org/user/settings/) """ if qdata.server_port else None
+         [Adjust Display Name](https://secondrobotics.org/user/settings/) [Leaderboard](https://secondrobotics.org/ranked/{qdata.api_short})""" if qdata.server_port else None
 
         embed = discord.Embed(
-            color=0x34dceb, title=f"Teams have been picked for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})!", description=description
+            color=0x34dceb, title=f"Teams have been picked for {qdata.full_game_name}!", description=description
         )
         embed.set_thumbnail(url=qdata.game_icon)
         embed.add_field(name='RED', value=red_field, inline=True)
