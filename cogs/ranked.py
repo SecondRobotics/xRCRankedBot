@@ -688,8 +688,6 @@ class Ranked(commands.Cog):
             qdata.red_series = 0
             qdata.blue_series = 0
         else:
-
-        if qdata.red_series != 2 or qdata.blue_series != 2:
             await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
 
