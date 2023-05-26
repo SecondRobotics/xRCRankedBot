@@ -72,7 +72,7 @@ class General(commands.Cog):
         embed = discord.Embed(title="Player Information", color=random_color)
         embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url)
         embed.set_thumbnail(url=res['avatar'])
-        embed.add_field(name="Display Name", value=res['display_name'], inline=False)
+        embed.add_field(name="Display Name", value=f"[{res['display_name']}](https://secondrobotics.org/user/{user_id})", inline=False)
 
         total_wins = 0
         total_losses = 0
