@@ -117,8 +117,6 @@ server_restart_modes = {
 }
 
 
-
-
 class XrcGame():
     def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
         self.queue = PlayerQueue()
@@ -271,7 +269,6 @@ class Ranked(commands.Cog):
         self.check_queue_joins.start()
         self.lobby = self.bot.get_channel(824692700364275743)
 
-
         # self.check_empty_servers.start() # FIXME: Disabled for now
 
     async def create_ping_roles(self):
@@ -288,13 +285,12 @@ class Ranked(commands.Cog):
             if existing_role is None:
                 await guild.create_role(name=role_name)
 
-
     async def update_ranked_display(self):
         if self.ranked_display is None:
             logger.info("Finding Ranked Queue Display")
 
             qstatus_channel = get(
-                self.bot.get_all_channels(), id=1009630461393379438)
+                self.bot.get_channel, id=1009630461393379438)
             async for msg in qstatus_channel.history(limit=None):
                 if msg.author.id == self.bot.user.id:
                     self.ranked_display = msg
@@ -559,13 +555,15 @@ class Ranked(commands.Cog):
 
             if qdata.queue.qsize() == qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
-                    qnotice = await interaction.channel.send(f"Queue for __{qdata.full_game_name}__ is now full! Type /startmatch")
+                    qnotice = await interaction.channel.send(
+                        f"Queue for __{qdata.full_game_name}__ is now full! Type /startmatch")
                     await qnotice.delete(delay=60)
                 else:
                     await interaction.channel.send(
                         f"Queue for __{qdata.full_game_name}__ is now full! You can start as soon as the current match concludes.")
             else:
-                qstatus = await interaction.channel.send(f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**")
+                qstatus = await interaction.channel.send(
+                    f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**")
                 await qstatus.delete(delay=60)
         else:
             await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
@@ -622,7 +620,8 @@ class Ranked(commands.Cog):
 
         await interaction.response.send_message(message, ephemeral=ephemeral)
         await interaction.channel.send(
-            f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**", delete_after=60)
+            f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
+            delete_after=60)
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Remove someone else from the queue")
@@ -845,7 +844,7 @@ class Ranked(commands.Cog):
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Submit Score")
-    @app_commands.checks.cooldown(1, 20.0, key=lambda i: f"{i.guild_id}-{i.game}")
+    @app_commands.checks.cooldown(1, 20.0, key=lambda i: f"{i.guild_id}")
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
