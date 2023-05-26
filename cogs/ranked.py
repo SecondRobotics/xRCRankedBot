@@ -684,6 +684,11 @@ class Ranked(commands.Cog):
             await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
 
+        if qdata.red_series == 2 or qdata.blue_series == 2:
+            qdata.red_series = 0
+            qdata.blue_series = 0
+        else:
+
         if qdata.red_series != 2 or qdata.blue_series != 2:
             await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
@@ -702,8 +707,6 @@ class Ranked(commands.Cog):
             qdata.server_port = port
             qdata.server_password = password
 
-        qdata.red_series = 0
-        qdata.blue_series = 0
         await self.random(interaction, game)
 
     # async def captains(self, ctx):
