@@ -96,6 +96,7 @@ game_logos = {
     "Rapid React": "https://upload.wikimedia.org/wikipedia/en/thumb/0/08/Rapid_React_Logo.svg/1200px-Rapid_React_Logo.svg.png",
     "Spin Up": "https://www.roboticseducation.org/app/uploads/2022/05/Spin-Up-Logo.png",
     "Charged Up": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b7/Charged_Up_Logo.svg/1024px-Charged_Up_Logo.svg.png",
+    "Power Play": "https://www.roboticseducation.org/app/uploads/2022/05/Power-Play-Logo.png",
 }
 
 server_games_choices = [
@@ -683,7 +684,7 @@ class Ranked(commands.Cog):
             await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
 
-        if qdata.red_series != 2 and qdata.blue_series != 2:
+        if qdata.red_series == 2 or qdata.blue_series == 2:
             await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
 
@@ -844,7 +845,7 @@ class Ranked(commands.Cog):
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Submit Score")
-    @app_commands.checks.cooldown(1, 20.0, key=lambda i: f"{i.guild_id}")
+    @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
