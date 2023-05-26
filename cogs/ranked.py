@@ -290,7 +290,7 @@ class Ranked(commands.Cog):
             logger.info("Finding Ranked Queue Display")
 
             qstatus_channel = get(
-                self.bot.get_channel, id=1009630461393379438)
+                self.bot.get_all_channels(), id=1009630461393379438)
             async for msg in qstatus_channel.history(limit=None):
                 if msg.author.id == self.bot.user.id:
                     self.ranked_display = msg
