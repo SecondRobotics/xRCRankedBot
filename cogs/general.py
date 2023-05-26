@@ -62,7 +62,6 @@ class General(commands.Cog):
                 random_pixel = thumbnail_image.getpixel(
                     (random.randint(0, thumbnail_width - 1), random.randint(0, thumbnail_height - 1)))
                 random_color = discord.Color.from_rgb(*random_pixel[:3])
-                print(random_color)
 
         if not res["exists"]:
             await interaction.followup.send(
@@ -131,7 +130,7 @@ class General(commands.Cog):
                     win_rate_str += " :crown:"
                 embed.add_field(
                     name=f"{name} [{elo}]",
-                    value=f"{record} [{matches_played}] ({win_rate_str})\nTotal Points Scored: {total_score}",
+                    value=f"{record} [{matches_played}] {win_rate_str}\nTotal Points Scored: {total_score}",
                     inline=True,
                 )
 
