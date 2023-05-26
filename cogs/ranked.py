@@ -1116,13 +1116,12 @@ class Ranked(commands.Cog):
         red_field = "\n".join([f"🟥{player.mention}" for player in qdata.game.red])
         blue_field = "\n".join([f"🟦{player.mention}" for player in qdata.game.blue])
 
-        description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**
+        description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**\n
         || IP: {ip} Port: {qdata.server_port}||
-        [Leaderboard](https://secondrobotics.org/ranked/{qdata.api_short})\n
          [Adjust Display Name](https://secondrobotics.org/user/settings/) """ if qdata.server_port else None
 
         embed = discord.Embed(
-            color=0x34dceb, title=f"Teams have been picked for {qdata.full_game_name}!", description=description
+            color=0x34dceb, title=f"Teams have been picked for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})!", description=description
         )
         embed.set_thumbnail(url=qdata.game_icon)
         embed.add_field(name='RED', value=red_field, inline=True)
