@@ -702,6 +702,8 @@ class Ranked(commands.Cog):
             qdata.server_port = port
             qdata.server_password = password
 
+        qdata.red_series = 0
+        qdata.blue_series = 0
         await self.random(interaction, game)
 
     # async def captains(self, ctx):
