@@ -874,7 +874,7 @@ class Ranked(commands.Cog):
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
 
-            if qdata.red_series != 2 or qdata.blue_series != 2:
+            if qdata.red_series == 2 or qdata.blue_series == 2:
                 await interaction.followup.send("Series is complete already!", ephemeral=True)
                 return
         else:
