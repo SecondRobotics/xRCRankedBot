@@ -9,6 +9,9 @@ import logging
 import os
 import threading
 import aiohttp
+from PIL import Image
+import random
+from io import BytesIO
 
 GUILD_ID = 637407041048281098
 
@@ -39,7 +42,7 @@ class General(commands.Cog):
     @app_commands.command(description="Player Info")
     async def playerinfo(self, interaction: discord.Interaction, user: discord.Member = None):
         await interaction.response.defer()
-
+        logger.info(f"/playerinfo by {interaction.user.display_name}")
         if user is None:
             user = interaction.user
         user_id = user.id
@@ -48,7 +51,18 @@ class General(commands.Cog):
         async with aiohttp.ClientSession(headers=HEADER) as session:
             async with session.get(url) as response:
                 res = await response.json()
-                logger.info(res)
+
+                # Get a random pixel color from the thumbnail image
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(res['avatar']) as response:
+                        thumbnail_bytes = await response.read()
+
+                thumbnail_image = Image.open(BytesIO(thumbnail_bytes))
+                thumbnail_width, thumbnail_height = thumbnail_image.size
+                random_pixel = thumbnail_image.getpixel(
+                    (random.randint(0, thumbnail_width - 1), random.randint(0, thumbnail_height - 1)))
+                random_color = discord.Color.from_rgb(*random_pixel[:3])
+                print(random_color)
 
         if not res["exists"]:
             await interaction.followup.send(
@@ -56,7 +70,7 @@ class General(commands.Cog):
                 ephemeral=True)
             return
 
-        embed = discord.Embed(title="Player Information", color=0x34eb3d)
+        embed = discord.Embed(title="Player Information", color=random_color)
         embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url)
         embed.set_thumbnail(url=res['avatar'])
         embed.add_field(name="Display Name", value=res['display_name'], inline=False)
@@ -72,7 +86,6 @@ class General(commands.Cog):
             url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
             async with session.get(url) as response:
                 gamedata = await response.json()
-                logger.info(gamedata)
 
             if "error" not in gamedata:
                 total_score = "{:,}".format(gamedata['total_score'])
