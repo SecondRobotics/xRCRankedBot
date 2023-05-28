@@ -196,6 +196,7 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
                          restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
                          tournament_mode: bool = True, start_when_ready: bool = True,
                          register: bool = True, spectators: int = 4, min_players: int = -1,
+                         restart_all: bool = True
                          ):
     server_path = "./server/xRC Simulator.x86_64"
 
@@ -232,7 +233,8 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
          f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
          f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
          f"MaxData=10000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
-         f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}", f"MinPlayers={min_players}"],
+         f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}", f"MinPlayers={min_players}",
+            f"RestartAll={'On' if restart_all else 'Off'}"],
         stdout=f, stderr=f, shell=False
         # FIXME: shell=True needed for stdin (stdin=subprocess.PIPE) to work
     )
@@ -274,7 +276,8 @@ class Ranked(commands.Cog):
 
     async def create_ping_roles(self):
         guild_id = 637407041048281098  # Guild ID of the desired guild
-        guild = self.bot.get_guild(guild_id)  # Replace `bot` with your actual bot instance
+        # Replace `bot` with your actual bot instance
+        guild = self.bot.get_guild(guild_id)
         if guild is None:
             print(f"Guild with ID {guild_id} not found!")
             return
@@ -385,12 +388,13 @@ class Ranked(commands.Cog):
                             game: str, comment: str, password: str = "", admin: str = "Admin",
                             restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
                             tournament_mode: bool = True, start_when_ready: bool = True,
-                            register: bool = True, spectators: int = 4, min_players: int = -1
+                            register: bool = True, spectators: int = 4, min_players: int = -1,
+                            restart_all: bool = True
                             ):
         logger.info(f"{interaction.user.name} called /launchserver")
 
         result, _ = start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
-                                         tournament_mode, start_when_ready, register, spectators, min_players)
+                                         tournament_mode, start_when_ready, register, spectators, min_players, restart_all)
 
         await interaction.response.send_message(result)
 
@@ -549,7 +553,8 @@ class Ranked(commands.Cog):
                     # Ping the game's ping role
                     ping_role_name = f"{qdata.game_type} Ping"
                     logger.info(f"Pinging {ping_role_name}")
-                    ping_role = discord.utils.get(interaction.guild.roles, name=ping_role_name)
+                    ping_role = discord.utils.get(
+                        interaction.guild.roles, name=ping_role_name)
                     if ping_role is not None:
                         await interaction.channel.send(
                             f"{ping_role.mention} Queue for __{qdata.full_game_name}__ is now {qdata.queue.qsize()}/{qdata.game_size}!")
@@ -861,7 +866,8 @@ class Ranked(commands.Cog):
             roles = [role.id for role in interaction.user.roles]
 
             if qdata.red_role and qdata.blue_role:
-                ranked_roles = [699094822132121662, qdata.red_role.id, qdata.blue_role.id]
+                ranked_roles = [699094822132121662,
+                                qdata.red_role.id, qdata.blue_role.id]
             else:
                 ranked_roles = [699094822132121662]
 
@@ -903,7 +909,8 @@ class Ranked(commands.Cog):
 
         # Finding player ids
         red_ids = [player.id for player in qdata.game.red] if qdata.game else []
-        blue_ids = [player.id for player in qdata.game.blue] if qdata.game else []
+        blue_ids = [
+            player.id for player in qdata.game.blue] if qdata.game else []
 
         url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/'
         json_data = {
@@ -1110,14 +1117,17 @@ class Ranked(commands.Cog):
 
     async def display_teams(self, ctx, qdata: XrcGame):
         channel = ctx.channel
-        self.category = self.category or get(ctx.guild.categories, id=824691912371470367)
+        self.category = self.category or get(
+            ctx.guild.categories, id=824691912371470367)
         self.staff = self.staff or get(ctx.guild.roles, id=699094822132121662)
         self.bots = self.bots or get(ctx.guild.roles, id=646560019034406912)
 
         ip = requests.get('https://api.ipify.org').text
 
-        red_field = "\n".join([f"🟥{player.mention}" for player in qdata.game.red])
-        blue_field = "\n".join([f"🟦{player.mention}" for player in qdata.game.blue])
+        red_field = "\n".join(
+            [f"🟥{player.mention}" for player in qdata.game.red])
+        blue_field = "\n".join(
+            [f"🟦{player.mention}" for player in qdata.game.blue])
 
         description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**\n
         || IP: {ip} Port: {qdata.server_port}||
