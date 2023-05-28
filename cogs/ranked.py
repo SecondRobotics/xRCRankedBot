@@ -1145,22 +1145,23 @@ class Ranked(commands.Cog):
                            self.staff: discord.PermissionOverwrite(connect=True),
                            self.bots: discord.PermissionOverwrite(connect=True)}
 
-        qdata.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
-                                                                 category=self.category, overwrites=overwrites_red)
-        qdata.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
-                                                                  category=self.category, overwrites=overwrites_blue)
+        if qdata.game_size != 2:
+            qdata.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
+                                                                     category=self.category, overwrites=overwrites_red)
+            qdata.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
+                                                                      category=self.category, overwrites=overwrites_blue)
 
-        if not qdata.game:
-            await channel.send("Error: No game found")
-            return
+            if not qdata.game:
+                await channel.send("Error: No game found")
+                return
 
-        for player in qdata.game.red | qdata.game.blue:
-            await player.add_roles(qdata.red_role if player in qdata.game.red else qdata.blue_role)
-            try:
-                await player.move_to(qdata.red_channel if player in qdata.game.red else qdata.blue_channel)
-            except Exception as e:
-                logger.error(e)
-                pass
+            for player in qdata.game.red | qdata.game.blue:
+                await player.add_roles(qdata.red_role if player in qdata.game.red else qdata.blue_role)
+                try:
+                    await player.move_to(qdata.red_channel if player in qdata.game.red else qdata.blue_channel)
+                except Exception as e:
+                    logger.error(e)
+                    pass
 
         await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
