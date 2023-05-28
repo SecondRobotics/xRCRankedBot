@@ -1155,8 +1155,9 @@ class Ranked(commands.Cog):
                 await channel.send("Error: No game found")
                 return
 
-            for player in qdata.game.red | qdata.game.blue:
-                await player.add_roles(qdata.red_role if player in qdata.game.red else qdata.blue_role)
+        for player in qdata.game.red | qdata.game.blue:
+            await player.add_roles(qdata.red_role if player in qdata.game.red else qdata.blue_role)
+            if qdata.game_size != 2:
                 try:
                     await player.move_to(qdata.red_channel if player in qdata.game.red else qdata.blue_channel)
                 except Exception as e:
