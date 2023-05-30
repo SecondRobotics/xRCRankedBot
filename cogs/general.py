@@ -72,7 +72,8 @@ class General(commands.Cog):
         embed = discord.Embed(title="Player Information", color=random_color)
         embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url)
         embed.set_thumbnail(url=res['avatar'])
-        embed.add_field(name="Display Name", value=f"[{res['display_name']}](https://secondrobotics.org/user/{user_id})", inline=False)
+        embed.add_field(name="Display Name",
+                        value=f"[{res['display_name']}](https://secondrobotics.org/user/{user_id})", inline=False)
 
         total_wins = 0
         total_losses = 0
@@ -80,6 +81,7 @@ class General(commands.Cog):
         total_points = 0
         best_elo = 0
         best_game = None
+        elos = []
 
         async def process_game(game):
             url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
@@ -103,11 +105,14 @@ class General(commands.Cog):
                     best_elo = gamedata['elo']
                     best_game = gamedata['name']
 
+                elos.append(gamedata['elo'])  # Store the ELO value
+
                 return (
                     gamedata['name'], round(gamedata['elo'], 2), record, gamedata['matches_played'], win_rate,
                     total_score
                 )
             else:
+                elos.append(0)
                 return None
 
         tasks = []
@@ -149,8 +154,18 @@ class General(commands.Cog):
             f"Total Points Scored: {total_points:,}\n"
             f"Win Rate: {win_rate_str}\n"
             f"Favorite Game: {favorite_game}\n"
-            f"Best Game: {best_game} ({round(best_elo,2)})"
+            f"Best Game: {best_game} ({round(best_elo, 2)})"
         )
+
+        average_elo = None
+        if elos:
+            average_elo = round(sum(elos) / len(elos), 2)
+
+        if average_elo is not None:
+            summary += f"\nAverage ELO: {average_elo}"
+        else:
+            summary += "\nAverage ELO: Unknown"
+
         embed.add_field(name="Summary", value=summary, inline=False)
 
         await interaction.followup.send(embed=embed)
