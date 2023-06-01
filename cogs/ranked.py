@@ -874,9 +874,11 @@ class Ranked(commands.Cog):
             logger.info(game)
             red = game.red_role
             blue = game.blue_role
-            logger.info(red, blue)
+            logger.info(f"{red} {blue}")
             if red in interaction.user.roles or blue in interaction.user.roles:
+                logger.info(f"found game {game}")
                 qdata = game
+                logger.info(f"qdata {qdata}")
             else:
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
