@@ -864,17 +864,18 @@ class Ranked(commands.Cog):
     #@app_commands.choices(game=games_choices)
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
-    async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
+    async def submit(self, interaction: discord.Interaction, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
 
         #determine what submit to do
 
         for game in game_queues.values():
+            logger.info(game)
             red = game.red_role
             blue = game.blue_role
-
-            if any(role in interaction.user.roles for role in (red, blue)):
+            logger.info(red, blue)
+            if red in interaction.user.roles or blue in interaction.user.roles:
                 qdata = game
             else:
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
