@@ -422,9 +422,19 @@ class Ranked(commands.Cog):
     @app_commands.checks.has_any_role("Event Staff")
     async def test(self, interaction: discord.Interaction):
         logger.info(f"{interaction.user.name} called /test")
+        await interaction.response.defer(ephemeral=True)
+        print(game_queues)
+        for game in game_queues.values():
+            print(game)
+            red = game.red_role
+            blue = game.blue_role
+            print(red, blue)
+            if red in interaction.user.roles or blue in interaction.user.roles:
+                await interaction.followup.send(game.full_game_name)
+                return
 
-        await self.update_ranked_display()
-        await interaction.response.send_message(f"Done", ephemeral=True)
+
+
 
     # @commands.command(pass_context=True)
     # async def autoq(self, ctx, command=None, command_ctx=None):
@@ -857,7 +867,19 @@ class Ranked(commands.Cog):
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
-        qdata = game_queues[game]
+
+        #determine what submit to do
+
+        for game in game_queues.values():
+            red = game.red_role
+            blue = game.blue_role
+
+            if any(role in interaction.user.roles for role in (red, blue)):
+                qdata = game
+            else:
+                await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
+                return
+        
         if (
                 isinstance(interaction.channel, discord.TextChannel)
                 and interaction.channel.id == QUEUE_CHANNEL
