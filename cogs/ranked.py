@@ -871,10 +871,8 @@ class Ranked(commands.Cog):
         #determine what submit to do
         qdata = None
         for game in game_queues.values():
-            logger.info(game)
             red = game.red_role
             blue = game.blue_role
-            logger.info(f"{red} {blue}")
             if red in interaction.user.roles or blue in interaction.user.roles:
                 logger.info(f"found game {game}")
                 qdata = game
