@@ -861,7 +861,7 @@ class Ranked(commands.Cog):
             await interaction.followup.send(
                 f"Most recent match edited successfully. Note: the series will not be updated to reflect this change, but elo will.")
 
-    @app_commands.choices(game=games_choices)
+    #@app_commands.choices(game=games_choices)
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
@@ -879,7 +879,7 @@ class Ranked(commands.Cog):
             else:
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
-        
+
         if (
                 isinstance(interaction.channel, discord.TextChannel)
                 and interaction.channel.id == QUEUE_CHANNEL
