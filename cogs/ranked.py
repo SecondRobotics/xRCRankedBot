@@ -869,7 +869,7 @@ class Ranked(commands.Cog):
         await interaction.response.defer()
 
         #determine what submit to do
-
+        qdata = None
         for game in game_queues.values():
             logger.info(game)
             red = game.red_role
@@ -879,9 +879,10 @@ class Ranked(commands.Cog):
                 logger.info(f"found game {game}")
                 qdata = game
                 logger.info(f"qdata {qdata}")
-            else:
-                await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
-                return
+                break
+        if qdata is None:
+            await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
+            return
 
         if (
                 isinstance(interaction.channel, discord.TextChannel)
