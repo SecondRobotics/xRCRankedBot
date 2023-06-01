@@ -1153,9 +1153,9 @@ class Ranked(commands.Cog):
         blue_field = "\n".join(
             [f"🟦{player.mention}" for player in qdata.game.blue])
 
-        description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**\n
+        description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**
         || IP: {ip} Port: {qdata.server_port}||
-         [Adjust Display Name](https://secondrobotics.org/user/settings/) [Leaderboard](https://secondrobotics.org/ranked/{qdata.api_short})""" if qdata.server_port else None
+         [Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{qdata.api_short})""" if qdata.server_port else None
 
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for {qdata.full_game_name}!", description=description
