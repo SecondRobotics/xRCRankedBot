@@ -626,7 +626,8 @@ class Ranked(commands.Cog):
             if player in qdata.queue:
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
-                message = f"🔴 **{player.display_name}** 🔴\nremoved from the queue for __{qdata.full_game_name}__. *({qdata.queue.qsize()}/{qdata.game_size})*"
+                cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
+                message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for __{qdata.full_game_name}__. *({qdata.queue.qsize()}/{qdata.game_size})*"
             else:
                 message = "You aren't in this queue."
                 ephemeral = True
