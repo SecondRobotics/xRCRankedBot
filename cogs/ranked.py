@@ -69,6 +69,8 @@ server_games = {
     "Spin Up": "11",
     "Power Play": "12",
     "Charged Up": "13",
+    "Over Under": "14",
+    "Centerstage": "15",
 }
 
 # dictionary mapping game name to default number of players
@@ -87,6 +89,8 @@ default_game_players = {
     "Spin Up": 4,
     "Power Play": 4,
     "Charged Up": 6,
+    "Over Under": 4,
+    "Centerstage": 4,
 }
 
 # dictionary mapping game name to game logo url
@@ -97,6 +101,8 @@ game_logos = {
     "Spin Up": "https://www.roboticseducation.org/app/uploads/2022/05/Spin-Up-Logo.png",
     "Charged Up": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b7/Charged_Up_Logo.svg/1024px-Charged_Up_Logo.svg.png",
     "Power Play": "https://www.roboticseducation.org/app/uploads/2022/05/Power-Play-Logo.png",
+    "Centerstage": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQS-ziPQP3hKuX2qk5YBkLFIfv3wWNkNCf6QLBHaF9JPw&s",
+    "Over Under": "https://roboticseducation.org/wp-content/uploads/2023/04/VRC-Over-Under.png",
 }
 
 server_games_choices = [
