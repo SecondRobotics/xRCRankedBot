@@ -319,7 +319,7 @@ class Ranked(commands.Cog):
         embed.set_thumbnail(
             url="https://secondrobotics.org/logos/xRC%20Logo.png")
         active_queues = 0
-        embed.add_field(name="Game of the Day", value=f"Today's extra game is **{daily_game}!", inline=False)
+        embed.add_field(name="Game of the Day", value=f"Today's extra game is **{daily_game}**!", inline=False)
         for qdata in game_queues.values():
             if qdata.queue.qsize() > 0:
                 active_queues += 1
