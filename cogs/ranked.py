@@ -98,6 +98,8 @@ listener = commands.Cog.listener
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
+active_games = list(server_games.keys())[-3:]
+
 games = requests.get("https://secondrobotics.org/api/ranked/").json()
 
 games_choices = [Choice(name=game['name'], value=game['short_code'])
@@ -106,7 +108,7 @@ games_choices = [Choice(name=game['name'], value=game['short_code'])
 games_players = {game['short_code']: game['players_per_alliance'] * 2
                  for game in games if game['game'] in active_games} 
 
-active_games = list(server_games.keys())[-3:]
+
 
 
 server_games_choices = [
