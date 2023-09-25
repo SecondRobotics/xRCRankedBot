@@ -41,18 +41,6 @@ PORTS = [11115, 11116, 11117, 11118, 11119, 11120]
 servers_active: Dict[int, subprocess.Popen] = {}
 log_files: Dict[int, TextIOWrapper] = {}
 
-listener = commands.Cog.listener
-
-ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
-
-games = requests.get("https://secondrobotics.org/api/ranked/").json()
-
-games_choices = [Choice(name=game['name'], value=game['short_code'])
-                 for game in games]
-
-games_players = {game['short_code']: game['players_per_alliance'] * 2
-                 for game in games}
-
 # dictionary mapping game name to game number string
 server_games = {
     "Splish Splash": "0",
@@ -104,6 +92,22 @@ game_logos = {
     "Centerstage": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQS-ziPQP3hKuX2qk5YBkLFIfv3wWNkNCf6QLBHaF9JPw&s",
     "Over Under": "https://roboticseducation.org/wp-content/uploads/2023/04/VRC-Over-Under.png",
 }
+
+
+listener = commands.Cog.listener
+
+ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
+
+games = requests.get("https://secondrobotics.org/api/ranked/").json()
+
+games_choices = [Choice(name=game['name'], value=game['short_code'])
+                 for game in games if game['game'] in active_games]
+
+games_players = {game['short_code']: game['players_per_alliance'] * 2
+                 for game in games if game['game'] in active_games} 
+
+active_games = list(server_games.keys())[-3:]
+
 
 server_games_choices = [
     Choice(name=game, value=server_games[game]) for game in server_games.keys()
