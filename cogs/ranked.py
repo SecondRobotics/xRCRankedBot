@@ -93,23 +93,21 @@ game_logos = {
     "Over Under": "https://roboticseducation.org/wp-content/uploads/2023/04/VRC-Over-Under.png",
 }
 
-
 listener = commands.Cog.listener
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
 active_games = list(server_games.keys())[-3:]
+inactive_games = list(server_games.keys())[:-3]
+daily_game = random.choice(inactive_games)
 
 games = requests.get("https://secondrobotics.org/api/ranked/").json()
 
 games_choices = [Choice(name=game['name'], value=game['short_code'])
-                 for game in games if game['game'] in active_games]
+                 for game in games if game['game'] in active_games or game['game'] == daily_game]
 
 games_players = {game['short_code']: game['players_per_alliance'] * 2
-                 for game in games if game['game'] in active_games} 
-
-
-
+                 for game in games if game['game'] in active_games or game['game'] == daily_game} 
 
 server_games_choices = [
     Choice(name=game, value=server_games[game]) for game in server_games.keys()
@@ -321,6 +319,7 @@ class Ranked(commands.Cog):
         embed.set_thumbnail(
             url="https://secondrobotics.org/logos/xRC%20Logo.png")
         active_queues = 0
+        embed.add_field(name="Game of the Day", value=f"Today's extra game is {daily_game}!", inline=False)
         for qdata in game_queues.values():
             if qdata.queue.qsize() > 0:
                 active_queues += 1
