@@ -18,7 +18,6 @@ from discord.app_commands import Choice
 import zipfile
 import shutil
 from discord.ext import tasks
-from discord.ext import components
 
 logger = logging.getLogger('discord')
 load_dotenv()
@@ -301,13 +300,6 @@ class Ranked(commands.Cog):
                 await guild.create_role(name=role_name)
 
     async def update_ranked_display(self):
-        buttons = []
-
-        for choice in games_choices:
-            buttons.append(
-                components.Button(style=components.ButtonStyle.primary, label=choice.name, custom_id=choice.value)
-            )
-
         if self.ranked_display is None:
             logger.info("Finding Ranked Queue Display")
 
@@ -327,7 +319,7 @@ class Ranked(commands.Cog):
         embed.set_thumbnail(
             url="https://secondrobotics.org/logos/xRC%20Logo.png")
         active_queues = 0
-        embed.add_field(name="Game of the Day", value=f"Today's extra game is **{daily_game}**!", inline=False)
+        embed.add_field(name="Game of the Day", value=f"Today's extra game is **{daily_game}!", inline=False)
         for qdata in game_queues.values():
             if qdata.queue.qsize() > 0:
                 active_queues += 1
@@ -337,7 +329,7 @@ class Ranked(commands.Cog):
             embed.add_field(name="No current queues",
                             value="Queue to get a match started!", inline=False)
         try:
-            await self.ranked_display.edit(embed=embed, components=buttons)
+            await self.ranked_display.edit(embed=embed)
         except Exception as e:
             logger.error(e)
             self.ranked_display = None
@@ -345,12 +337,6 @@ class Ranked(commands.Cog):
     server_game_names = [
         Choice(name=game, value=game) for game in server_games.keys()
     ]
-
-    @commands.Cog.listener('on_button_click')
-    async def on_button_click(self, ctx: components.ComponentContext):
-        game_id = ctx.component.custom_id  # This should retrieve the value set in the button
-        logger.info(f"{ctx.author.name} clicked {game_id}")
-        await self.queue_player(ctx.origin_message, game_id)
 
     @app_commands.choices(game=server_game_names)
     @app_commands.command(name="rankedping", description="Toggle ranked pings for a game")
