@@ -38,5 +38,5 @@ rsa==4.9
 schedule==1.1.0
 six==1.16.0
 toml==0.10.2
-urllib3==1.26.11
+urllib3==1.26.17
 yarl==1.7.2
