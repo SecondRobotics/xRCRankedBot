@@ -99,6 +99,8 @@ ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
 active_games = list(server_games.keys())[-3:]
 inactive_games = list(server_games.keys())[:-3]
+inactive_games.remove("Bot Royale")
+inactive_games.remove("Relic Recovery")
 daily_game = random.choice(inactive_games)
 
 games = requests.get("https://secondrobotics.org/api/ranked/").json()
