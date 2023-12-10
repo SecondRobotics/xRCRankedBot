@@ -1017,13 +1017,18 @@ class Ranked(commands.Cog):
             await interaction.followup.send("No game found", ephemeral=True)
             return
 
+        logger.info(f"Getting players for {qdata.game_type}")
         red = random.sample(qdata.game.players, int(qdata.team_size))
         for player in red:
             qdata.game.add_to_red(player)
 
+        logger.info(f"Red: {red}")
+
         blue = list(qdata.game.players)
         for player in blue:
             qdata.game.add_to_blue(player)
+
+        logger.info(f"Blue: {blue}")
 
         await self.display_teams(interaction, qdata)
 
@@ -1154,12 +1159,14 @@ class Ranked(commands.Cog):
     #     await ctx.channel.send("Names updated")
 
     async def display_teams(self, ctx, qdata: XrcGame):
+        loggern.info(f"Displaying teams for {qdata.game_type}") 
         channel = ctx.channel
         self.category = self.category or get(
             ctx.guild.categories, id=824691912371470367)
         self.staff = self.staff or get(ctx.guild.roles, id=699094822132121662)
         self.bots = self.bots or get(ctx.guild.roles, id=646560019034406912)
 
+        logger.info(f"Getting IP for {qdata.game_type}")
         ip = requests.get('https://api.ipify.org').text
 
         red_field = "\n".join(
