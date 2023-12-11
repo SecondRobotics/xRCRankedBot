@@ -1167,7 +1167,8 @@ class Ranked(commands.Cog):
         self.bots = self.bots or get(ctx.guild.roles, id=646560019034406912)
 
         logger.info(f"Getting IP for {qdata.game_type}")
-        ip = requests.get('https://api.ipify.org').text
+        # ip = requests.get('https://api.ipify.org').text
+        ip = "71.161.234.161"
 
         red_field = "\n".join(
             [f"🟥{player.mention}" for player in qdata.game.red])
