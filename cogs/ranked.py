@@ -1159,7 +1159,7 @@ class Ranked(commands.Cog):
     #     await ctx.channel.send("Names updated")
 
     async def display_teams(self, ctx, qdata: XrcGame):
-        loggern.info(f"Displaying teams for {qdata.game_type}") 
+        logger.info(f"Displaying teams for {qdata.game_type}") 
         channel = ctx.channel
         self.category = self.category or get(
             ctx.guild.categories, id=824691912371470367)
