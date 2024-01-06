@@ -60,6 +60,7 @@ server_games = {
     "Charged Up": "13",
     "Over Under": "14",
     "Centerstage": "15",
+    "Crescendo": "16",
 }
 
 # dictionary mapping game name to default number of players
@@ -80,6 +81,7 @@ default_game_players = {
     "Charged Up": 6,
     "Over Under": 4,
     "Centerstage": 4,
+    "Crescendo": 6,
 }
 
 # dictionary mapping game name to game logo url
@@ -92,6 +94,7 @@ game_logos = {
     "Power Play": "https://www.roboticseducation.org/app/uploads/2022/05/Power-Play-Logo.png",
     "Centerstage": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQS-ziPQP3hKuX2qk5YBkLFIfv3wWNkNCf6QLBHaF9JPw&s",
     "Over Under": "https://roboticseducation.org/wp-content/uploads/2023/04/VRC-Over-Under.png",
+    "Crescendo": "https://i.imgur.com/St3EoqP.png",
 }
 
 listener = commands.Cog.listener
@@ -110,7 +113,7 @@ games_choices = [Choice(name=game['name'], value=game['short_code'])
                  for game in games if game['game'] in active_games or game['game'] == daily_game]
 
 games_players = {game['short_code']: game['players_per_alliance'] * 2
-                 for game in games if game['game'] in active_games or game['game'] == daily_game} 
+                 for game in games if game['game'] in active_games or game['game'] == daily_game}
 
 server_games_choices = [
     Choice(name=game, value=server_games[game]) for game in server_games.keys()
@@ -322,7 +325,8 @@ class Ranked(commands.Cog):
         embed.set_thumbnail(
             url="https://secondrobotics.org/logos/xRC%20Logo.png")
         active_queues = 0
-        embed.add_field(name="Game of the Day", value=f"Today's extra game is **{daily_game}**!", inline=False)
+        embed.add_field(name="Game of the Day",
+                        value=f"Today's extra game is **{daily_game}**!", inline=False)
         for qdata in game_queues.values():
             if qdata.queue.qsize() > 0:
                 active_queues += 1
@@ -446,9 +450,6 @@ class Ranked(commands.Cog):
             if red in interaction.user.roles or blue in interaction.user.roles:
                 await interaction.followup.send(game.full_game_name)
                 return
-
-
-
 
     # @commands.command(pass_context=True)
     # async def autoq(self, ctx, command=None, command_ctx=None):
@@ -640,7 +641,8 @@ class Ranked(commands.Cog):
             if player in qdata.queue:
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
-                cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
+                cleaned_display_name = ''.join(
+                    char for char in player.display_name if char.isalnum())
                 message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for __{qdata.full_game_name}__. *({qdata.queue.qsize()}/{qdata.game_size})*"
             else:
                 message = "You aren't in this queue."
@@ -876,14 +878,14 @@ class Ranked(commands.Cog):
             await interaction.followup.send(
                 f"Most recent match edited successfully. Note: the series will not be updated to reflect this change, but elo will.")
 
-    #@app_commands.choices(game=games_choices)
+    # @app_commands.choices(game=games_choices)
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
 
-        #determine what submit to do
+        # determine what submit to do
         qdata = None
         for game in game_queues.values():
             red = game.red_role
@@ -1160,7 +1162,7 @@ class Ranked(commands.Cog):
     #     await ctx.channel.send("Names updated")
 
     async def display_teams(self, ctx, qdata: XrcGame):
-        logger.info(f"Displaying teams for {qdata.game_type}") 
+        logger.info(f"Displaying teams for {qdata.game_type}")
         channel = ctx.channel
         self.category = self.category or get(
             ctx.guild.categories, id=824691912371470367)
