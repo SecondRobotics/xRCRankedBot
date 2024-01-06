@@ -36,6 +36,7 @@ approved_channels = [824691989366046750, 712297302857089025,
                      650967104933330947, 754569102873460776, 754569222260129832]
 HEADER = {"x-api-key": SRC_API_TOKEN}
 
+ip = requests.get('https://icanhazip.com').text
 PORTS = [11115, 11116, 11117, 11118, 11119, 11120]
 # dictionary mapping port number to process of running server
 servers_active: Dict[int, subprocess.Popen] = {}
@@ -1167,8 +1168,6 @@ class Ranked(commands.Cog):
         self.bots = self.bots or get(ctx.guild.roles, id=646560019034406912)
 
         logger.info(f"Getting IP for {qdata.game_type}")
-        # ip = requests.get('https://api.ipify.org').text
-        ip = "71.161.234.161"
 
         red_field = "\n".join(
             [f"🟥{player.mention}" for player in qdata.game.red])
