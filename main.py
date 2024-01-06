@@ -28,7 +28,7 @@ intents.message_content = True
 class RankedBot(commands.Bot):
     def __init__(self):
         super().__init__(
-            command_prefix="!",
+            command_prefix="!!!",
             intents=discord.Intents.all(),
             application_id=825618483957071873)
 
@@ -62,7 +62,7 @@ class RankedBot(commands.Bot):
 
 
 bot = RankedBot()
-#tree = app_commands.CommandTree(bot)
+# tree = app_commands.CommandTree(bot)
 
 
 @app_commands.command()
