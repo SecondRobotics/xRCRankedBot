@@ -63,25 +63,25 @@ server_games = {
     "Crescendo": "16",
 }
 
-# dictionary mapping game name to default number of players
+# dictionary mapping game id number to default number of players
 default_game_players = {
-    "Splish Splash": 4,
-    "Relic Recovery": 4,
-    "Rover Ruckus": 4,
-    "Skystone": 4,
-    "Infinite Recharge": 6,
-    "Change Up": 4,
-    "Bot Royale": 6,
-    "Ultimate Goal": 4,
-    "Tipping Point": 4,
-    "Freight Frenzy": 4,
-    "Rapid React": 6,
-    "Spin Up": 4,
-    "Power Play": 4,
-    "Charged Up": 6,
-    "Over Under": 4,
-    "Centerstage": 4,
-    "Crescendo": 6,
+    "0": 4,
+    "1": 4,
+    "2": 4,
+    "3": 4,
+    "4": 6,
+    "5": 4,
+    "6": 6,
+    "7": 4,
+    "8": 4,
+    "9": 4,
+    "10": 6,
+    "11": 4,
+    "12": 4,
+    "13": 6,
+    "14": 4,
+    "15": 4,
+    "16": 6,
 }
 
 # dictionary mapping game name to game logo url
