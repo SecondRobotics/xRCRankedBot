@@ -15,7 +15,7 @@ google-auth-oauthlib==0.5.2
 gspread==5.4.0
 gspread-dataframe==3.3.0
 httplib2==0.20.4
-idna==3.3
+idna==3.7
 kiwisolver==1.4.4
 matplotlib==3.5.2
 multidict==6.0.2
