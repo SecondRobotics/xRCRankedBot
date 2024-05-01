@@ -663,13 +663,15 @@ class Ranked(commands.Cog):
                 interaction.channel.id == QUEUE_CHANNEL):
             player = interaction.user
             dequeued = []
-            for qdata in game_queues[game]:
+            for game in game_queues.values():
+                qdata = game
                 if player in qdata.queue:
                     qdata.queue.remove(player)
-                    await self.update_ranked_display()
+                    # old update_ranked_display location
                     cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
-                    message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for __{qdata.full_game_name}__. *({qdata.queue.qsize()}/{qdata.game_size})*"
+                    message += f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for __{qdata.full_game_name}__. *({qdata.queue.qsize()}/{qdata.game_size})*\n"
                     dequeued.append(qdata)
+            await self.update_ranked_display()
             if (len(dequeued) == 0):
                 message = "You aren't in any queues."
                 ephemeral = True
