@@ -666,6 +666,7 @@ class Ranked(commands.Cog):
                 isinstance(interaction.user, discord.Member) and
                 interaction.channel.id == QUEUE_CHANNEL):
             player = interaction.user
+            message = ""
             dequeued = []
             for game in game_queues.values():
                 qdata = game
