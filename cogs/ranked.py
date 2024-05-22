@@ -656,7 +656,6 @@ class Ranked(commands.Cog):
             f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
             delete_after=60)
 
-    @app_commands.choices(game=games_choices)
     @app_commands.command(name="leaveall", description="Remove yourself from all queues")
     async def leaveall(self, interaction: discord.Interaction):
         logger.info(f"{interaction.user.name} called /leaveall")
