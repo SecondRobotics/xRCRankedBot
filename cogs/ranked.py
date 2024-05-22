@@ -657,6 +657,40 @@ class Ranked(commands.Cog):
             delete_after=60)
 
     @app_commands.choices(game=games_choices)
+    @app_commands.command(name="leaveall", description="Remove yourself from all queues")
+    async def leaveall(self, interaction: discord.Interaction):
+        logger.info(f"{interaction.user.name} called /leaveall")
+
+        ephemeral = False
+
+        if (isinstance(interaction.channel, discord.TextChannel) and
+                isinstance(interaction.user, discord.Member) and
+                interaction.channel.id == QUEUE_CHANNEL):
+            player = interaction.user
+            dequeued = []
+            for game in game_queues.values():
+                qdata = game
+                if player in qdata.queue:
+                    qdata.queue.remove(player)
+                    # old update_ranked_display location
+                    cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
+                    message += f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for __{qdata.full_game_name}__. *({qdata.queue.qsize()}/{qdata.game_size})*\n"
+                    dequeued.append(qdata)
+            await self.update_ranked_display()
+            if (len(dequeued) == 0):
+                message = "You aren't in any queues."
+                ephemeral = True
+        else:
+            message = f"<#{QUEUE_CHANNEL}> >:("
+            ephemeral = True
+
+        await interaction.response.send_message(message, ephemeral=ephemeral)
+        for qdata in dequeued:
+            await interaction.channel.send(
+                f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
+                delete_after=60)
+
+    @app_commands.choices(game=games_choices)
     @app_commands.command(description="Remove someone else from the queue")
     @app_commands.checks.has_any_role("Event Staff")
     async def kick(self, interaction: discord.Interaction, player: discord.Member, game: str):
