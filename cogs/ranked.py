@@ -623,6 +623,8 @@ class Ranked(commands.Cog):
             instance.server_password = password
 
         await self.random(interaction, instance)
+        await self.display_teams(interaction, instance)
+
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="queuestatus", description="View who is currently in the queue")
@@ -860,21 +862,18 @@ class Ranked(commands.Cog):
         logger.info(f"Displaying teams for {instance.qdata.game_type}")
         channel = ctx.channel
         qdata = instance.qdata
-        self.category = self.category or get(
-            ctx.guild.categories, id=824691912371470367)
+        self.category = self.category or get(ctx.guild.categories, id=824691912371470367)
         self.staff = self.staff or get(ctx.guild.roles, id=699094822132121662)
         self.bots = self.bots or get(ctx.guild.roles, id=646560019034406912)
 
         logger.info(f"Getting IP for {qdata.game_type}")
 
-        red_field = "\n".join(
-            [f"🟥{player.mention}" for player in instance.game.red])
-        blue_field = "\n".join(
-            [f"🟦{player.mention}" for player in instance.game.blue])
+        red_field = "\n".join([f"🟥{player.mention}" for player in instance.game.red])
+        blue_field = "\n".join([f"🟦{player.mention}" for player in instance.game.blue])
 
         description = f"""Server "Ranked{qdata.api_short}" started for you with password **{instance.server_password}**
         || IP: {ip} Port: {instance.server_port}||
-         [Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{qdata.api_short})""" if instance.server_port else None
+        [Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{qdata.api_short})""" if instance.server_port else None
 
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for {qdata.full_game_name}!", description=description
@@ -886,23 +885,23 @@ class Ranked(commands.Cog):
         await ctx.followup.send(embed=embed)
 
         instance.red_role = await ctx.guild.create_role(name=f"Red {qdata.full_game_name}",
-                                                     colour=discord.Color(0xFF0000))
+                                                        colour=discord.Color(0xFF0000))
         instance.blue_role = await ctx.guild.create_role(name=f"Blue {qdata.full_game_name}",
-                                                      colour=discord.Color(0x0000FF))
+                                                        colour=discord.Color(0x0000FF))
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                          instance.red_role: discord.PermissionOverwrite(connect=True),
-                          self.staff: discord.PermissionOverwrite(connect=True),
-                          self.bots: discord.PermissionOverwrite(connect=True)}
-        overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect(False)),
-                           instance.blue_role: discord.PermissionOverwrite(connect(True)),
-                           self.staff: discord.PermissionOverwrite(connect(True)),
-                           self.bots: discord.PermissionOverwrite(connect(True))}
+                        instance.red_role: discord.PermissionOverwrite(connect=True),
+                        self.staff: discord.PermissionOverwrite(connect=True),
+                        self.bots: discord.PermissionOverwrite(connect=True)}
+        overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
+                        instance.blue_role: discord.PermissionOverwrite(connect=True),
+                        self.staff: discord.PermissionOverwrite(connect=True),
+                        self.bots: discord.PermissionOverwrite(connect=True)}
 
         if qdata.game_size != 2:
             instance.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
-                                                                     category=self.category, overwrites=overwrites_red)
+                                                                        category=self.category, overwrites=overwrites_red)
             instance.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
-                                                                      category=self.category, overwrites=overwrites_blue)
+                                                                        category=self.category, overwrites=overwrites_blue)
 
             if not instance.game:
                 await channel.send("Error: No game found")
@@ -917,8 +916,10 @@ class Ranked(commands.Cog):
                     logger.error(e)
                     pass
 
+        # Send a message pinging both roles
         await channel.send(f"{instance.red_role.mention} {instance.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
+
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="clearmatch", description="Clears current running match")
