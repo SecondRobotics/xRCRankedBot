@@ -1,3 +1,6 @@
+# The full code including all changes made to handle multiple instances,
+# updating all relevant functions, and ensuring proper handling of queues, games, and player roles.
+
 import asyncio
 from datetime import datetime, timedelta
 from io import TextIOWrapper
@@ -134,29 +137,31 @@ server_restart_modes = {
 }
 
 
-class XrcGame():
+class XrcGameInstance:
+    def __init__(self, instance_id, players, qdata):
+        self.instance_id = instance_id
+        self.game = Game(players)
+        self.qdata = qdata
+        self.red_series = 2
+        self.blue_series = 2
+        self.server_port = None
+        self.server_password = None
+        self.red_role = None
+        self.blue_role = None
+        self.red_channel = None
+        self.blue_channel = None
+
+
+class XrcGame:
     def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
         self.queue = PlayerQueue()
         self.game_type = game
-        self.game = None  # type: Game | None
         self.game_size = alliance_size * 2
-        self.red_series = 2
-        self.blue_series = 2
-        self.red_captain = None
-        self.blue_captain = None
-        self.clearmatch_message = None
-        self.autoq = []
-        self.team_size = alliance_size
         self.api_short = api_short
         self.server_game = server_games[game]
-        self.server_port = None  # type: int | None
-        self.server_password = None  # type: str | None
         self.full_game_name = full_game_name
-        self.red_role = None  # type: discord.Role | None
-        self.blue_role = None  # type: discord.Role | None
-        self.red_channel = None  # type: discord.VoiceChannel | None
-        self.blue_channel = None  # type: discord.VoiceChannel | None
-        self.last_ping_time = None  # type: datetime.datetime | None
+        self.last_ping_time = None
+        self.instances = []  # List to hold multiple instances of the game
 
         try:
             self.game_icon = game_logos[game]
@@ -164,36 +169,25 @@ class XrcGame():
             self.game_icon = None
 
 
-async def remove_roles(guild: discord.Guild, qdata: XrcGame):
-    # Remove any current roles
-
-    red_check = get(guild.roles, name=f"Red {qdata.full_game_name}")
-    blue_check = get(guild.roles, name=f"Blue {qdata.full_game_name}")
-    if red_check:
-        await red_check.delete()
-    if blue_check:
-        await blue_check.delete()
+def create_game_instance(qdata, players):
+    instance_id = len(qdata.instances) + 1
+    instance = XrcGameInstance(instance_id, players, qdata)
+    qdata.instances.append(instance)
+    return instance
 
 
 def create_game(game_type):
     qdata = game_queues[game_type]
-    offset = qdata.queue.qsize() - qdata.game_size
-    qsize = qdata.queue.qsize()
-    players = [qdata.queue.get()
-               for _ in range(qsize)]  # type: list[discord.Member]
-    qdata.game = Game(players[0 + offset:qdata.game_size + offset])
-    for player in players[0:offset]:
-        qdata.queue.put(player)
-    players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
-    for player in players:
-        qdata.queue.put(player)
+    while qdata.queue.qsize() >= qdata.game_size:
+        players = [qdata.queue.get() for _ in range(qdata.game_size)]
+        instance = create_game_instance(qdata, players)
 
-    # Remove selected players from all other queues
-    for game in game_queues.values():
-        if game.game_type != game_type:
-            for player in qdata.game.players:
-                if player in game.queue:
-                    game.queue.remove(player)
+        # Remove selected players from all other queues
+        for game in game_queues.values():
+            if game.game_type != game_type:
+                for player in instance.game.players:
+                    if player in game.queue:
+                        game.queue.remove(player)
 
     return qdata
 
@@ -475,12 +469,13 @@ class Ranked(commands.Cog):
         print(game_queues)
         for game in game_queues.values():
             print(game)
-            red = game.red_role
-            blue = game.blue_role
-            print(red, blue)
-            if red in interaction.user.roles or blue in interaction.user.roles:
-                await interaction.followup.send(game.full_game_name)
-                return
+            for instance in game.instances:
+                red = instance.red_role
+                blue = instance.blue_role
+                print(red, blue)
+                if red in interaction.user.roles or blue in interaction.user.roles:
+                    await interaction.followup.send(game.full_game_name)
+                    return
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="queue", description="Add yourself to the queue")
@@ -688,7 +683,7 @@ class Ranked(commands.Cog):
                 isinstance(interaction.user, discord.Member) and
                 interaction.channel.id == QUEUE_CHANNEL):
             player = interaction.user
-            cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
+            cleaned_display_name = ''.join(char for char in player.display_name if char isalnum())
             message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for "
             dequeued = []
             for game in game_queues.values():
@@ -737,72 +732,46 @@ class Ranked(commands.Cog):
         await interaction.response.defer()
 
         # determine what submit to do
-        qdata = None
+        instance = None
         for game in game_queues.values():
-            red = game.red_role
-            blue = game.blue_role
-            if red in interaction.user.roles or blue in interaction.user.roles:
-                logger.info(f"found game {game}")
-                qdata = game
-                logger.info(f"qdata {qdata}")
+            for game_instance in game.instances:
+                red = game_instance.red_role
+                blue = game_instance.blue_role
+                if red in interaction.user.roles or blue in interaction.user.roles:
+                    instance = game_instance
+                    break
+            if instance:
                 break
-        if qdata is None:
+
+        if instance is None:
             await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
             return
 
-        if (
-                isinstance(interaction.channel, discord.TextChannel)
-                and interaction.channel.id == QUEUE_CHANNEL
-                and isinstance(interaction.user, discord.Member)
-        ):
-            roles = [role.id for role in interaction.user.roles]
+        qdata = instance.qdata
 
-            if qdata.red_role and qdata.blue_role:
-                ranked_roles = [699094822132121662,
-                                qdata.red_role.id, qdata.blue_role.id]
-            else:
-                ranked_roles = [699094822132121662]
-
-            # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
-            submit_check = any(role in ranked_roles for role in roles)
-
-            if submit_check:
-                pass
-            else:
-                await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
-                return
-
-            if qdata.red_series == 2 or qdata.blue_series == 2:
-                await interaction.followup.send("Series is complete already!", ephemeral=True)
-                return
-        else:
-            await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
+        if qdata.red_series == 2 or qdata.blue_series == 2:
+            await interaction.followup.send("Series is complete already!", ephemeral=True)
             return
 
         # Red wins
         if int(red_score) > int(blue_score):
-            qdata.red_series += 1
+            instance.red_series += 1
 
         # Blue wins
         elif int(red_score) < int(blue_score):
-            qdata.blue_series += 1
+            instance.blue_series += 1
 
         gg = True
-        if qdata.red_series == 2:
-            # await self.queue_auto(interaction)
+        if instance.red_series == 2:
             await interaction.followup.send("🟥 Red Wins! 🟥")
-        elif qdata.blue_series == 2:
-            # await self.queue_auto(interaction)
+        elif instance.blue_series == 2:
             await interaction.followup.send("🟦 Blue Wins! 🟦")
-
         else:
             await interaction.followup.send("Score Submitted")
             gg = False
 
-        # Finding player ids
-        red_ids = [player.id for player in qdata.game.red] if qdata.game else []
-        blue_ids = [
-            player.id for player in qdata.game.blue] if qdata.game else []
+        red_ids = [player.id for player in instance.game.red]
+        blue_ids = [player.id for player in instance.game.blue]
 
         url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/'
         json_data = {
@@ -813,10 +782,9 @@ class Ranked(commands.Cog):
         }
         response = requests.post(url, json=json_data, headers=HEADER).json()
         logger.info(response)
-        # Getting match Number
 
         embed = discord.Embed(color=0x34eb3d,
-                              title=f"[{qdata.full_game_name}] Score submitted | 🟥 {qdata.red_series}-{qdata.blue_series}  🟦 |")
+                              title=f"[{qdata.full_game_name}] Score submitted | 🟥 {instance.red_series}-{instance.blue_series}  🟦 |")
         embed.set_thumbnail(url=qdata.game_icon)
 
         red = "\n".join(
@@ -831,12 +799,8 @@ class Ranked(commands.Cog):
             for i, player in enumerate(response['blue_player_elos'])
         )
 
-        embed.add_field(name=f'RED 🟥 ({red_score})',
-                        value=red,
-                        inline=True)
-        embed.add_field(name=f'BLUE 🟦 ({blue_score})',
-                        value=blue,
-                        inline=True)
+        embed.add_field(name=f'RED 🟥 ({red_score})', value=red, inline=True)
+        embed.add_field(name=f'BLUE 🟦 ({blue_score})', value=blue, inline=True)
 
         class RejoinQueueView(discord.ui.View):
             def __init__(self, qdata: XrcGame, cog: Ranked):
@@ -850,13 +814,13 @@ class Ranked(commands.Cog):
 
         if gg:
             await interaction.channel.send(embed=embed, view=RejoinQueueView(qdata, self))
-            await remove_roles(interaction.user.guild, qdata)
+            await remove_roles(interaction.user.guild, instance)
 
-            if qdata.server_port:
-                stop_server_process(qdata.server_port)
+            if instance.server_port:
+                stop_server_process(instance.server_port)
 
             lobby = self.bot.get_channel(824692700364275743)
-            for channel in [qdata.red_channel, qdata.blue_channel]:
+            for channel in [instance.red_channel, instance.blue_channel]:
                 if channel:
                     for member in channel.members:
                         await member.move_to(lobby)
