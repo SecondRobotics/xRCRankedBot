@@ -137,8 +137,8 @@ class XrcGameInstance:
         self.instance_id = instance_id
         self.game = Game(players)
         self.qdata = qdata
-        self.red_series = 2
-        self.blue_series = 2
+        self.red_series = 0
+        self.blue_series = 0
         self.server_port = None
         self.server_password = None
         self.red_role = None
@@ -623,7 +623,6 @@ class Ranked(commands.Cog):
             instance.server_password = password
 
         await self.random(interaction, instance)
-        await self.display_teams(interaction, instance)
 
 
     @app_commands.choices(game=games_choices)
@@ -792,7 +791,7 @@ class Ranked(commands.Cog):
         logger.info(response)
 
         embed = discord.Embed(color=0x34eb3d,
-                              title=f"[{qdata.full_game_name}] Score submitted | 🟥 {instance.red_series}-{instance.blue_series}  🟦 |")
+                            title=f"[{qdata.full_game_name}] Score submitted | 🟥 {instance.red_series}-{instance.blue_series}  🟦 |")
         embed.set_thumbnail(url=qdata.game_icon)
 
         red = "\n".join(
@@ -835,6 +834,7 @@ class Ranked(commands.Cog):
                     await channel.delete()
         else:
             await interaction.channel.send(embed=embed)
+
 
     async def random(self, interaction, instance: XrcGameInstance):
         qdata = instance.qdata
