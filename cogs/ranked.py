@@ -1,6 +1,3 @@
-# The full code including all changes made to handle multiple instances,
-# updating all relevant functions, and ensuring proper handling of queues, games, and player roles.
-
 import asyncio
 from datetime import datetime, timedelta
 from io import TextIOWrapper
@@ -272,6 +269,14 @@ def stop_server_process(port: int):
     return f"✅ Server on port {port} shut down"
 
 
+async def remove_roles(guild: discord.Guild, instance: XrcGameInstance):
+    # Remove any current roles for the instance
+    if instance.red_role:
+        await instance.red_role.delete()
+    if instance.blue_role:
+        await instance.blue_role.delete()
+
+
 class Ranked(commands.Cog):
     def __init__(self, bot):
         self.category = None  # type: discord.CategoryChannel | None
@@ -469,13 +474,12 @@ class Ranked(commands.Cog):
         print(game_queues)
         for game in game_queues.values():
             print(game)
-            for instance in game.instances:
-                red = instance.red_role
-                blue = instance.blue_role
-                print(red, blue)
-                if red in interaction.user.roles or blue in interaction.user.roles:
-                    await interaction.followup.send(game.full_game_name)
-                    return
+            red = game.red_role
+            blue = game.blue_role
+            print(red, blue)
+            if red in interaction.user.roles or blue in interaction.user.roles:
+                await interaction.followup.send(game.full_game_name)
+                return
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="queue", description="Add yourself to the queue")
@@ -557,8 +561,6 @@ class Ranked(commands.Cog):
         else:
             await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
 
-
-
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Force queue players")
     async def queueall(self, interaction: discord.Interaction,
@@ -597,12 +599,16 @@ class Ranked(commands.Cog):
             await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
 
-        if qdata.red_series == 2 or qdata.blue_series == 2:
-            qdata.red_series = 0
-            qdata.blue_series = 0
-        else:
-            await interaction.followup.send("Current match incomplete.", ephemeral=True)
-            return
+        # Check for an available instance or create a new one
+        for instance in qdata.instances:
+            if instance.red_series < 2 and instance.blue_series < 2:
+                await interaction.followup.send("Current match incomplete.", ephemeral=True)
+                return
+
+        # Create a new instance if all existing instances are busy
+        players = [qdata.queue.get() for _ in range(qdata.game_size)]
+        instance = create_game_instance(qdata, players)
+        qdata.instances.append(instance)
 
         if interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL:
             await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
@@ -615,10 +621,10 @@ class Ranked(commands.Cog):
         if port == -1:
             logger.warning("Server couldn't auto-start for ranked: " + message)
         else:
-            qdata.server_port = port
-            qdata.server_password = password
+            instance.server_port = port
+            instance.server_password = password
 
-        await self.random(interaction, qdata.api_short)
+        await self.random(interaction, instance)
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="queuestatus", description="View who is currently in the queue")
@@ -830,31 +836,32 @@ class Ranked(commands.Cog):
         else:
             await interaction.channel.send(embed=embed)
 
-    async def random(self, interaction, game_type):
-        qdata = create_game(game_type)
+    async def random(self, interaction, instance: XrcGameInstance):
+        qdata = instance.qdata
 
-        if not qdata.game:
+        if not instance.game:
             await interaction.followup.send("No game found", ephemeral=True)
             return
 
         logger.info(f"Getting players for {qdata.game_type}")
-        red = random.sample(qdata.game.players, int(qdata.team_size))
+        red = random.sample(instance.game.players, int(qdata.team_size))
         for player in red:
-            qdata.game.add_to_red(player)
+            instance.game.add_to_red(player)
 
         logger.info(f"Red: {red}")
 
-        blue = list(qdata.game.players)
+        blue = list(instance.game.players)
         for player in blue:
-            qdata.game.add_to_blue(player)
+            instance.game.add_to_blue(player)
 
         logger.info(f"Blue: {blue}")
 
-        await self.display_teams(interaction, qdata)
+        await self.display_teams(interaction, instance)
 
-    async def display_teams(self, ctx, qdata: XrcGame):
-        logger.info(f"Displaying teams for {qdata.game_type}")
+    async def display_teams(self, ctx, instance: XrcGameInstance):
+        logger.info(f"Displaying teams for {instance.qdata.game_type}")
         channel = ctx.channel
+        qdata = instance.qdata
         self.category = self.category or get(
             ctx.guild.categories, id=824691912371470367)
         self.staff = self.staff or get(ctx.guild.roles, id=699094822132121662)
@@ -863,13 +870,13 @@ class Ranked(commands.Cog):
         logger.info(f"Getting IP for {qdata.game_type}")
 
         red_field = "\n".join(
-            [f"🟥{player.mention}" for player in qdata.game.red])
+            [f"🟥{player.mention}" for player in instance.game.red])
         blue_field = "\n".join(
-            [f"🟦{player.mention}" for player in qdata.game.blue])
+            [f"🟦{player.mention}" for player in instance.game.blue])
 
-        description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**
-        || IP: {ip} Port: {qdata.server_port}||
-         [Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{qdata.api_short})""" if qdata.server_port else None
+        description = f"""Server "Ranked{qdata.api_short}" started for you with password **{instance.server_password}**
+        || IP: {ip} Port: {instance.server_port}||
+         [Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{qdata.api_short})""" if instance.server_port else None
 
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for {qdata.full_game_name}!", description=description
@@ -880,39 +887,39 @@ class Ranked(commands.Cog):
 
         await ctx.followup.send(embed=embed)
 
-        qdata.red_role = await ctx.guild.create_role(name=f"Red {qdata.full_game_name}",
+        instance.red_role = await ctx.guild.create_role(name=f"Red {qdata.full_game_name}",
                                                      colour=discord.Color(0xFF0000))
-        qdata.blue_role = await ctx.guild.create_role(name=f"Blue {qdata.full_game_name}",
+        instance.blue_role = await ctx.guild.create_role(name=f"Blue {qdata.full_game_name}",
                                                       colour=discord.Color(0x0000FF))
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                          qdata.red_role: discord.PermissionOverwrite(connect=True),
+                          instance.red_role: discord.PermissionOverwrite(connect=True),
                           self.staff: discord.PermissionOverwrite(connect=True),
                           self.bots: discord.PermissionOverwrite(connect=True)}
         overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                           qdata.blue_role: discord.PermissionOverwrite(connect=True),
+                           instance.blue_role: discord.PermissionOverwrite(connect=True),
                            self.staff: discord.PermissionOverwrite(connect=True),
                            self.bots: discord.PermissionOverwrite(connect=True)}
 
         if qdata.game_size != 2:
-            qdata.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
+            instance.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
                                                                      category=self.category, overwrites=overwrites_red)
-            qdata.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
+            instance.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
                                                                       category=self.category, overwrites=overwrites_blue)
 
-            if not qdata.game:
+            if not instance.game:
                 await channel.send("Error: No game found")
                 return
 
-        for player in qdata.game.red | qdata.game.blue:
-            await player.add_roles(qdata.red_role if player in qdata.game.red else qdata.blue_role)
+        for player in instance.game.red | instance.game.blue:
+            await player.add_roles(instance.red_role if player in instance.game.red else instance.blue_role)
             if qdata.game_size != 2:
                 try:
-                    await player.move_to(qdata.red_channel if player in qdata.game.red else qdata.blue_channel)
+                    await player.move_to(instance.red_channel if player in instance.game.red else instance.blue_channel)
                 except Exception as e:
                     logger.error(e)
                     pass
 
-        await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}", delete_after=30)
+        await channel.send(f"{instance.red_role.mention} {instance.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
 
     @app_commands.choices(game=games_choices)
@@ -934,20 +941,21 @@ class Ranked(commands.Cog):
         await interaction.followup.send(message, ephemeral=ephemeral)
 
     async def do_clear_match(self, guild: discord.Guild, qdata: XrcGame):
-        if qdata.server_port:
-            stop_server_process(qdata.server_port)
+        for instance in qdata.instances:
+            if instance.server_port:
+                stop_server_process(instance.server_port)
 
-        qdata.red_series = qdata.blue_series = 2
+            instance.red_series = instance.blue_series = 2
 
-        await remove_roles(guild, qdata)
+            await remove_roles(guild, instance)
 
-        # Kick to lobby
-        lobby = self.bot.get_channel(824692700364275743)
-        for channel in [qdata.red_channel, qdata.blue_channel]:
-            if channel:
-                for member in channel.members:
-                    await member.move_to(lobby)
-                await channel.delete()
+            # Kick to lobby
+            lobby = self.bot.get_channel(824692700364275743)
+            for channel in [instance.red_channel, instance.blue_channel]:
+                if channel:
+                    for member in channel.members:
+                        await member.move_to(lobby)
+                    await channel.delete()
 
     @app_commands.command(name="rules", description="Posts a link the the rules")
     async def rules(self, interaction: discord.Interaction):
