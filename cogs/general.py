@@ -1,5 +1,4 @@
 import asyncio
-
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -14,6 +13,7 @@ import random
 from io import BytesIO
 
 GUILD_ID = 637407041048281098
+FALLBACK_AVATAR_URL = 'https://i0.wp.com/sbcf.fr/wp-content/uploads/2018/03/sbcf-default-avatar.png'  # Replace with your fallback avatar URL
 
 logger = logging.getLogger('discord')
 
@@ -52,16 +52,20 @@ class General(commands.Cog):
             async with session.get(url) as response:
                 res = await response.json()
 
-                # Get a random pixel color from the thumbnail image
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(res['avatar']) as response:
-                        thumbnail_bytes = await response.read()
+                # Get a random pixel color from the thumbnail image or use a default color if failed
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(res['avatar']) as response:
+                            thumbnail_bytes = await response.read()
 
-                thumbnail_image = Image.open(BytesIO(thumbnail_bytes))
-                thumbnail_width, thumbnail_height = thumbnail_image.size
-                random_pixel = thumbnail_image.getpixel(
-                    (random.randint(0, thumbnail_width - 1), random.randint(0, thumbnail_height - 1)))
-                random_color = discord.Color.from_rgb(*random_pixel[:3])
+                    thumbnail_image = Image.open(BytesIO(thumbnail_bytes))
+                    thumbnail_width, thumbnail_height = thumbnail_image.size
+                    random_pixel = thumbnail_image.getpixel(
+                        (random.randint(0, thumbnail_width - 1), random.randint(0, thumbnail_height - 1)))
+                    random_color = discord.Color.from_rgb(*random_pixel[:3])
+                except Exception as e:
+                    logger.error(f"Failed to fetch avatar: {e}")
+                    random_color = discord.Color.blue()
 
         if not res["exists"]:
             await interaction.followup.send(
@@ -71,7 +75,7 @@ class General(commands.Cog):
 
         embed = discord.Embed(title="Player Information", color=random_color)
         embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url)
-        embed.set_thumbnail(url=res['avatar'])
+        embed.set_thumbnail(url=res.get('avatar', FALLBACK_AVATAR_URL))
         embed.add_field(name="Display Name",
                         value=f"[{res['display_name']}](https://secondrobotics.org/user/{user_id})", inline=False)
 
@@ -127,21 +131,29 @@ class General(commands.Cog):
         favorite_game = None
         favorite_game_matches_played = 0
 
+        column_data = [[] for _ in range(3)]  # Three columns for balanced layout
+        column_index = 0
+
         for result in game_results:
             if result is not None:
                 name, elo, record, matches_played, win_rate, total_score = result
                 win_rate_str = f"{win_rate}%"
                 if win_rate > 60:
                     win_rate_str += " :crown:"
-                embed.add_field(
-                    name=f"{name} [{elo}]",
-                    value=f"{record} [{matches_played}] {win_rate_str}\nTotal Points Scored: {total_score}",
-                    inline=True,
+                game_info = (
+                    f"**{name} [{elo}]**\n"
+                    f"{record} [{matches_played}] {win_rate_str}\n"
+                    f"Total Points Scored: {total_score}\n\n"
                 )
+                column_data[column_index].append(game_info)
+                column_index = (column_index + 1) % 3
 
                 if matches_played > favorite_game_matches_played:
                     favorite_game = name
                     favorite_game_matches_played = matches_played
+
+        for index, column in enumerate(column_data):
+            embed.add_field(name=f"Games (Column {index + 1})", value="".join(column), inline=True)
 
         total_matches = total_wins + total_losses + total_ties
         win_rate = (total_wins / total_matches) * 100 if total_matches > 0 else 0
