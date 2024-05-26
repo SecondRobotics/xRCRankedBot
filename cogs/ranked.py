@@ -335,11 +335,42 @@ class Ranked(commands.Cog):
         if active_queues == 0:
             embed.add_field(name="No current queues",
                             value="Queue to get a match started!", inline=False)
+        
+        # Create the dropdown for games
+        options = [discord.SelectOption(label=game, value=game) for game in server_game_names]
+        select = discord.ui.Select(placeholder="Choose a game to toggle ping", options=options)
+        select.callback = self.dropdown_callback
+        
+        view = discord.ui.View()
+        view.add_item(select)
+
         try:
-            await self.ranked_display.edit(embed=embed)
+            await self.ranked_display.edit(embed=embed, view=view)
         except Exception as e:
             logger.error(e)
             self.ranked_display = None
+    
+    async def dropdown_callback(self, interaction: discord.Interaction):
+        game = interaction.data['values'][0]
+        logger.info(f"{interaction.user.name} selected {game} from dropdown")
+        guild = interaction.guild
+
+        # Check if the ping role exists for the selected game
+        ping_role_name = f"{game} Ping"
+        ping_role = discord.utils.get(guild.roles, name=ping_role_name)
+
+        # Check if the user already has the ping role
+        member = interaction.user
+        if ping_role in member.roles:
+            # User has the role, remove it
+            await member.remove_roles(ping_role)
+            await interaction.response.send_message(f"You have been removed from the {ping_role_name} role.",
+                                                    ephemeral=True)
+        else:
+            # User doesn't have the role, add it
+            await member.add_roles(ping_role)
+            await interaction.response.send_message(f"You have been added to the {ping_role_name} role!",
+                                                    ephemeral=True)
 
     server_game_names = [
         Choice(name=game, value=game) for game in server_games.keys()
