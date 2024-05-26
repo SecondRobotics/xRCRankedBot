@@ -683,7 +683,7 @@ class Ranked(commands.Cog):
                 isinstance(interaction.user, discord.Member) and
                 interaction.channel.id == QUEUE_CHANNEL):
             player = interaction.user
-            cleaned_display_name = ''.join(char for char in player.display_name if char isalnum())
+            cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
             message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for "
             dequeued = []
             for game in game_queues.values():
