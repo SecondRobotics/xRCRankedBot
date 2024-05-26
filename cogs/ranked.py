@@ -30,6 +30,8 @@ if not SRC_API_TOKEN:
 GUILD_ID = 637407041048281098
 QUEUE_CHANNEL = 824691989366046750
 
+team_size = 6
+team_size_alt = 4
 approved_channels = [824691989366046750, 712297302857089025,
                      650967104933330947, 754569102873460776, 754569222260129832]
 HEADER = {"x-api-key": SRC_API_TOKEN}
@@ -755,7 +757,7 @@ class Ranked(commands.Cog):
 
         qdata = instance.qdata
 
-        if instance.red_series == 2 or instance.blue_series == 2:
+        if qdata.red_series == 2 or qdata.blue_series == 2:
             await interaction.followup.send("Series is complete already!", ephemeral=True)
             return
 
@@ -842,7 +844,7 @@ class Ranked(commands.Cog):
             return
 
         logger.info(f"Getting players for {qdata.game_type}")
-        red = random.sample(instance.game.players, int(qdata.game_size / 2))
+        red = random.sample(instance.game.players, int(qdata.team_size))
         for player in red:
             instance.game.add_to_red(player)
 
@@ -893,10 +895,10 @@ class Ranked(commands.Cog):
                           instance.red_role: discord.PermissionOverwrite(connect=True),
                           self.staff: discord.PermissionOverwrite(connect=True),
                           self.bots: discord.PermissionOverwrite(connect=True)}
-        overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect(False)),
-                           instance.blue_role: discord.PermissionOverwrite(connect(True)),
-                           self.staff: discord.PermissionOverwrite(connect(True)),
-                           self.bots: discord.PermissionOverwrite(connect(True))}
+        overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
+                           instance.blue_role: discord.PermissionOverwrite(connect=True),
+                           self.staff: discord.PermissionOverwrite(connect=True),
+                           self.bots: discord.PermissionOverwrite(connect=True)}
 
         if qdata.game_size != 2:
             instance.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
@@ -1133,21 +1135,20 @@ async def setup(bot: commands.Bot) -> None:
 async def shutdown_server_inactivity(server: int):
     # if server is in a ranked queue, clear the match
     for queue in game_queues.values():
-        for instance in queue.instances:
-            if instance.server_port == server:
-                if cog and guild:
-                    await cog.do_clear_match(guild, queue)
-                    logger.info(
-                        f"Match cleared for server {server} due to inactivity")
+        if queue.server_port == server:
+            if cog and guild:
+                await cog.do_clear_match(guild, queue)
+                logger.info(
+                    f"Match cleared for server {server} due to inactivity")
 
-                if instance.game:
-                    for player in instance.game.players:
-                        # send a message to the players
-                        await player.send(
-                            "Your ranked match has been cancelled due to inactivity.")
+            if queue.game:
+                for player in queue.game.players:
+                    # send a message to the players
+                    await player.send(
+                        "Your ranked match has been cancelled due to inactivity.")
 
-                # TODO: punish players that dodged
-                return
+            # TODO: punish players that dodged
+            return
 
     # otherwise, just stop the process
     stop_server_process(server)
@@ -1161,10 +1162,9 @@ async def server_has_players(server: int) -> bool:
     """
     needed_players = 1
     for queue in game_queues.values():
-        for instance in queue.instances:
-            if instance.server_port == server:
-                needed_players = queue.game_size
-                break
+        if queue.server_port == server:
+            needed_players = queue.game_size
+            break
 
     # read players from xrc server stdout
     process = servers_active.get(server, None)
@@ -1195,13 +1195,11 @@ async def server_has_players(server: int) -> bool:
 async def warn_server_inactivity(server: int):
     # if server is in a ranked queue, send a message to the players
     for queue in game_queues.values():
-        for instance in queue.instances:
-            if instance.server_port == server:
-                if instance.game:
-                    for player in instance.game.players:
-                        # send a message to the players
-                        await player.send(
-                            "Your ranked match has been inactive - if all players are not present within 5 minutes, the match will be cancelled.")
-                        pass
-                return
-
+        if queue.server_port == server:
+            if queue.game:
+                for player in queue.game.players:
+                    # send a message to the players
+                    await player.send(
+                        "Your ranked match has been inactive - if all players are not present within 5 minutes, the match will be cancelled.")
+                    pass
+            return
