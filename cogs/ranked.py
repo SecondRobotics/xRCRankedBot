@@ -510,16 +510,15 @@ class Ranked(commands.Cog):
                 return
 
             roles = [y.id for y in interaction.user.roles]
-            for instance in qdata.instances:
-                if instance.red_role is None or instance.blue_role is None:
-                    pass
-                else:
-                    ranked_roles = [instance.red_role.id, instance.blue_role.id]
-                    # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
-                    queue_check = bool(set(roles).intersection(ranked_roles))
-                    if queue_check:
-                        await interaction.followup.send("You are already playing in a game!", ephemeral=True)
-                        return
+            if qdata.red_role is None or qdata.blue_role is None:
+                pass
+            else:
+                ranked_roles = [qdata.red_role.id, qdata.blue_role.id]
+                # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
+                queue_check = bool(set(roles).intersection(ranked_roles))
+                if queue_check:
+                    await interaction.followup.send("You are already playing in a game!", ephemeral=True)
+                    return
 
             qdata.queue.put(player)
             await self.update_ranked_display()
@@ -545,7 +544,8 @@ class Ranked(commands.Cog):
                             f"{ping_role.mention} Queue for __{qdata.full_game_name}__ is now {qdata.queue.qsize()}/{qdata.game_size}!")
 
             if qdata.queue.qsize() == qdata.game_size:
-                if not any(instance.red_series < 2 and instance.blue_series < 2 for instance in qdata.instances):
+                if qdata.red_series == 2 or qdata.blue_series == 2:
+                    # Automatically start the match instead of posting a message
                     await self.start_match(qdata, interaction)
                 else:
                     await interaction.channel.send(
@@ -556,8 +556,6 @@ class Ranked(commands.Cog):
                 await qstatus.delete(delay=60)
         else:
             await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
-
-
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Force queue players")
