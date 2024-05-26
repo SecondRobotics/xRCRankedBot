@@ -337,7 +337,7 @@ class Ranked(commands.Cog):
                             value="Queue to get a match started!", inline=False)
         
         # Create the dropdown for games
-        options = [discord.SelectOption(label=game, value=game) for game in server_game_names]
+        options = [discord.SelectOption(label=game, value=game) for game in server_games.keys()]
         select = discord.ui.Select(placeholder="Choose a game to toggle ping", options=options)
         select.callback = self.dropdown_callback
         
