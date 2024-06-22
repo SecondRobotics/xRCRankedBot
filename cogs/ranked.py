@@ -336,12 +336,14 @@ class Ranked(commands.Cog):
         if active_queues == 0:
             embed.add_field(name="No current queues",
                             value="Queue to get a match started!", inline=False)
-        
+
         # Create the dropdown for games
-        options = [discord.SelectOption(label=game, value=game) for game in server_games.keys()]
-        select = discord.ui.Select(placeholder="Choose a game to toggle ping", options=options)
+        options = [discord.SelectOption(label=game, value=game)
+                   for game in server_games.keys()]
+        select = discord.ui.Select(
+            placeholder="Choose a game to toggle ping", options=options)
         select.callback = self.dropdown_callback
-        
+
         view = discord.ui.View()
         view.add_item(select)
 
@@ -350,7 +352,7 @@ class Ranked(commands.Cog):
         except Exception as e:
             logger.error(e)
             self.ranked_display = None
-    
+
     async def dropdown_callback(self, interaction: discord.Interaction):
         game = interaction.data['values'][0]
         logger.info(f"{interaction.user.name} selected {game} from dropdown")
@@ -689,7 +691,8 @@ class Ranked(commands.Cog):
                 isinstance(interaction.user, discord.Member) and
                 interaction.channel.id == QUEUE_CHANNEL):
             player = interaction.user
-            cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
+            cleaned_display_name = ''.join(
+                char for char in player.display_name if char.isalnum())
             message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for "
             dequeued = []
             for game in game_queues.values():
@@ -730,6 +733,31 @@ class Ranked(commands.Cog):
                 await interaction.response.send_message("{} is not in queue.".format(player.display_name),
                                                         ephemeral=True)
                 return
+
+    @app_commands.choices(game=games_choices)
+    @app_commands.command(description="Edits the last match score (in the event of a human error)", name="editmatch")
+    @app_commands.checks.has_any_role("Event Staff")
+    @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
+    async def edit_match(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
+        logger.info(f"{interaction.user.name} called /editmatch")
+        await interaction.response.defer()
+
+        qdata = game_queues[game]
+
+        url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
+        json = {
+            "red_score": red_score,
+            "blue_score": blue_score
+        }
+        x = requests.patch(url, json=json, headers=HEADER)
+        response = x.json()
+        logger.info(response)
+
+        if 'error' in response:
+            await interaction.followup.send(f"Error: {response['error']}")
+        else:
+            await interaction.followup.send(
+                f"Most recent match edited successfully. Note: the series will not be updated to reflect this change, but elo will.")
 
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
