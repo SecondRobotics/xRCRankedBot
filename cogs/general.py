@@ -11,16 +11,11 @@ import aiohttp
 from PIL import Image
 import random
 from io import BytesIO
+from config import *
 
-GUILD_ID = 637407041048281098
 FALLBACK_AVATAR_URL = 'https://i0.wp.com/sbcf.fr/wp-content/uploads/2018/03/sbcf-default-avatar.png'  # Replace with your fallback avatar URL
 
 logger = logging.getLogger('discord')
-
-SRC_API_TOKEN = os.getenv('SRC_API_TOKEN')
-if not SRC_API_TOKEN:
-    logger.fatal('SRC_API_TOKEN not found')
-    raise RuntimeError('SRC_API_TOKEN not found')
 
 HEADER = {"x-api-key": SRC_API_TOKEN}
 
