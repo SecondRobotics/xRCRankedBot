@@ -6,59 +6,39 @@ import logging
 import logging.handlers
 from dotenv import load_dotenv
 from discord.utils import get
+from config import *
 
 logger = logging.getLogger('discord')
 load_dotenv()
 
-DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
-if not DISCORD_BOT_TOKEN:
-    logger.fatal('DISCORD_BOT_TOKEN not found')
-    raise RuntimeError('DISCORD_BOT_TOKEN not found')
-
-SRC_API_TOKEN = os.getenv('SRC_API_TOKEN')
-if not SRC_API_TOKEN:
-    logger.fatal('SRC_API_TOKEN not found')
-    raise RuntimeError('SRC_API_TOKEN not found')
-
-
 intents = discord.Intents.all()
 intents.message_content = True
-
 
 class RankedBot(commands.Bot):
     def __init__(self):
         super().__init__(
             command_prefix="!!!",
             intents=discord.Intents.all(),
-            application_id=825618483957071873)
+            application_id=DISCORD_APPLICATION_ID)
+        self.ranked_cog = None
 
     async def setup_hook(self):
         await self.load_extension(f"cogs.ranked")
         await self.load_extension(f"cogs.general")
-        await bot.tree.sync(guild=discord.Object(id=637407041048281098))
+        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
 
     async def on_ready(self):
         logger.info("The bot is alive!")
         # Required to update all slash commands
         await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching,
                                                             name=str("xRC Sim Ranked Queue")))
-        # Purge any old messages
-
-        qstatus_channel = get(bot.get_all_channels(), id=1009630461393379438)
-        if qstatus_channel is None or not isinstance(qstatus_channel, discord.TextChannel):
-            logger.fatal("Could not find queue status channel")
-            raise RuntimeError("Could not find queue status channel")
-        limit = 0
-        async for msg in qstatus_channel.history(limit=None):
-            limit += 1
-        await qstatus_channel.purge(limit=limit)
-        embed = discord.Embed(title="xRC Sim Ranked Queues",
-                              description="Ranked queues are open!", color=0x00ff00)
-        embed.set_thumbnail(
-            url="https://secondrobotics.org/logos/xRC%20Logo.png")
-        embed.add_field(name="No current queues",
-                        value="Queue to get a match started!", inline=False)
-        await qstatus_channel.send(embed=embed)
+        if self.ranked_cog:
+            await self.ranked_cog.startup()
+        
+        logger.info("Bot startup complete")
+    
+    def set_ranked_cog_reference(self, cog):
+        self.ranked_cog = cog
 
 
 bot = RankedBot()

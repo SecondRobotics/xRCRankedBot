@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from io import TextIOWrapper
 import subprocess
 from typing import Dict, Optional
-from discord import app_commands
+from discord import app_commands, ButtonStyle
 import random
 from queue import Queue
 from discord.utils import get
@@ -18,22 +18,14 @@ from discord.app_commands import Choice
 import zipfile
 import shutil
 from discord.ext import tasks
+from config import *
 
 logger = logging.getLogger('discord')
-load_dotenv()
 
-SRC_API_TOKEN = os.getenv('SRC_API_TOKEN')
-if not SRC_API_TOKEN:
-    logger.fatal('SRC_API_TOKEN not found')
-    raise RuntimeError('SRC_API_TOKEN not found')
-
-GUILD_ID = 637407041048281098
-QUEUE_CHANNEL = 824691989366046750
+queue_channel = 0
 
 team_size = 6
 team_size_alt = 4
-approved_channels = [824691989366046750, 712297302857089025,
-                     650967104933330947, 754569102873460776, 754569222260129832]
 HEADER = {"x-api-key": SRC_API_TOKEN}
 
 ip = requests.get('https://icanhazip.com').text
@@ -61,6 +53,27 @@ server_games = {
     "Over Under": "14",
     "Centerstage": "15",
     "Crescendo": "16",
+}
+
+# dictionary mapping game name to shortcode
+short_codes = {
+    "Splish Splash": "S",
+    "Relic Recovery": "",
+    "Rover Ruckus": "RoRu",
+    "Skystone": "SS",
+    "Infinite Recharge": "IR",
+    "Change Up": "CU",
+    "Bot Royale": "",
+    "Ultimate Goal": "UG",
+    "Tipping Point": "TP",
+    "Freight Frenzy": "FF",
+    "Rapid React": "RR",
+    "Spin Up": "SU",
+    "Power Play": "PP",
+    "Charged Up": "Charge",
+    "Over Under": "OU",
+    "Centerstage": "CS",
+    "Crescendo": "CR",
 }
 
 # dictionary mapping game id number to default number of players
@@ -114,6 +127,9 @@ games_choices = [Choice(name=game['name'], value=game['short_code'])
 
 games_players = {game['short_code']: game['players_per_alliance'] * 2
                  for game in games if game['game'] in active_games or game['game'] == daily_game}
+
+games_categories = active_games.copy()
+games_categories.append(daily_game)
 
 server_games_choices = [
     Choice(name=game, value=server_games[game]) for game in server_games.keys()
@@ -287,12 +303,48 @@ class Ranked(commands.Cog):
         self.bot = bot
         self.ranked_display = None
         self.check_queue_joins.start()
-        self.lobby = self.bot.get_channel(824692700364275743)
+        self.lobby = self.bot.get_channel(LOBBY_VC_ID)
+
+        self.bot.set_ranked_cog_reference(self)
 
         # self.check_empty_servers.start() # FIXME: Disabled for now
+    
+    async def startup(self):
+        logger.info("Running startup code for ranked cog")
+
+        # Purge any old messages from qstatus channel
+
+        global qstatus_channel
+        qstatus_channel = get(self.bot.get_all_channels(), id=QUEUE_STATUS_CHANNEL_ID)
+        if qstatus_channel is None or not isinstance(qstatus_channel, discord.TextChannel):
+            logger.fatal("Could not find queue status channel")
+            raise RuntimeError("Could not find queue status channel")
+        limit = 0
+        async for msg in qstatus_channel.history(limit=None):
+            limit += 1
+        await qstatus_channel.purge(limit=limit)
+
+        # Find primary queue channel
+        global queue_channel
+        queue_channel = get(self.bot.get_all_channels(), id=QUEUE_CHANNEL_ID)
+        if queue_channel is None or not isinstance(queue_channel, discord.TextChannel):
+            logger.fatal("Could not find queue channel")
+            raise RuntimeError("Could not find queue channel")
+        
+        # Post qstatus header message
+
+        embed = discord.Embed(title="xRC Sim Ranked Queues",
+                                description="Ranked queues are open!", color=0x00ff00)
+        embed.set_thumbnail(
+            url="https://secondrobotics.org/logos/xRC%20Logo.png")
+        embed.add_field(name="No current queues",
+                        value="Queue to get a match started!", inline=False)
+        self.ranked_display = await qstatus_channel.send(embed=embed)
+
+        await self.update_ranked_display()
 
     async def create_ping_roles(self):
-        guild_id = 637407041048281098  # Guild ID of the desired guild
+        guild_id = GUILD_ID  # Guild ID of the desired guild
         # Replace `bot` with your actual bot instance
         guild = self.bot.get_guild(guild_id)
         if guild is None:
@@ -311,7 +363,7 @@ class Ranked(commands.Cog):
             logger.info("Finding Ranked Queue Display")
 
             qstatus_channel = get(
-                self.bot.get_all_channels(), id=1009630461393379438)
+                self.bot.get_all_channels(), id=QUEUE_STATUS_CHANNEL_ID)
             async for msg in qstatus_channel.history(limit=None):
                 if msg.author.id == self.bot.user.id:
                     self.ranked_display = msg
@@ -344,8 +396,16 @@ class Ranked(commands.Cog):
             placeholder="Choose a game to toggle ping", options=options)
         select.callback = self.dropdown_callback
 
+        leave_all = discord.ui.Button(label="Leave All Queues", style=ButtonStyle.red)
+        leave_all.callback = self.leave_all_queues
+        
         view = discord.ui.View()
         view.add_item(select)
+
+        for i, game in enumerate(games_categories):
+            view.add_item(GameButton(game, short_code=short_codes[game], cog=self))
+
+        view.add_item(leave_all)
 
         try:
             await self.ranked_display.edit(embed=embed, view=view)
@@ -488,9 +548,9 @@ class Ranked(commands.Cog):
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="queue", description="Add yourself to the queue")
     async def q(self, interaction: discord.Interaction, game: str):
-        await self.queue_player(interaction, game)
+        await self.queue_player(interaction, game, False)
 
-    async def queue_player(self, interaction: discord.Interaction, game: str):
+    async def queue_player(self, interaction: discord.Interaction, game: str, from_button: bool=False):
         """Enter's player into queue for upcoming matches"""
         logger.info(f"{interaction.user.name} called /q")
         await interaction.response.defer(ephemeral=True)
@@ -510,7 +570,7 @@ class Ranked(commands.Cog):
         qdata = game_queues[game]
 
         if (isinstance(interaction.channel, discord.TextChannel) and
-                interaction.channel.id == QUEUE_CHANNEL and
+                (interaction.channel.id == QUEUE_CHANNEL_ID or from_button) and
                 isinstance(interaction.user, discord.Member)):
             player = interaction.user
             if player in qdata.queue:
@@ -530,10 +590,12 @@ class Ranked(commands.Cog):
 
             qdata.queue.put(player)
             await self.update_ranked_display()
-            await interaction.followup.send(
+            followup = await interaction.followup.send(
                 f"🟢 **{res['display_name']}** 🟢\nadded to queue for __{qdata.full_game_name}__."
                 f" *({qdata.queue.qsize()}/{qdata.game_size})*\n"
                 f"[Edit Display Name](https://secondrobotics.org/user/settings/)", ephemeral=True)
+            
+            await followup.delete(delay=60)
 
             if (qdata.queue.qsize() == 3 and qdata.game_size == 4) or (
                     qdata.queue.qsize() == 4 and qdata.game_size == 6):
@@ -548,22 +610,22 @@ class Ranked(commands.Cog):
                     ping_role = discord.utils.get(
                         interaction.guild.roles, name=ping_role_name)
                     if ping_role is not None:
-                        await interaction.channel.send(
+                        await queue_channel.send(
                             f"{ping_role.mention} Queue for __{qdata.full_game_name}__ is now {qdata.queue.qsize()}/{qdata.game_size}!")
 
             if qdata.queue.qsize() == qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
                     # Automatically start the match instead of posting a message
-                    await self.start_match(qdata, interaction)
+                    await self.start_match(qdata, interaction, from_button)
                 else:
-                    await interaction.channel.send(
+                    await queue_channel.send(
                         f"Queue for __{qdata.full_game_name}__ is now full! You can start as soon as the current match concludes.")
             else:
-                qstatus = await interaction.channel.send(
+                qstatus = await queue_channel.send(
                     f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**")
-                await qstatus.delete(delay=60)
+                await qstatus.delete(delay=30)
         else:
-            await interaction.response.send_message(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
+            await interaction.followup.send(f"<#{QUEUE_CHANNEL_ID}> >:(", ephemeral=True)
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Force queue players")
@@ -581,7 +643,7 @@ class Ranked(commands.Cog):
         members = [member1, member2, member3, member4, member5, member6]
         members_clean = [i for i in members if i]
         added_players = ""
-        if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
+        if isinstance(interaction.user, discord.Member) and any(role.id == EVENT_STAFF_ID for role in interaction.user.roles):
             for member in members_clean:
                 qdata.queue.put(member)
                 added_players += f"\n{member.display_name}"
@@ -589,6 +651,13 @@ class Ranked(commands.Cog):
                                                     ephemeral=True)
         else:
             await interaction.response.send_message("Nerd.", ephemeral=True)
+
+        for member in members_clean:
+            qdata.queue.put(member)
+            added_players += f"\n{member.display_name}"
+        await interaction.response.send_message(f"Successfully added{added_players} to the queue.",
+                                                ephemeral=True)
+
         await self.update_ranked_display()
 
     @app_commands.choices(game=games_choices)
@@ -596,9 +665,9 @@ class Ranked(commands.Cog):
     async def startmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /startmatch")
         await interaction.response.defer()
-        await self.start_match(game_queues[game], interaction)
+        await self.start_match(game_queues[game], interaction, False)
 
-    async def start_match(self, qdata: XrcGame, interaction: discord.Interaction):
+    async def start_match(self, qdata: XrcGame, interaction: discord.Interaction, from_button: bool=False):
         if qdata.queue.qsize() < qdata.game_size:
             await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
@@ -610,8 +679,8 @@ class Ranked(commands.Cog):
             await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
 
-        if interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL:
-            await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
+        if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
+            await interaction.followup.send(f"<#{QUEUE_CHANNEL_ID}> >:(", ephemeral=True)
             return
 
         password = str(random.randint(100, 999))
@@ -661,7 +730,7 @@ class Ranked(commands.Cog):
 
         if (isinstance(interaction.channel, discord.TextChannel) and
                 isinstance(interaction.user, discord.Member) and
-                interaction.channel.id == QUEUE_CHANNEL):
+                interaction.channel.id == QUEUE_CHANNEL_ID):
             player = interaction.user
             if player in qdata.queue:
                 qdata.queue.remove(player)
@@ -673,7 +742,7 @@ class Ranked(commands.Cog):
                 message = "You aren't in this queue."
                 ephemeral = True
         else:
-            message = f"<#{QUEUE_CHANNEL}> >:("
+            message = f"<#{QUEUE_CHANNEL_ID}> >:("
             ephemeral = True
 
         await interaction.response.send_message(message, ephemeral=ephemeral)
@@ -681,15 +750,12 @@ class Ranked(commands.Cog):
             f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
             delete_after=60)
 
-    @app_commands.command(name="leaveall", description="Remove yourself from all queues")
-    async def leaveall(self, interaction: discord.Interaction):
-        logger.info(f"{interaction.user.name} called /leaveall")
+    async def leave_all_queues(self, interaction: discord.Interaction, via_command = False):
+        send_publicly = False
 
-        ephemeral = False
-
-        if (isinstance(interaction.channel, discord.TextChannel) and
+        if (not via_command or (isinstance(interaction.channel, discord.TextChannel) and
                 isinstance(interaction.user, discord.Member) and
-                interaction.channel.id == QUEUE_CHANNEL):
+                interaction.channel.id == QUEUE_CHANNEL_ID and via_command)):
             player = interaction.user
             cleaned_display_name = ''.join(
                 char for char in player.display_name if char.isalnum())
@@ -702,19 +768,30 @@ class Ranked(commands.Cog):
                     # old update_ranked_display location
                     message += f"__{qdata.full_game_name}__. *({qdata.queue.qsize()}/{qdata.game_size})*, "
                     dequeued.append(qdata)
+                    send_publicly = True
             await self.update_ranked_display()
             if (len(dequeued) == 0):
                 message = "You aren't in any queues."
-                ephemeral = True
+                send_publicly = False
         else:
-            message = f"<#{QUEUE_CHANNEL}> >:("
-            ephemeral = True
+            message = f"<#{QUEUE_CHANNEL_ID}> >:("
+            ephemeral = False
+            return
 
-        await interaction.response.send_message(message, ephemeral=ephemeral)
-        for qdata in dequeued:
-            await interaction.channel.send(
+        await interaction.response.send_message(message, ephemeral=True, delete_after=30)
+        if send_publicly:
+            await queue_channel.send(message)
+        for qdata in dequeued:        
+            await queue_channel.send(
                 f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
                 delete_after=60)
+        
+
+    @app_commands.command(name="leaveall", description="Remove yourself from all queues")
+    async def leaveall(self, interaction: discord.Interaction):
+        logger.info(f"{interaction.user.name} called /leaveall")
+        await self.leave_all_queues(interaction, True)
+
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Remove someone else from the queue")
@@ -722,7 +799,7 @@ class Ranked(commands.Cog):
     async def kick(self, interaction: discord.Interaction, player: discord.Member, game: str):
         logger.info(f"{interaction.user.name} called /kick")
         qdata = game_queues[game]
-        if isinstance(interaction.channel, discord.TextChannel) and interaction.channel.id == QUEUE_CHANNEL:
+        if isinstance(interaction.channel, discord.TextChannel) and interaction.channel.id == QUEUE_CHANNEL_ID:
             if player in qdata.queue:
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
@@ -781,16 +858,16 @@ class Ranked(commands.Cog):
 
         if (
                 isinstance(interaction.channel, discord.TextChannel)
-                and interaction.channel.id == QUEUE_CHANNEL
+                and interaction.channel.id == QUEUE_CHANNEL_ID
                 and isinstance(interaction.user, discord.Member)
         ):
             roles = [role.id for role in interaction.user.roles]
 
             if qdata.red_role and qdata.blue_role:
-                ranked_roles = [699094822132121662,
+                ranked_roles = [EVENT_STAFF_ID,
                                 qdata.red_role.id, qdata.blue_role.id]
             else:
-                ranked_roles = [699094822132121662]
+                ranked_roles = [EVENT_STAFF_ID]
 
             # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
             submit_check = any(role in ranked_roles for role in roles)
@@ -805,7 +882,7 @@ class Ranked(commands.Cog):
                 await interaction.followup.send("Series is complete already!", ephemeral=True)
                 return
         else:
-            await interaction.followup.send(f"<#{QUEUE_CHANNEL}> >:(", ephemeral=True)
+            await interaction.followup.send(f"<#{QUEUE_CHANNEL_ID}> >:(", ephemeral=True)
             return
 
         # Red wins
@@ -884,7 +961,7 @@ class Ranked(commands.Cog):
             if qdata.server_port:
                 stop_server_process(qdata.server_port)
 
-            lobby = self.bot.get_channel(824692700364275743)
+            lobby = self.bot.get_channel(LOBBY_VC_ID)
             for channel in [qdata.red_channel, qdata.blue_channel]:
                 if channel:
                     for member in channel.members:
@@ -919,9 +996,9 @@ class Ranked(commands.Cog):
         logger.info(f"Displaying teams for {qdata.game_type}")
         channel = ctx.channel
         self.category = self.category or get(
-            ctx.guild.categories, id=824691912371470367)
-        self.staff = self.staff or get(ctx.guild.roles, id=699094822132121662)
-        self.bots = self.bots or get(ctx.guild.roles, id=646560019034406912)
+            ctx.guild.categories, id=CATEGORY_ID)
+        self.staff = self.staff or get(ctx.guild.roles, id=EVENT_STAFF_ID)
+        self.bots = self.bots or get(ctx.guild.roles, id=BOTS_ROLE_ID)
 
         logger.info(f"Getting IP for {qdata.game_type}")
 
@@ -941,7 +1018,8 @@ class Ranked(commands.Cog):
         embed.add_field(name='RED', value=red_field, inline=True)
         embed.add_field(name='BLUE', value=blue_field, inline=True)
 
-        await ctx.followup.send(embed=embed)
+        # await ctx.followup.send(embed=embed)
+        await queue_channel.send(embed=embed)
 
         qdata.red_role = await ctx.guild.create_role(name=f"Red {qdata.full_game_name}",
                                                      colour=discord.Color(0xFF0000))
@@ -955,6 +1033,7 @@ class Ranked(commands.Cog):
                            qdata.blue_role: discord.PermissionOverwrite(connect=True),
                            self.staff: discord.PermissionOverwrite(connect=True),
                            self.bots: discord.PermissionOverwrite(connect=True)}
+
 
         if qdata.game_size != 2:
             qdata.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
@@ -975,7 +1054,7 @@ class Ranked(commands.Cog):
                     logger.error(e)
                     pass
 
-        await channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}", delete_after=30)
+        await queue_channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
 
     @app_commands.choices(game=games_choices)
@@ -985,7 +1064,7 @@ class Ranked(commands.Cog):
         qdata = game_queues[game]
 
         ephemeral = False
-        if isinstance(interaction.user, discord.Member) and 699094822132121662 in [y.id for y in
+        if isinstance(interaction.user, discord.Member) and EVENT_STAFF_ID in [y.id for y in
                                                                                    interaction.user.roles]:
             await interaction.response.defer()
             await self.do_clear_match(interaction.user.guild, qdata)
@@ -1005,7 +1084,7 @@ class Ranked(commands.Cog):
         await remove_roles(guild, qdata)
 
         # Kick to lobby
-        lobby = self.bot.get_channel(824692700364275743)
+        lobby = self.bot.get_channel(LOBBY_VC_ID)
         for channel in [qdata.red_channel, qdata.blue_channel]:
             if channel:
                 for member in channel.members:
@@ -1015,7 +1094,7 @@ class Ranked(commands.Cog):
     @app_commands.command(name="rules", description="Posts a link the the rules")
     async def rules(self, interaction: discord.Interaction):
         logger.info(f"{interaction.user.name} called /rules")
-        await interaction.response.send_message("The rules can be found here: <#700411727430418464>")
+        await interaction.response.send_message(f"The rules can be found here: <#{RULES_CHANNEL_ID}>")
 
     @tasks.loop(minutes=10)
     async def check_queue_joins(self):
@@ -1258,3 +1337,50 @@ async def warn_server_inactivity(server: int):
                         "Your ranked match has been inactive - if all players are not present within 5 minutes, the match will be cancelled.")
                     pass
             return
+
+
+class GameButton(discord.ui.Button['game']):
+    def __init__(self, game: str, short_code: str, cog: commands.Cog):
+        super().__init__(style=discord.ButtonStyle.green, label=game)
+        self.game = game
+        self.cog = cog
+        self.short_code = short_code
+
+    async def callback(self, interaction: discord.Interaction):
+        logger.info('{} game button pressed'.format(self.game))
+
+        embed = discord.Embed(title=self.game, description=f"Queue for {self.game}!", color=0x00ff00)
+
+        try:
+            game_icon = game_logos[self.game]
+        except:
+            game_icon = None
+
+        if game_icon:
+            embed.set_thumbnail(url=game_icon)
+
+        # Generate buttons and attach to view
+
+        view = discord.ui.View()
+
+        max_alliance = int(default_game_players[server_games[self.game]]/2)
+
+        logger.info("Max of {} players per alliance, generating buttons".format(max_alliance))
+
+        for n in range(1, max_alliance+1):
+            view.add_item(QueueButton(game=f'{self.game} {n}v{n}', short_code=self.short_code+f'{n}v{n}', display=f'{n}v{n}', cog=self.cog))
+        
+        message = await interaction.response.send_message(embed=embed, view=view, ephemeral=True, delete_after=30)
+
+class QueueButton(discord.ui.Button['queue']):
+    def __init__(self, game: str, short_code: str, display: str, cog: commands.Cog):
+        super().__init__(style=discord.ButtonStyle.green, label=display)
+        self.game = game
+        self.short_code = short_code
+        self.display = display
+        self.cog = cog
+    
+    async def callback(self, interaction: discord.Interaction):
+        logger.info('{} button pressed!'.format(self.game))
+
+        await self.cog.queue_player(interaction, self.short_code, True)
