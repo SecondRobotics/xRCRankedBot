@@ -399,7 +399,7 @@ class Ranked(commands.Cog):
         leave_all = discord.ui.Button(label="Leave All Queues", style=ButtonStyle.red, row=2)
         leave_all.callback = self.leave_all_queues
         
-        view = discord.ui.View()
+        view = discord.ui.View(timeout=None)
         view.add_item(select)
 
         for i, game in enumerate(games_categories):
