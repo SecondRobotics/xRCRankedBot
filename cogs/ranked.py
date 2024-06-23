@@ -396,7 +396,7 @@ class Ranked(commands.Cog):
             placeholder="Choose a game to toggle ping", options=options)
         select.callback = self.dropdown_callback
 
-        leave_all = discord.ui.Button(label="Leave All Queues", style=ButtonStyle.red)
+        leave_all = discord.ui.Button(label="Leave All Queues", style=ButtonStyle.red, row=2)
         leave_all.callback = self.leave_all_queues
         
         view = discord.ui.View()
@@ -1341,7 +1341,9 @@ async def warn_server_inactivity(server: int):
 
 class GameButton(discord.ui.Button['game']):
     def __init__(self, game: str, short_code: str, cog: commands.Cog):
-        super().__init__(style=discord.ButtonStyle.green, label=game)
+        is_daily = not game in list(server_games.keys())[-3:]
+
+        super().__init__(style=discord.ButtonStyle.primary if is_daily else discord.ButtonStyle.green, label=game)
         self.game = game
         self.cog = cog
         self.short_code = short_code
