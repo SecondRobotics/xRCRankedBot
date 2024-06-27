@@ -343,6 +343,12 @@ class Ranked(commands.Cog):
 
         await self.update_ranked_display()
 
+        daily_game_ping_role = discord.utils.get(
+                        await self.bot.get_guild(GUILD_ID).fetch_roles(), name=f"{daily_game} Ping")
+        if daily_game_ping_role is not None:
+            await queue_channel.send(
+                f"{daily_game_ping_role.mention}\n{daily_game} is today's game of the day!")
+
     async def create_ping_roles(self):
         guild_id = GUILD_ID  # Guild ID of the desired guild
         # Replace `bot` with your actual bot instance
