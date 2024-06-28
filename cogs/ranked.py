@@ -448,12 +448,12 @@ class Ranked(commands.Cog):
             # User has the role, remove it
             await member.remove_roles(ping_role)
             await interaction.response.send_message(f"You have been removed from the {ping_role_name} role.",
-                                                    ephemeral=True)
+                                                    ephemeral=True, delete_after=30)
         else:
             # User doesn't have the role, add it
             await member.add_roles(ping_role)
             await interaction.response.send_message(f"You have been added to the {ping_role_name} role!",
-                                                    ephemeral=True)
+                                                    ephemeral=True, delete_after=30)
 
     server_game_names = [
         Choice(name=game, value=game) for game in server_games.keys()
