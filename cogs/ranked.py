@@ -303,6 +303,8 @@ class Ranked(commands.Cog):
         self.bot = bot
         self.ranked_display = None
         self.check_queue_joins.start()
+        self.has_daily_pinged = False
+        self.check_daily_ping.start()
         self.lobby = self.bot.get_channel(LOBBY_VC_ID)
 
         self.bot.set_ranked_cog_reference(self)
@@ -357,6 +359,24 @@ class Ranked(commands.Cog):
             existing_role = discord.utils.get(guild.roles, name=role_name)
             if existing_role is None:
                 await guild.create_role(name=role_name)
+
+    @tasks.loop(minutes=5)
+    async def check_daily_ping(self):
+        current_time = datetime.now()
+
+        if current_time.hour == 13 and current_time.minute <= 10 and guild and not self.has_daily_pinged:
+            logger.info(f"Initiating daily game ping, current time is {current_time}")
+
+            self.has_daily_pinged = True
+
+            daily_game_ping_role = discord.utils.get(
+                        await guild.fetch_roles(), name=f"{daily_game} Ping")
+            if daily_game_ping_role is not None:
+                await queue_channel.send(
+                    f"{daily_game} is today's game of the day!\n{daily_game_ping_role.mention}")
+            
+            self.check_daily_ping.cancel()
+
 
     async def update_ranked_display(self):
         if self.ranked_display is None:
@@ -428,12 +448,12 @@ class Ranked(commands.Cog):
             # User has the role, remove it
             await member.remove_roles(ping_role)
             await interaction.response.send_message(f"You have been removed from the {ping_role_name} role.",
-                                                    ephemeral=True)
+                                                    ephemeral=True, delete_after=30)
         else:
             # User doesn't have the role, add it
             await member.add_roles(ping_role)
             await interaction.response.send_message(f"You have been added to the {ping_role_name} role!",
-                                                    ephemeral=True)
+                                                    ephemeral=True, delete_after=30)
 
     server_game_names = [
         Choice(name=game, value=game) for game in server_games.keys()
@@ -1257,6 +1277,8 @@ guild = None  # type: discord.Guild | None
 
 async def setup(bot: commands.Bot) -> None:
     cog = Ranked(bot)
+
+    global guild
     guild = await bot.fetch_guild(GUILD_ID)
     assert guild is not None
 
