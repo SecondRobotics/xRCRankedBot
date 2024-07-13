@@ -53,6 +53,7 @@ server_games = {
     "Over Under": "14",
     "Centerstage": "15",
     "Crescendo": "16",
+    "High Stakes": "17",
 }
 
 # dictionary mapping game name to shortcode
@@ -74,6 +75,7 @@ short_codes = {
     "Over Under": "OU",
     "Centerstage": "CS",
     "Crescendo": "CR",
+    "High Stakes": "HS",
 }
 
 # dictionary mapping game id number to default number of players
@@ -95,6 +97,7 @@ default_game_players = {
     "14": 4,
     "15": 4,
     "16": 6,
+    "17": 4,
 }
 
 # dictionary mapping game name to game logo url
@@ -108,6 +111,7 @@ game_logos = {
     "Centerstage": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQS-ziPQP3hKuX2qk5YBkLFIfv3wWNkNCf6QLBHaF9JPw&s",
     "Over Under": "https://roboticseducation.org/wp-content/uploads/2023/04/VRC-Over-Under.png",
     "Crescendo": "https://i.imgur.com/St3EoqP.png",
+    "High Stakes": "https://imgur.com/a/NXXARMm",
 }
 
 listener = commands.Cog.listener
