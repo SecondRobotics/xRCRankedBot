@@ -111,7 +111,7 @@ game_logos = {
     "Centerstage": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQS-ziPQP3hKuX2qk5YBkLFIfv3wWNkNCf6QLBHaF9JPw&s",
     "Over Under": "https://roboticseducation.org/wp-content/uploads/2023/04/VRC-Over-Under.png",
     "Crescendo": "https://i.imgur.com/St3EoqP.png",
-    "High Stakes": "https://imgur.com/a/NXXARMm",
+    "High Stakes": "https://i.imgur.com/jWu3NHB.png",
 }
 
 listener = commands.Cog.listener
