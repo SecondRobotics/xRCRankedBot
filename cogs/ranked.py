@@ -121,8 +121,7 @@ inactive_games.remove("Relic Recovery")
 # Temp game adjust
 inactive_games.remove("Infinite Recharge")
 active_games.append("Infinite Recharge")
-inactive_games.remove("Rapid React")
-active_games.append("Rapid React")
+active_games.remove("Crescendo")
 
 
 daily_game = random.choice(inactive_games)
