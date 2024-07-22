@@ -429,7 +429,7 @@ class Ranked(commands.Cog):
                         f"Queue for __{qdata.full_game_name}__ is now full! You can start as soon as the current match concludes.")
             else:
                 qstatus = await queue_channel.send(
-                    f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**")
+                    f"Queue for __[{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**")
                 await qstatus.delete(delay=30)
         else:
             await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
@@ -546,7 +546,7 @@ class Ranked(commands.Cog):
                 await self.update_ranked_display()
                 cleaned_display_name = ''.join(
                     char for char in player.display_name if char.isalnum())
-                message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for __{qdata.full_game_name}__. *({qdata.queue.qsize()}/{qdata.game_size})*"
+                message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for __[{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})__. *({qdata.queue.qsize()}/{qdata.game_size})*"
             else:
                 message = "You aren't in this queue."
                 ephemeral = True
@@ -556,7 +556,7 @@ class Ranked(commands.Cog):
 
         await interaction.response.send_message(message, ephemeral=ephemeral)
         await interaction.channel.send(
-            f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
+            f"Queue for __[{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
             delete_after=60)
 
     async def leave_all_queues(self, interaction: discord.Interaction, via_command = False):
@@ -590,7 +590,7 @@ class Ranked(commands.Cog):
             await queue_channel.send(message)
         for qdata in dequeued:        
             await queue_channel.send(
-                f"Queue for __{qdata.full_game_name}__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
+                f"Queue for __[{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
                 delete_after=60)
         
 
@@ -611,7 +611,7 @@ class Ranked(commands.Cog):
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
                 await interaction.response.send_message(
-                    f"**{player.display_name}**\nremoved to queue for __{game}__. *({qdata.queue.qsize()}/{qdata.game_size})*")
+                    f"**{player.display_name}**\nremoved to queue for __[{game}](https://secondrobotics.org/ranked/{qdata.api_short})__. *({qdata.queue.qsize()}/{qdata.game_size})*")
             else:
                 await interaction.response.send_message("{} is not in queue.".format(player.display_name),
                                                         ephemeral=True)
