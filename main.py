@@ -1,5 +1,3 @@
-# main.py
-
 from discord import app_commands
 import discord
 from discord.ext import commands
@@ -26,12 +24,13 @@ class RankedBot(commands.Bot):
 
     async def setup_hook(self):
         await self.load_extension("cogs.ranked")
-        await self.load_extension("cogs.general")
         await self.load_extension("cogs.server")
-        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        await self.load_extension("cogs.general")
+        await self.tree.sync(guild=discord.Object(id=GUILD_ID))
 
     async def on_ready(self):
         logger.info("The bot is alive!")
+        # Required to update all slash commands
         await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching,
                                                             name=str("xRC Sim Ranked Queue")))
         if self.ranked_cog:
@@ -52,8 +51,8 @@ async def ping(interaction: discord.Interaction):
 file_log_handler = logging.handlers.RotatingFileHandler(
     filename='bot.log',
     encoding='utf-8',
-    maxBytes=32 * 1024 * 1024,
-    backupCount=5,
+    maxBytes=32 * 1024 * 1024,  # 32 MiB
+    backupCount=5,  # Rotate through 5 files
 )
 file_log_handler.setFormatter(logging.Formatter(
     '%(asctime)s : %(levelname)s : %(name)s : %(message)s'))

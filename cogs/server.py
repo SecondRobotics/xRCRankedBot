@@ -8,9 +8,8 @@ from typing import Dict
 from io import TextIOWrapper
 from discord import app_commands
 from discord.ext import commands
-import discord
 from discord.app_commands import Choice
-from config import server_games, server_restart_modes, server_games_choices, PORTS, server_game_settings, short_codes, game_logos, default_game_players
+from config import server_games, server_restart_modes, server_games_choices, PORTS, server_game_settings, short_codes, game_logos, default_game_players, GUILD_ID
 
 logger = logging.getLogger('discord')
 
@@ -140,4 +139,11 @@ class ServerActions(commands.Cog):
 
 
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(ServerActions(bot))
+    cog = ServerActions(bot)
+    guild = await bot.fetch_guild(GUILD_ID)
+    assert guild is not None
+
+    await bot.add_cog(
+        cog,
+        guilds=[guild]
+    )
