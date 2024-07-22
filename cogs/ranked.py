@@ -421,7 +421,7 @@ class Ranked(commands.Cog):
                         await queue_channel.send(
                             f"{ping_role.mention} Queue for __{qdata.full_game_name}__ is now {qdata.queue.qsize()}/{qdata.game_size}!")
 
-            if qdata.queue.qsize() == qdata.game_size:
+            if qdata.queue.qsize() >= qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
                     await self.start_match(qdata, interaction, from_button)
                 else:
