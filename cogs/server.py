@@ -9,6 +9,7 @@ from io import TextIOWrapper
 from discord import app_commands
 from discord.ext import commands
 import discord
+from discord.app_commands import Choice
 from config import server_games, server_restart_modes, server_games_choices, PORTS, server_game_settings, short_codes, game_logos, default_game_players
 
 logger = logging.getLogger('discord')
