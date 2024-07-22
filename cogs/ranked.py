@@ -787,7 +787,18 @@ class Ranked(commands.Cog):
 
         await self.display_teams(interaction, qdata)
 
+    
+
     async def display_teams(self, ctx, qdata: XrcGame):
+
+        async def assign_role(player, role):
+            await self.player.add_roles(role)
+
+        async def move_player(player, channel):
+            try:
+                await self.player.move_to(channel)
+            except Exception as e:
+                logger.error(e)
         logger.info(f"Displaying teams for {qdata.game_type}")
         channel = ctx.channel
         self.category = self.category or get(
@@ -804,7 +815,7 @@ class Ranked(commands.Cog):
 
         description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**
         || IP: {ip} Port: {qdata.server_port}||
-         [Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{qdata.api_short})""" if qdata.server_port else None
+        [Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{qdata.api_short})""" if qdata.server_port else None
 
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for {qdata.full_game_name}!", description=description
@@ -815,36 +826,39 @@ class Ranked(commands.Cog):
 
         await queue_channel.send(embed=embed)
 
-        qdata.red_role = await ctx.guild.create_role(name=f"Red {qdata.full_game_name}",
-                                                     colour=discord.Color(0xFF0000))
-        qdata.blue_role = await ctx.guild.create_role(name=f"Blue {qdata.full_game_name}",
-                                                      colour=discord.Color(0x0000FF))
+        qdata.red_role, qdata.blue_role = await asyncio.gather(
+            ctx.guild.create_role(name=f"Red {qdata.full_game_name}", colour=discord.Color(0xFF0000)),
+            ctx.guild.create_role(name=f"Blue {qdata.full_game_name}", colour=discord.Color(0x0000FF))
+        )
+
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                          qdata.red_role: discord.PermissionOverwrite(connect=True),
-                          self.staff: discord.PermissionOverwrite(connect=True),
-                          self.bots: discord.PermissionOverwrite(connect=True)}
+                        qdata.red_role: discord.PermissionOverwrite(connect=True),
+                        self.staff: discord.PermissionOverwrite(connect=True),
+                        self.bots: discord.PermissionOverwrite(connect=True)}
         overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                           qdata.blue_role: discord.PermissionOverwrite(connect=True),
-                           self.staff: discord.PermissionOverwrite(connect=True),
-                           self.bots: discord.PermissionOverwrite(connect=True)}
+                        qdata.blue_role: discord.PermissionOverwrite(connect=True),
+                        self.staff: discord.PermissionOverwrite(connect=True),
+                        self.bots: discord.PermissionOverwrite(connect=True)}
 
         if qdata.game_size != 2:
-            qdata.red_channel = await ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
-                                                                     category=self.category, overwrites=overwrites_red)
-            qdata.blue_channel = await ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
-                                                                      category=self.category, overwrites=overwrites_blue)
+            qdata.red_channel, qdata.blue_channel = await asyncio.gather(
+                ctx.guild.create_voice_channel(name=f"🟥{qdata.full_game_name}🟥",
+                                            category=self.category, overwrites=overwrites_red),
+                ctx.guild.create_voice_channel(name=f"🟦{qdata.full_game_name}🟦",
+                                            category=self.category, overwrites=overwrites_blue)
+            )
 
             if not qdata.game:
                 await channel.send("Error: No game found")
                 return
 
+        tasks = []
         for player in qdata.game.red | qdata.game.blue:
-            await player.add_roles(qdata.red_role if player in qdata.game.red else qdata.blue_role)
+            tasks.append(assign_role(player, qdata.red_role if player in qdata.game.red else qdata.blue_role))
             if qdata.game_size != 2:
-                try:
-                    await player.move_to(qdata.red_channel if player in qdata.game.red else qdata.blue_channel)
-                except Exception as e:
-                    logger.error(e)
+                tasks.append(move_player(player, qdata.red_channel if player in qdata.game.red else qdata.blue_channel))
+
+        await asyncio.gather(*tasks)
 
         await queue_channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
