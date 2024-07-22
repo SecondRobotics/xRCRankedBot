@@ -330,7 +330,7 @@ class Ranked(commands.Cog):
             logger.fatal("Could not find queue status channel")
             raise RuntimeError("Could not find queue status channel")
         limit = 0
-        async for msg in qstatus_channel.history(limit=None):
+        async for _ in qstatus_channel.history(limit=None):
             limit += 1
         await qstatus_channel.purge(limit=limit)
 
@@ -803,7 +803,6 @@ class Ranked(commands.Cog):
                 send_publicly = False
         else:
             message = f"<#{QUEUE_CHANNEL_ID}> >:("
-            ephemeral = False
             return
 
         await interaction.response.send_message(message, ephemeral=True, delete_after=30)
@@ -833,11 +832,9 @@ class Ranked(commands.Cog):
                 await self.update_ranked_display()
                 await interaction.response.send_message(
                     f"**{player.display_name}**\nremoved to queue for __{game}__. *({qdata.queue.qsize()}/{qdata.game_size})*")
-                return
             else:
                 await interaction.response.send_message("{} is not in queue.".format(player.display_name),
                                                         ephemeral=True)
-                return
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Edits the last match score (in the event of a human error)", name="editmatch")
@@ -900,9 +897,7 @@ class Ranked(commands.Cog):
             # Returns false if not in a game currently. Looks for duplicates between roles and ranked_roles
             submit_check = any(role in ranked_roles for role in roles)
 
-            if submit_check:
-                pass
-            else:
+            if not submit_check:
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
 
@@ -1080,7 +1075,6 @@ class Ranked(commands.Cog):
                     await player.move_to(qdata.red_channel if player in qdata.game.red else qdata.blue_channel)
                 except Exception as e:
                     logger.error(e)
-                    pass
 
         await queue_channel.send(f"{qdata.red_role.mention} {qdata.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
@@ -1214,9 +1208,9 @@ class OrderedSet(MutableSet):
 
     def discard(self, key):
         if key in self.map:
-            key, prev, next = self.map.pop(key)
-            prev[2] = next
-            next[1] = prev
+            key, prev, _next = self.map.pop(key)
+            prev[2] = _next
+            _next[1] = prev
 
     def __iter__(self):
         end = self.end
@@ -1340,7 +1334,7 @@ async def server_has_players(server: int) -> bool:
 
     while True:
         line = process.stdout.readline().decode("utf-8")
-        if not line == b'_BEGIN_\n':
+        if line != b'_BEGIN_\n':
             break
 
     players = []
@@ -1365,13 +1359,12 @@ async def warn_server_inactivity(server: int):
                     # send a message to the players
                     await player.send(
                         "Your ranked match has been inactive - if all players are not present within 5 minutes, the match will be cancelled.")
-                    pass
             return
 
 
 class GameButton(discord.ui.Button['game']):
     def __init__(self, game: str, short_code: str, cog: commands.Cog):
-        is_daily = not game in list(server_games.keys())[-3:]
+        is_daily = game not in list(server_games.keys())[-3:]
 
         super().__init__(style=discord.ButtonStyle.primary if is_daily else discord.ButtonStyle.green, label=game)
         self.game = game
@@ -1402,7 +1395,7 @@ class GameButton(discord.ui.Button['game']):
         for n in range(1, max_alliance+1):
             view.add_item(QueueButton(game=f'{self.game} {n}v{n}', short_code=self.short_code+f'{n}v{n}', display=f'{n}v{n}', cog=self.cog))
         
-        message = await interaction.response.send_message(embed=embed, view=view, ephemeral=True, delete_after=30)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True, delete_after=30)
 
 class QueueButton(discord.ui.Button['queue']):
     def __init__(self, game: str, short_code: str, display: str, cog: commands.Cog):
