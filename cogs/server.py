@@ -5,6 +5,7 @@ import subprocess
 import logging
 from datetime import datetime
 from typing import Dict
+import discord
 from io import TextIOWrapper
 from discord import app_commands
 from discord.ext import commands
