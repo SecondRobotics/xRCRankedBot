@@ -6,10 +6,10 @@ import logging
 from datetime import datetime
 from typing import Dict
 from io import TextIOWrapper
-from discord.app_commands import Choice
-from discord.app_commands import Choice
+from discord import app_commands
+from discord.ext import commands
+import discord
 from config import server_games, server_restart_modes, server_games_choices, PORTS, server_game_settings, short_codes, game_logos, default_game_players
-
 
 logger = logging.getLogger('discord')
 
