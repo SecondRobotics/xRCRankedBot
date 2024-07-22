@@ -792,11 +792,11 @@ class Ranked(commands.Cog):
     async def display_teams(self, ctx, qdata: XrcGame):
 
         async def assign_role(player, role):
-            await self.player.add_roles(role)
+            await player.add_roles(role)
 
         async def move_player(player, channel):
             try:
-                await self.player.move_to(channel)
+                await player.move_to(channel)
             except Exception as e:
                 logger.error(e)
         logger.info(f"Displaying teams for {qdata.game_type}")
