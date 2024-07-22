@@ -42,7 +42,6 @@ class RankedBot(commands.Bot):
 
 
 bot = RankedBot()
-# tree = app_commands.CommandTree(bot)
 
 
 @app_commands.command()
