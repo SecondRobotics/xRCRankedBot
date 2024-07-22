@@ -20,6 +20,8 @@ import shutil
 from discord.ext import tasks
 from config import *
 from queue import Empty
+from config import server_games, server_games_choices, PORTS, server_game_settings, short_codes, game_logos, default_game_players, server_restart_modes
+from server import start_server_process, stop_server_process
 
 # Constants
 SERVER_PATH = "./server/xRC Simulator.x86_64"
@@ -40,85 +42,12 @@ team_size_alt = 4
 HEADER = {"x-api-key": SRC_API_TOKEN}
 
 ip = requests.get('https://icanhazip.com').text
-PORTS = [11115, 11116, 11117, 11118, 11119, 11120]
 servers_active: Dict[int, subprocess.Popen] = {}
 log_files: Dict[int, TextIOWrapper] = {}
 
-server_games = {
-    "Splish Splash": "0",
-    "Relic Recovery": "1",
-    "Rover Ruckus": "2",
-    "Skystone": "3",
-    "Infinite Recharge": "4",
-    "Change Up": "5",
-    "Bot Royale": "6",
-    "Ultimate Goal": "7",
-    "Tipping Point": "8",
-    "Freight Frenzy": "9",
-    "Rapid React": "10",
-    "Spin Up": "11",
-    "Power Play": "12",
-    "Charged Up": "13",
-    "Over Under": "14",
-    "Centerstage": "15",
-    "Crescendo": "16",
-    "High Stakes": "17",
-}
 
-short_codes = {
-    "Splish Splash": "S",
-    "Relic Recovery": "",
-    "Rover Ruckus": "RoRu",
-    "Skystone": "SS",
-    "Infinite Recharge": "IR",
-    "Change Up": "CU",
-    "Bot Royale": "",
-    "Ultimate Goal": "UG",
-    "Tipping Point": "TP",
-    "Freight Frenzy": "FF",
-    "Rapid React": "RR",
-    "Spin Up": "SU",
-    "Power Play": "PP",
-    "Charged Up": "Charge",
-    "Over Under": "OU",
-    "Centerstage": "CS",
-    "Crescendo": "CR",
-    "High Stakes": "HS",
-}
 
-default_game_players = {
-    "0": 4,
-    "1": 4,
-    "2": 4,
-    "3": 4,
-    "4": 6,
-    "5": 4,
-    "6": 6,
-    "7": 4,
-    "8": 4,
-    "9": 4,
-    "10": 6,
-    "11": 4,
-    "12": 4,
-    "13": 6,
-    "14": 4,
-    "15": 4,
-    "16": 6,
-    "17": 4,
-}
 
-game_logos = {
-    "Skystone": "https://i.redd.it/iblf4hi92vt21.png",
-    "Infinite Recharge": "https://upload.wikimedia.org/wikipedia/en/2/2b/Infinite_Recharge_Logo.png",
-    "Rapid React": "https://upload.wikimedia.org/wikipedia/en/thumb/0/08/Rapid_React_Logo.svg/1200px-Rapid_React_Logo.svg.png",
-    "Spin Up": "https://www.roboticseducation.org/app/uploads/2022/05/Spin-Up-Logo.png",
-    "Charged Up": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b7/Charged_Up_Logo.svg/1024px-Charged_Up_Logo.svg.png",
-    "Power Play": "https://www.roboticseducation.org/app/uploads/2022/05/Power-Play-Logo.png",
-    "Centerstage": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQS-ziPQP3hKuX2qk5YBkLFIfv3wWNkNCf6QLBHaF9JPw&s",
-    "Over Under": "https://roboticseducation.org/wp-content/uploads/2023/04/VRC-Over-Under.png",
-    "Crescendo": "https://i.imgur.com/St3EoqP.png",
-    "High Stakes": "https://i.imgur.com/jWu3NHB.png",
-}
 
 listener = commands.Cog.listener
 
@@ -142,22 +71,8 @@ games_players = {game['short_code']: game['players_per_alliance'] * 2
 games_categories = active_games.copy()
 games_categories.append(daily_game)
 
-server_games_choices = [
-    Choice(name=game, value=server_games[game]) for game in server_games.keys()
-]
 
-server_game_settings = {
-    "4": "0:1:0:1:25:5:5100:0:1:1:1:1:1:1:1:14:7:1:1:1:0:15:100:0:1:2021:25",
-    "7": "30:1:0:0:10:0",
-    "9": "1:1:1:1:30:10",
-    "13": "0:5:1:4:0:5:2:0:1:1:1:1:1:1:1:14:7:1:1:1:0:15:100",
-    "16": "0:5:1:2:1:5:1:20:5:20:0:1:1:1:1:1:1:1:1:14:7:1:1:1:0:15:100:1"
-}
 
-server_restart_modes = {
-    "3": 3,
-    "4": 2,
-}
 
 class XrcGame():
     def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
@@ -228,83 +143,6 @@ def download_file(url):
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
     return local_filename
-
-
-def start_server_process(game: str, comment: str, password: str = "", admin: str = "Admin",
-                         restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
-                         tournament_mode: bool = True, start_when_ready: bool = True,
-                         register: bool = True, spectators: int = 4, min_players: int = -1,
-                         restart_all: bool = True
-                         ):
-    if not os.path.exists(SERVER_PATH):
-        return "⚠ xRC Sim server not found, use `/update` to update", -1
-
-    if len(servers_active) >= len(PORTS):
-        return "⚠ The maximum number of servers are already running", -1
-
-    port = -1
-    for port in PORTS:
-        if port not in servers_active:
-            break
-
-    if port == -1:
-        return "⚠ Could not find a port to run the server on", -1
-
-    logger.info(f"Launching server on port {port}")
-
-    game_settings = server_game_settings.get(game, "")
-    if restart_mode == -1:
-        restart_mode = server_restart_modes.get(game, 1)
-
-    if min_players == -1:
-        min_players = default_game_players.get(game, 4)
-
-    f = open(f"{SERVER_LOGS_DIR}{port}.log", "a")
-    log_files[port] = f
-    f.write(f"Server started at {datetime.now()}")
-
-    command = [
-        SERVER_PATH, "-batchmode", "-nographics",
-        f"RouterPort={port}", f"Port={port}", f"Game={game}",
-        f"GameOption={restart_mode}", f"FrameRate={frame_rate}",
-        f"Tmode={'On' if tournament_mode else 'Off'}",
-        f"Register={'On' if register else 'Off'}",
-        f"Spectators={spectators}", f"UpdateTime={update_time}",
-        "MaxData=1000000",
-        f"StartWhenReady={'On' if start_when_ready else 'Off'}",
-        f"Comment={comment}", f"Password={password}",
-        f"Admin={admin}", f"GameSettings={game_settings}",
-        f"MinPlayers={min_players}",
-        f"RestartAll={'On' if restart_all else 'Off'}",
-        "NetStats=On", "Profiling=On"
-    ]
-
-    servers_active[port] = subprocess.Popen(
-        command,
-        stdout=f, stderr=f, shell=False
-    )
-
-    last_active[port] = datetime.now()
-
-    logger.info(f"Server launched on port {port}: '{comment}'")
-    return f"✅ Launched server '{comment}' on port {port}", port
-
-
-def stop_server_process(port: int):
-    if port not in servers_active:
-        return f"⚠ Server on port {port} not found"
-
-    logger.info(f"Shutting down server on port {port}")
-    log_files[port].write(f"Server shut down at {datetime.now()}")
-
-    servers_active[port].terminate()
-    log_files[port].close()
-    del servers_active[port]
-    del last_active[port]
-    del log_files[port]
-
-    logger.info(f"Server on port {port} shut down")
-    return f"✅ Server on port {port} shut down"
 
 
 class Ranked(commands.Cog):
@@ -504,43 +342,6 @@ class Ranked(commands.Cog):
 
         await interaction.followup.send("✅ Updated to the latest release version of xRC Sim!")
         logger.info("Updated successfully")
-
-    @app_commands.command(description="Launches a new instance of xRC Sim server", name="launchserver")
-    @app_commands.checks.has_any_role("Event Staff")
-    @app_commands.choices(game=server_games_choices)
-    async def launch_server(self, interaction: discord.Interaction,
-                            game: str, comment: str, password: str = "", admin: str = "Admin",
-                            restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
-                            tournament_mode: bool = True, start_when_ready: bool = True,
-                            register: bool = True, spectators: int = 4, min_players: int = -1,
-                            restart_all: bool = True
-                            ):
-        logger.info(f"{interaction.user.name} called /launchserver")
-
-        result, _ = start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
-                                         tournament_mode, start_when_ready, register, spectators, min_players, restart_all)
-
-        await interaction.response.send_message(result)
-
-    @app_commands.command(description="Shutdown a running xRC Sim server", name="landserver")
-    @app_commands.checks.has_any_role("Event Staff")
-    @app_commands.choices(port=ports_choices)
-    async def land_server(self, interaction: discord.Interaction, port: int):
-        logger.info(f"{interaction.user.name} called /landserver")
-
-        result = stop_server_process(port)
-
-        await interaction.response.send_message(result)
-
-    @app_commands.command(description="Lists the running server instances", name="listservers")
-    @app_commands.checks.has_any_role("Event Staff")
-    async def list_servers(self, interaction: discord.Interaction):
-        logger.info(f"{interaction.user.name} called /listservers")
-        if not servers_active:
-            await interaction.response.send_message("⚠ No servers are running")
-            return
-
-        await interaction.response.send_message("Servers running: " + ", ".join([str(port) for port in servers_active]))
 
     @app_commands.command(description="memes")
     @app_commands.checks.has_any_role("Event Staff")
