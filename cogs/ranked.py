@@ -269,15 +269,27 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
     log_files[port] = f
     f.write(f"Server started at {datetime.now()}")
 
+    command = [
+        server_path, "-batchmode", "-nographics",
+        f"RouterPort={port}", f"Port={port}", f"Game={game}",
+        f"GameOption={restart_mode}", f"FrameRate={frame_rate}",
+        f"Tmode={'On' if tournament_mode else 'Off'}",
+        f"Register={'On' if register else 'Off'}",
+        f"Spectators={spectators}", f"UpdateTime={update_time}",
+        "MaxData=1000000",
+        f"StartWhenReady={'On' if start_when_ready else 'Off'}",
+        f"Comment={comment}", f"Password={password}",
+        f"Admin={admin}", f"GameSettings={game_settings}",
+        f"MinPlayers={min_players}",
+        f"RestartAll={'On' if restart_all else 'Off'}",
+        "NetStats=On", "Profiling=On"
+    ]
+
+     # FIXME: shell=True needed for stdin (stdin=subprocess.PIPE) to work
+
     servers_active[port] = subprocess.Popen(
-        [server_path, "-batchmode", "-nographics", f"RouterPort={port}", f"Port={port}", f"Game={game}",
-         f"GameOption={restart_mode}", f"FrameRate={frame_rate}", f"Tmode={'On' if tournament_mode else 'Off'}",
-         f"Register={'On' if register else 'Off'}", f"Spectators={spectators}", f"UpdateTime={update_time}",
-         f"MaxData=1000000", f"StartWhenReady={'On' if start_when_ready else 'Off'}", f"Comment={comment}",
-         f"Password={password}", f"Admin={admin}", f"GameSettings={game_settings}", f"MinPlayers={min_players}",
-            f"RestartAll={'On' if restart_all else 'Off'}", "NetStats=On", "Profiling=On"],
+        command,
         stdout=f, stderr=f, shell=False
-        # FIXME: shell=True needed for stdin (stdin=subprocess.PIPE) to work
     )
 
     last_active[port] = datetime.now()
