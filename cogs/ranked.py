@@ -401,7 +401,7 @@ class Ranked(commands.Cog):
             qdata.queue.put(player)
             await self.update_ranked_display()
             followup = await interaction.followup.send(
-                f"🟢 **{res['display_name']}** 🟢\nadded to queue for __{qdata.full_game_name}__."
+                f"🟢 **{res['display_name']}** 🟢\nadded to queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
                 f" *({qdata.queue.qsize()}/{qdata.game_size})*\n"
                 f"[Edit Display Name](https://secondrobotics.org/user/settings/)", ephemeral=True)
             
@@ -419,17 +419,17 @@ class Ranked(commands.Cog):
                         interaction.guild.roles, name=ping_role_name)
                     if ping_role is not None:
                         await queue_channel.send(
-                            f"{ping_role.mention} Queue for __{qdata.full_game_name}__ is now {qdata.queue.qsize()}/{qdata.game_size}!")
+                            f"{ping_role.mention} Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})is now {qdata.queue.qsize()}/{qdata.game_size}!")
 
             if qdata.queue.qsize() >= qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
                     await self.start_match(qdata, interaction, from_button)
                 else:
                     await queue_channel.send(
-                        f"Queue for __{qdata.full_game_name}__ is now full! You can start as soon as the current match concludes.")
+                        f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now full! You can start as soon as the current match concludes.")
             else:
                 qstatus = await queue_channel.send(
-                    f"Queue for __[{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**")
+                    f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata.queue.qsize()}/{qdata.game_size}]**")
                 await qstatus.delete(delay=30)
         else:
             await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
@@ -546,7 +546,7 @@ class Ranked(commands.Cog):
                 await self.update_ranked_display()
                 cleaned_display_name = ''.join(
                     char for char in player.display_name if char.isalnum())
-                message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for __[{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})__. *({qdata.queue.qsize()}/{qdata.game_size})*"
+                message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). *({qdata.queue.qsize()}/{qdata.game_size})*"
             else:
                 message = "You aren't in this queue."
                 ephemeral = True
@@ -556,7 +556,7 @@ class Ranked(commands.Cog):
 
         await interaction.response.send_message(message, ephemeral=ephemeral)
         await interaction.channel.send(
-            f"Queue for __[{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
+            f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
             delete_after=60)
 
     async def leave_all_queues(self, interaction: discord.Interaction, via_command = False):
@@ -590,7 +590,7 @@ class Ranked(commands.Cog):
             await queue_channel.send(message)
         for qdata in dequeued:        
             await queue_channel.send(
-                f"Queue for __[{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})__ is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
+                f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata.queue.qsize()}/{qdata.game_size}]**",
                 delete_after=60)
         
 
@@ -611,7 +611,7 @@ class Ranked(commands.Cog):
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
                 await interaction.response.send_message(
-                    f"**{player.display_name}**\nremoved to queue for __[{game}](https://secondrobotics.org/ranked/{qdata.api_short})__. *({qdata.queue.qsize()}/{qdata.game_size})*")
+                    f"**{player.display_name}**\nremoved to queue for [{game}](https://secondrobotics.org/ranked/{qdata.api_short}). *({qdata.queue.qsize()}/{qdata.game_size})*")
             else:
                 await interaction.response.send_message("{} is not in queue.".format(player.display_name),
                                                         ephemeral=True)
@@ -639,7 +639,7 @@ class Ranked(commands.Cog):
             await interaction.followup.send(f"Error: {response['error']}")
         else:
             await interaction.followup.send(
-                f"Most recent match edited successfully. Note: the series will not be updated to reflect this change, but elo will.")
+                "Most recent match edited successfully. Note: the series will not be updated to reflect this change, but elo will.")
 
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
@@ -791,6 +791,15 @@ class Ranked(commands.Cog):
 
     async def display_teams(self, ctx, qdata: XrcGame):
 
+        async def fetch_player_elo(game, user_id):
+            url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
+            response = requests.get(url)
+            if response.status_code == 200:
+                return response.json().get('elo', 0)
+            else:
+                logger.error(f"Failed to fetch ELO for player {user_id}: {response.status_code}")
+                return 0
+
         async def assign_role(player, role):
             await player.add_roles(role)
 
@@ -799,19 +808,17 @@ class Ranked(commands.Cog):
                 await player.move_to(channel)
             except Exception as e:
                 logger.error(e)
+        
         logger.info(f"Displaying teams for {qdata.game_type}")
         channel = ctx.channel
-        self.category = self.category or get(
-            ctx.guild.categories, id=CATEGORY_ID)
+        self.category = self.category or get(ctx.guild.categories, id=CATEGORY_ID)
         self.staff = self.staff or get(ctx.guild.roles, id=EVENT_STAFF_ID)
         self.bots = self.bots or get(ctx.guild.roles, id=BOTS_ROLE_ID)
 
         logger.info(f"Getting IP for {qdata.game_type}")
 
-        red_field = "\n".join(
-            [f"🟥{player.mention}" for player in qdata.game.red])
-        blue_field = "\n".join(
-            [f"🟦{player.mention}" for player in qdata.game.blue])
+        red_field = "\n".join([f"🟥{player.mention}" for player in qdata.game.red])
+        blue_field = "\n".join([f"🟦{player.mention}" for player in qdata.game.blue])
 
         description = f"""Server "Ranked{qdata.api_short}" started for you with password **{qdata.server_password}**
         || IP: {ip} Port: {qdata.server_port}||
@@ -821,8 +828,20 @@ class Ranked(commands.Cog):
             color=0x34dceb, title=f"Teams have been picked for {qdata.full_game_name}!", description=description
         )
         embed.set_thumbnail(url=qdata.game_icon)
-        embed.add_field(name='RED', value=red_field, inline=True)
-        embed.add_field(name='BLUE', value=blue_field, inline=True)
+
+        # Fetch ELOs concurrently
+        red_elo_tasks = [fetch_player_elo(qdata.api_short, player.id) for player in qdata.game.red]
+        blue_elo_tasks = [fetch_player_elo(qdata.api_short, player.id) for player in qdata.game.blue]
+
+        red_elos = await asyncio.gather(*red_elo_tasks)
+        blue_elos = await asyncio.gather(*blue_elo_tasks)
+
+        # Calculate average ELO
+        avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
+        avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
+
+        embed.add_field(name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
+        embed.add_field(name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
 
         await queue_channel.send(embed=embed)
 
