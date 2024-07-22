@@ -122,9 +122,7 @@ active_games = list(server_games.keys())[-3:]
 inactive_games = list(server_games.keys())[:-3]
 inactive_games.remove("Bot Royale")
 inactive_games.remove("Relic Recovery")
-# Temp game adjust
-inactive_games.remove("Infinite Recharge")
-active_games.append("Infinite Recharge")
+
 
 
 
