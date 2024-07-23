@@ -407,8 +407,8 @@ class Ranked(commands.Cog):
             
             await followup.delete(delay=60)
 
-            if (qdata.queue.qsize() == 3 and qdata.game_size == 4) or (
-                    qdata.queue.qsize() == 4 and qdata.game_size == 6):
+            if (qdata.queue.qsize() == 2 and qdata.game_size == 4) or (
+                    qdata.queue.qsize() == 3 and qdata.game_size == 6):
                 current_time = datetime.now()
                 if qdata.last_ping_time is None or (current_time - qdata.last_ping_time).total_seconds() > 3600:
                     qdata.last_ping_time = current_time
