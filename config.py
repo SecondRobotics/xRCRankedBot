@@ -152,9 +152,9 @@ game_logos = {
     "Rapid React": "https://upload.wikimedia.org/wikipedia/en/thumb/0/08/Rapid_React_Logo.svg/1200px-Rapid_React_Logo.svg.png",
     "Spin Up": "https://www.roboticseducation.org/app/uploads/2022/05/Spin-Up-Logo.png",
     "Charged Up": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b7/Charged_Up_Logo.svg/1024px-Charged_Up_Logo.svg.png",
-    "Power Play": "https://www.roboticseducation.org/app/uploads/2022/05/Power-Play-Logo.png",
     "Centerstage": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQS-ziPQP3hKuX2qk5YBkLFIfv3wWNkNCf6QLBHaF9JPw&s",
     "Over Under": "https://roboticseducation.org/wp-content/uploads/2023/04/VRC-Over-Under.png",
     "Crescendo": "https://i.imgur.com/St3EoqP.png",
     "High Stakes": "https://i.imgur.com/jWu3NHB.png",
+    "Power Play": "https://i.imgur.com/tuC6s0P.png",
 }
