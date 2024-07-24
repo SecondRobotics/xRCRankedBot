@@ -45,10 +45,6 @@ ip = requests.get('https://icanhazip.com').text
 servers_active: Dict[int, subprocess.Popen] = {}
 log_files: Dict[int, TextIOWrapper] = {}
 
-
-
-
-
 listener = commands.Cog.listener
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
@@ -70,6 +66,35 @@ games_players = {game['short_code']: game['players_per_alliance'] * 2
 
 games_categories = active_games.copy()
 games_categories.append(daily_game)
+
+class XrcGame:
+    def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
+        self.queue = PlayerQueue()
+        self.game_type = game
+        self.game = None  # type: Game | None
+        self.game_size = alliance_size * 2
+        self.red_series = 2
+        self.blue_series = 2
+        self.red_captain = None
+        self.blue_captain = None
+        self.clearmatch_message = None
+        self.autoq = []
+        self.team_size = alliance_size
+        self.api_short = api_short
+        self.server_game = server_games[game]
+        self.server_port = None  # type: int | None
+        self.server_password = None  # type: str | None
+        self.full_game_name = full_game_name
+        self.red_role = None  # type: discord.Role | None
+        self.blue_role = None  # type: discord.Role | None
+        self.red_channel = None  # type: discord.VoiceChannel | None
+        self.blue_channel = None  # type: discord.VoiceChannel | None
+        self.last_ping_time = None  # type: datetime.datetime | None
+
+        try:
+            self.game_icon = game_logos[game]
+        except:
+            self.game_icon = None
 
 async def handle_score_edit(interaction: discord.Interaction, qdata: XrcGame, red_score: int, blue_score: int):
     url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
@@ -133,77 +158,6 @@ class VoteView(View):
     async def on_timeout(self):
         await self.interaction.followup.send("Score edit attempt failed. Continuing with the series.")
         self.stop()
-
-
-class XrcGame():
-    def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
-        self.queue = PlayerQueue()
-        self.game_type = game
-        self.game = None  # type: Game | None
-        self.game_size = alliance_size * 2
-        self.red_series = 2
-        self.blue_series = 2
-        self.red_captain = None
-        self.blue_captain = None
-        self.clearmatch_message = None
-        self.autoq = []
-        self.team_size = alliance_size
-        self.api_short = api_short
-        self.server_game = server_games[game]
-        self.server_port = None  # type: int | None
-        self.server_password = None  # type: str | None
-        self.full_game_name = full_game_name
-        self.red_role = None  # type: discord.Role | None
-        self.blue_role = None  # type: discord.Role | None
-        self.red_channel = None  # type: discord.VoiceChannel | None
-        self.blue_channel = None  # type: discord.VoiceChannel | None
-        self.last_ping_time = None  # type: datetime.datetime | None
-
-        try:
-            self.game_icon = game_logos[game]
-        except:
-            self.game_icon = None
-
-
-async def remove_roles(guild: discord.Guild, qdata: XrcGame):
-    red_check = get(guild.roles, name=f"Red {qdata.full_game_name}")
-    blue_check = get(guild.roles, name=f"Blue {qdata.full_game_name}")
-    if red_check:
-        await red_check.delete()
-    if blue_check:
-        await blue_check.delete()
-
-
-def create_game(game_type):
-    qdata = game_queues[game_type]
-    offset = qdata.queue.qsize() - qdata.game_size
-    qsize = qdata.queue.qsize()
-    players = [qdata.queue.get()
-               for _ in range(qsize)]  # type: list[discord.Member]
-    qdata.game = Game(players[0 + offset:qdata.game_size + offset])
-    for player in players[0:offset]:
-        qdata.queue.put(player)
-    players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
-    for player in players:
-        qdata.queue.put(player)
-
-    for game in game_queues.values():
-        if game.game_type != game_type:
-            for player in qdata.game.players:
-                if player in game.queue:
-                    game.queue.remove(player)
-
-    return qdata
-
-
-def download_file(url):
-    local_filename = url.split('/')[-1]
-    with requests.get(url, stream=True) as r:
-        r.raise_for_status()
-        with open(local_filename, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-    return local_filename
 
 
 class Ranked(commands.Cog):
