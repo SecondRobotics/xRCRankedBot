@@ -151,6 +151,8 @@ class VoteView(View):
     async def check_vote(self, interaction: discord.Interaction):
         if self.approvals > self.total_voters / 2:
             await handle_score_edit(self.interaction, self.qdata, self.red_score, self.blue_score)
+            await self.interaction.followup.send(
+                f"{self.qdata.red_role.mention} {self.qdata.blue_role.mention}\nScore edit approved: Red {self.red_score} - Blue {self.blue_score}")
             self.stop()
         elif self.rejections > self.total_voters / 2:
             await self.interaction.followup.send("Score edit rejected by the team.")
@@ -159,7 +161,6 @@ class VoteView(View):
     async def on_timeout(self):
         await self.interaction.followup.send("Score edit attempt failed. Continuing with the series.")
         self.stop()
-
 
 async def remove_roles(guild: discord.Guild, qdata: XrcGame):
     red_check = get(guild.roles, name=f"Red {qdata.full_game_name}")
@@ -691,6 +692,8 @@ class Ranked(commands.Cog):
 
         if EVENT_STAFF_ID in [role.id for role in interaction.user.roles]:
             await handle_score_edit(interaction, qdata, red_score, blue_score)
+            await interaction.followup.send(
+                f"{qdata.red_role.mention} {qdata.blue_role.mention}\nScore edited successfully: Red {red_score} - Blue {blue_score}")
         else:
             roles = [role.id for role in interaction.user.roles]
             if qdata.red_role and qdata.blue_role:
@@ -702,7 +705,20 @@ class Ranked(commands.Cog):
                 await interaction.followup.send("You are not eligible to edit a score.", ephemeral=True)
                 return
 
-            await interaction.followup.send("A score edit is being attempted. Please vote.", view=VoteView(interaction, qdata, red_score, blue_score))
+            embed = discord.Embed(
+                title="Score Edit Attempt",
+                description=f"{interaction.user.mention} has proposed a score edit.",
+                color=discord.Color.orange()
+            )
+            embed.add_field(name="Proposed Red Score", value=str(red_score), inline=True)
+            embed.add_field(name="Proposed Blue Score", value=str(blue_score), inline=True)
+            embed.set_footer(text="Please vote to approve or reject this edit.")
+
+            await interaction.followup.send(
+                f"A score edit is being attempted. {qdata.red_role.mention} {qdata.blue_role.mention}",
+                embed=embed,
+                view=VoteView(interaction, qdata, red_score, blue_score)
+            )
 
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
