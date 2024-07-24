@@ -72,8 +72,8 @@ class XrcGame():
         self.game_type = game
         self.game = None  # type: Game | None
         self.game_size = alliance_size * 2
-        self.red_series = 2
-        self.blue_series = 2
+        self.red_series = 0
+        self.blue_series = 0
         self.red_captain = None
         self.blue_captain = None
         self.clearmatch_message = None
@@ -161,6 +161,7 @@ class VoteView(View):
     async def on_timeout(self):
         await self.interaction.followup.send("Score edit attempt failed. Continuing with the series.")
         self.stop()
+
 
 async def remove_roles(guild: discord.Guild, qdata: XrcGame):
     red_check = get(guild.roles, name=f"Red {qdata.full_game_name}")
@@ -455,20 +456,12 @@ class Ranked(commands.Cog):
                     await interaction.followup.send("You are already playing in a game!", ephemeral=True)
                     return
 
-
             qdata.queue.put(player)
             await self.update_ranked_display()
-            if interaction.user.id == 1112775920332324965:
-                followup = await interaction.followup.send(
-                f"🟢**{res['display_name']}**🟢\naddedtoqueuefor[{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
-                f"*({qdata.queue.qsize()}/{qdata.game_size})*\n"
+            followup = await interaction.followup.send(
+                f"🟢 **{res['display_name']}** 🟢\nadded to queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
+                f" *({qdata.queue.qsize()}/{qdata.game_size})*\n"
                 f"[Edit Display Name](https://secondrobotics.org/user/settings/)", ephemeral=True)
-            else:
-
-                followup = await interaction.followup.send(
-                    f"🟢 **{res['display_name']}** 🟢\nadded to queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
-                    f" *({qdata.queue.qsize()}/{qdata.game_size})*\n"
-                    f"[Edit Display Name](https://secondrobotics.org/user/settings/)", ephemeral=True)
             
             await followup.delete(delay=60)
 
@@ -767,18 +760,14 @@ class Ranked(commands.Cog):
 
         if int(red_score) > int(blue_score):
             qdata.red_series += 1
-
         elif int(red_score) < int(blue_score):
             qdata.blue_series += 1
 
         gg = True
         if qdata.red_series == 2:
             await interaction.followup.send("🟥 Red Wins! 🟥")
-        elif int(blue_score) < int(red_score):
-            qdata.blue_series += 1
-        if qdata.blue_series == 2:
+        elif qdata.blue_series == 2:
             await interaction.followup.send("🟦 Blue Wins! 🟦")
-
         else:
             await interaction.followup.send("Score Submitted")
             gg = False
@@ -983,7 +972,7 @@ class Ranked(commands.Cog):
         if qdata.server_port:
             stop_server_process(qdata.server_port)
 
-        qdata.red_series = qdata.blue_series = 2
+        qdata.red_series = qdata.blue_series = 0
 
         await remove_roles(guild, qdata)
 
@@ -1251,6 +1240,7 @@ class GameButton(discord.ui.Button['game']):
             view.add_item(QueueButton(game=f'{self.game} {n}v{n}', short_code=self.short_code+f'{n}v{n}', display=f'{n}v{n}', cog=self.cog))
         
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True, delete_after=30)
+
 
 class QueueButton(discord.ui.Button['queue']):
     def __init__(self, game: str, short_code: str, display: str, cog: commands.Cog):
