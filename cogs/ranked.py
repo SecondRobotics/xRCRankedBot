@@ -400,10 +400,17 @@ class Ranked(commands.Cog):
 
             qdata.queue.put(player)
             await self.update_ranked_display()
-            followup = await interaction.followup.send(
-                f"🟢 **{res['display_name']}** 🟢\nadded to queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
-                f" *({qdata.queue.qsize()}/{qdata.game_size})*\n"
+            if interaction.user.id == 1112775920332324965:
+                followup = await interaction.followup.send(
+                f"🟢**{res['display_name']}**🟢\naddedtoqueuefor[{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
+                f"*({qdata.queue.qsize()}/{qdata.game_size})*\n"
                 f"[Edit Display Name](https://secondrobotics.org/user/settings/)", ephemeral=True)
+            else:
+
+                followup = await interaction.followup.send(
+                    f"🟢 **{res['display_name']}** 🟢\nadded to queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
+                    f" *({qdata.queue.qsize()}/{qdata.game_size})*\n"
+                    f"[Edit Display Name](https://secondrobotics.org/user/settings/)", ephemeral=True)
             
             await followup.delete(delay=60)
 
@@ -419,7 +426,7 @@ class Ranked(commands.Cog):
                         interaction.guild.roles, name=ping_role_name)
                     if ping_role is not None:
                         await queue_channel.send(
-                            f"{ping_role.mention} Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})is now {qdata.queue.qsize()}/{qdata.game_size}!")
+                            f"{ping_role.mention} Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now {qdata.queue.qsize()}/{qdata.game_size}!")
 
             if qdata.queue.qsize() >= qdata.game_size:
                 if qdata.red_series == 2 or qdata.blue_series == 2:
