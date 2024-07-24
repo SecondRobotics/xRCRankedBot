@@ -972,7 +972,7 @@ class Ranked(commands.Cog):
         if qdata.server_port:
             stop_server_process(qdata.server_port)
 
-        qdata.red_series = qdata.blue_series = 0
+        qdata.red_series = qdata.blue_series = 2
 
         await remove_roles(guild, qdata)
 
