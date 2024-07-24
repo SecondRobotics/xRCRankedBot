@@ -71,7 +71,68 @@ games_players = {game['short_code']: game['players_per_alliance'] * 2
 games_categories = active_games.copy()
 games_categories.append(daily_game)
 
+async def handle_score_edit(interaction: discord.Interaction, qdata: XrcGame, red_score: int, blue_score: int):
+    url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
+    json = {
+        "red_score": red_score,
+        "blue_score": blue_score
+    }
+    x = requests.patch(url, json=json, headers=HEADER)
+    response = x.json()
+    logger.info(response)
 
+    if 'error' in response:
+        await interaction.followup.send(f"Error: {response['error']}")
+    else:
+        await interaction.followup.send(
+            "Most recent match edited successfully. Note: the series will not be updated to reflect this change, but ELO will.")
+
+class VoteView(View):
+    def __init__(self, interaction: discord.Interaction, qdata: XrcGame, red_score: int, blue_score: int):
+        super().__init__(timeout=120)
+        self.interaction = interaction
+        self.qdata = qdata
+        self.red_score = red_score
+        self.blue_score = blue_score
+        self.approvals = 0
+        self.rejections = 0
+        self.total_voters = len(qdata.game.red | qdata.game.blue)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        roles = [role.id for role in interaction.user.roles]
+        if self.qdata.red_role and self.qdata.blue_role:
+            ranked_roles = [self.qdata.red_role.id, self.qdata.blue_role.id]
+        else:
+            ranked_roles = []
+
+        if any(role in ranked_roles for role in roles):
+            return True
+        await interaction.response.send_message("You are not eligible to vote on this score edit.", ephemeral=True)
+        return False
+
+    @discord.ui.button(label="Approve Change", style=discord.ButtonStyle.green)
+    async def approve_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.approvals += 1
+        await interaction.response.send_message("You approved the score change.", ephemeral=True)
+        await self.check_vote(interaction)
+
+    @discord.ui.button(label="Reject Change", style=discord.ButtonStyle.red)
+    async def reject_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.rejections += 1
+        await interaction.response.send_message("You rejected the score change.", ephemeral=True)
+        await self.check_vote(interaction)
+
+    async def check_vote(self, interaction: discord.Interaction):
+        if self.approvals > self.total_voters / 2:
+            await handle_score_edit(self.interaction, self.qdata, self.red_score, self.blue_score)
+            self.stop()
+        elif self.rejections > self.total_voters / 2:
+            await self.interaction.followup.send("Score edit rejected by the team.")
+            self.stop()
+
+    async def on_timeout(self):
+        await self.interaction.followup.send("Score edit attempt failed. Continuing with the series.")
+        self.stop()
 
 
 class XrcGame():
@@ -625,7 +686,6 @@ class Ranked(commands.Cog):
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Edits the last match score (in the event of a human error)", name="editmatch")
-    @app_commands.checks.has_any_role("Event Staff")
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
     async def edit_match(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /editmatch")
@@ -633,20 +693,20 @@ class Ranked(commands.Cog):
 
         qdata = game_queues[game]
 
-        url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
-        json = {
-            "red_score": red_score,
-            "blue_score": blue_score
-        }
-        x = requests.patch(url, json=json, headers=HEADER)
-        response = x.json()
-        logger.info(response)
-
-        if 'error' in response:
-            await interaction.followup.send(f"Error: {response['error']}")
+        if EVENT_STAFF_ID in [role.id for role in interaction.user.roles]:
+            await handle_score_edit(interaction, qdata, red_score, blue_score)
         else:
-            await interaction.followup.send(
-                "Most recent match edited successfully. Note: the series will not be updated to reflect this change, but elo will.")
+            roles = [role.id for role in interaction.user.roles]
+            if qdata.red_role and qdata.blue_role:
+                ranked_roles = [qdata.red_role.id, qdata.blue_role.id]
+            else:
+                ranked_roles = []
+
+            if not any(role in ranked_roles for role in roles):
+                await interaction.followup.send("You are not eligible to edit a score.", ephemeral=True)
+                return
+
+            await interaction.followup.send("A score edit is being attempted. Please vote.", view=VoteView(interaction, qdata, red_score, blue_score))
 
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
