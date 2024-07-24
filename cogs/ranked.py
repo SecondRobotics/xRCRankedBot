@@ -4,23 +4,21 @@ from io import TextIOWrapper
 import subprocess
 from typing import Dict, Optional
 from discord import app_commands, ButtonStyle
+from discord.ui import View, Button
 import random
 from queue import Queue
 from discord.utils import get
 import discord
 import logging
-from discord.ext import commands
+from discord.ext import commands, tasks
 from collections.abc import MutableSet
 import requests
 from dotenv import load_dotenv
 import os
-from discord.app_commands import Choice, View
+from discord.app_commands import Choice
 import zipfile
 import shutil
-from discord.ext import tasks
 from config import *
-from queue import Empty
-from config import server_games, server_games_choices, PORTS, server_game_settings, short_codes, game_logos, default_game_players, server_restart_modes
 from .server import start_server_process, stop_server_process
 
 # Constants
