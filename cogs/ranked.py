@@ -14,7 +14,7 @@ from collections.abc import MutableSet
 import requests
 from dotenv import load_dotenv
 import os
-from discord.app_commands import Choice
+from discord.app_commands import Choice, View
 import zipfile
 import shutil
 from discord.ext import tasks
@@ -22,7 +22,6 @@ from config import *
 from queue import Empty
 from config import server_games, server_games_choices, PORTS, server_game_settings, short_codes, game_logos, default_game_players, server_restart_modes
 from .server import start_server_process, stop_server_process
-from discord.ui import View, Button
 
 # Constants
 SERVER_PATH = "./server/xRC Simulator.x86_64"
@@ -46,10 +45,6 @@ ip = requests.get('https://icanhazip.com').text
 servers_active: Dict[int, subprocess.Popen] = {}
 log_files: Dict[int, TextIOWrapper] = {}
 
-
-
-
-
 listener = commands.Cog.listener
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
@@ -72,26 +67,36 @@ games_players = {game['short_code']: game['players_per_alliance'] * 2
 games_categories = active_games.copy()
 games_categories.append(daily_game)
 
-def create_game(game_type):
-    qdata = game_queues[game_type]
-    offset = qdata.queue.qsize() - qdata.game_size
-    qsize = qdata.queue.qsize()
-    players = [qdata.queue.get()
-               for _ in range(qsize)]  # type: list[discord.Member]
-    qdata.game = Game(players[0 + offset:qdata.game_size + offset])
-    for player in players[0:offset]:
-        qdata.queue.put(player)
-    players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
-    for player in players:
-        qdata.queue.put(player)
 
-    for game in game_queues.values():
-        if game.game_type != game_type:
-            for player in qdata.game.players:
-                if player in game.queue:
-                    game.queue.remove(player)
+class XrcGame():
+    def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
+        self.queue = PlayerQueue()
+        self.game_type = game
+        self.game = None  # type: Game | None
+        self.game_size = alliance_size * 2
+        self.red_series = 2
+        self.blue_series = 2
+        self.red_captain = None
+        self.blue_captain = None
+        self.clearmatch_message = None
+        self.autoq = []
+        self.team_size = alliance_size
+        self.api_short = api_short
+        self.server_game = server_games[game]
+        self.server_port = None  # type: int | None
+        self.server_password = None  # type: str | None
+        self.full_game_name = full_game_name
+        self.red_role = None  # type: discord.Role | None
+        self.blue_role = None  # type: discord.Role | None
+        self.red_channel = None  # type: discord.VoiceChannel | None
+        self.blue_channel = None  # type: discord.VoiceChannel | None
+        self.last_ping_time = None  # type: datetime.datetime | None
 
-    return qdata
+        try:
+            self.game_icon = game_logos[game]
+        except:
+            self.game_icon = None
+
 
 async def handle_score_edit(interaction: discord.Interaction, qdata: XrcGame, red_score: int, blue_score: int):
     url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
@@ -108,6 +113,7 @@ async def handle_score_edit(interaction: discord.Interaction, qdata: XrcGame, re
     else:
         await interaction.followup.send(
             "Most recent match edited successfully. Note: the series will not be updated to reflect this change, but ELO will.")
+
 
 class VoteView(View):
     def __init__(self, interaction: discord.Interaction, qdata: XrcGame, red_score: int, blue_score: int):
@@ -157,36 +163,6 @@ class VoteView(View):
         self.stop()
 
 
-class XrcGame():
-    def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
-        self.queue = PlayerQueue()
-        self.game_type = game
-        self.game = None  # type: Game | None
-        self.game_size = alliance_size * 2
-        self.red_series = 2
-        self.blue_series = 2
-        self.red_captain = None
-        self.blue_captain = None
-        self.clearmatch_message = None
-        self.autoq = []
-        self.team_size = alliance_size
-        self.api_short = api_short
-        self.server_game = server_games[game]
-        self.server_port = None  # type: int | None
-        self.server_password = None  # type: str | None
-        self.full_game_name = full_game_name
-        self.red_role = None  # type: discord.Role | None
-        self.blue_role = None  # type: discord.Role | None
-        self.red_channel = None  # type: discord.VoiceChannel | None
-        self.blue_channel = None  # type: discord.VoiceChannel | None
-        self.last_ping_time = None  # type: datetime.datetime | None
-
-        try:
-            self.game_icon = game_logos[game]
-        except:
-            self.game_icon = None
-
-
 async def remove_roles(guild: discord.Guild, qdata: XrcGame):
     red_check = get(guild.roles, name=f"Red {qdata.full_game_name}")
     blue_check = get(guild.roles, name=f"Blue {qdata.full_game_name}")
@@ -194,6 +170,28 @@ async def remove_roles(guild: discord.Guild, qdata: XrcGame):
         await red_check.delete()
     if blue_check:
         await blue_check.delete()
+
+
+def create_game(game_type):
+    qdata = game_queues[game_type]
+    offset = qdata.queue.qsize() - qdata.game_size
+    qsize = qdata.queue.qsize()
+    players = [qdata.queue.get()
+               for _ in range(qsize)]  # type: list[discord.Member]
+    qdata.game = Game(players[0 + offset:qdata.game_size + offset])
+    for player in players[0:offset]:
+        qdata.queue.put(player)
+    players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
+    for player in players:
+        qdata.queue.put(player)
+
+    for game in game_queues.values():
+        if game.game_type != game_type:
+            for player in qdata.game.players:
+                if player in game.queue:
+                    game.queue.remove(player)
+
+    return qdata
 
 
 def download_file(url):
@@ -762,13 +760,9 @@ class Ranked(commands.Cog):
         gg = True
         if qdata.red_series == 2:
             await interaction.followup.send("🟥 Red Wins! 🟥")
-        elif int(red_score) < int(blue_score):
+        elif int(blue_score) < int(red_score):
             qdata.blue_series += 1
-
-        gg = True
-        if qdata.red_series == 2:
-            await interaction.followup.send("🟥 Red Wins! 🟥")
-        elif qdata.blue_series == 2:
+        if qdata.blue_series == 2:
             await interaction.followup.send("🟦 Blue Wins! 🟦")
 
         else:
@@ -860,8 +854,6 @@ class Ranked(commands.Cog):
 
         await self.display_teams(interaction, qdata)
 
-    
-
     async def display_teams(self, ctx, qdata: XrcGame):
 
         async def fetch_player_elo(game, user_id):
@@ -930,7 +922,7 @@ class Ranked(commands.Cog):
         overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
                         qdata.blue_role: discord.PermissionOverwrite(connect=True),
                         self.staff: discord.PermissionOverwrite(connect=True),
-                        self.bots: discord.PermissionOverwrite(connect(True))}
+                        self.bots: discord.PermissionOverwrite(connect=True)}
 
         if qdata.game_size != 2:
             qdata.red_channel, qdata.blue_channel = await asyncio.gather(
