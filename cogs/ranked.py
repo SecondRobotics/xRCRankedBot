@@ -702,7 +702,7 @@ class Ranked(commands.Cog):
             logger.error(f"Unexpected error occurred: {e}")
             await interaction.response.send_message(f"An error occurred while fetching the queue for {game}.", ephemeral=True)
 
-    @app_commands.choices(game=games_choices)
+        @app_commands.choices(game=games_choices)
     @app_commands.command(name="leave", description="Remove yourself from the queue")
     async def leave(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /leave")
@@ -718,8 +718,35 @@ class Ranked(commands.Cog):
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
                 cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
+                message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). *({qdata.queue.qsize()}/{qdata.alliance_size * 2})*"
+            else:
+                message = "You aren't in this queue."
+                ephemeral = True
+        else:
+            message = QUEUE_CHANNEL_ERROR_MSG
+            ephemeral = True
+
+        await interaction.response.send_message(message, ephemeral=ephemeral)
+        await interaction.channel.send(
+            f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata.queue.qsize()}/{qdata.alliance_size * 2}]**",
+            delete_after=60)
+
+        logger.info(f"{interaction.user.name} called /leave")
+        qdata = game_queues[game]
+
+        ephemeral = False
+
+        if (isinstance(interaction.channel, discord.TextChannel) and
+                isinstance(interaction.user, discord.Member) and
+                interaction.channel.id == QUEUE_CHANNEL_ID):
+            player = interaction.user
+            if player in qdata.queue:
+                qdata.queue.remove(player)
+                await self.update_ranked_display()
+                cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
                 message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). 
                 *({qdata.queue.qsize()}/{qdata.alliance_size * 2})*"
+
 
             else:
                 message = "You aren't in this queue."
