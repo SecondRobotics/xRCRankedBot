@@ -169,8 +169,8 @@ class XrcGame:
         self.game_type = game
         self.game = None  # type: Game | None
         self.game_size = alliance_size * 2
-        self.red_series = 2
-        self.blue_series = 2
+        self.red_series = 2  # Keep initial value as 2
+        self.blue_series = 2  # Keep initial value as 2
         self.red_captain = None
         self.blue_captain = None
         self.clearmatch_message = None
@@ -192,6 +192,53 @@ class XrcGame:
         except:
             self.game_icon = None
 
+
+class Queue:
+    def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
+        self.queue = PlayerQueue()
+        self.matches = []
+        self.game_type = game
+        self.alliance_size = alliance_size
+        self.api_short = api_short
+        self.full_game_name = full_game_name
+
+    def create_match(self):
+        match = XrcGame(self.game_type, self.alliance_size, self.api_short, self.full_game_name)
+        self.matches.append(match)
+        return match
+
+    def remove_match(self, match: XrcGame):
+        self.matches.remove(match)
+
+# Update the start_match method to reset series scores to 0
+async def start_match(self, qdata: Queue, interaction: discord.Interaction, from_button: bool=False):
+    if qdata.queue.qsize() < qdata.alliance_size * 2:
+        await interaction.followup.send("Queue is not full.", ephemeral=True)
+        return
+
+    if not qdata.matches or (qdata.matches and (qdata.matches[-1].red_series == 2 or qdata.matches[-1].blue_series == 2)):
+        match = qdata.create_match()
+        match.red_series = 0  # Reset series score to 0 when starting a match
+        match.blue_series = 0  # Reset series score to 0 when starting a match
+    else:
+        await interaction.followup.send("Current match incomplete.", ephemeral=True)
+        return
+
+    if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
+        await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
+        return
+
+    password = str(random.randint(100, 999))
+    min_players = games_players[qdata.api_short]
+    message, port = start_server_process(
+        match.server_game, f"Ranked{qdata.api_short}", password, min_players=min_players)
+    if port == -1:
+        logger.warning("Server couldn't auto-start for ranked: " + message)
+    else:
+        match.server_port = port
+        match.server_password = password
+
+    await self.random(interaction, qdata.api_short)
 
 class Queue:
     def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
@@ -702,38 +749,38 @@ class Ranked(commands.Cog):
             logger.error(f"Unexpected error occurred: {e}")
             await interaction.response.send_message(f"An error occurred while fetching the queue for {game}.", ephemeral=True)
 
-        @app_commands.choices(game=games_choices)
-        @app_commands.command(name="leave", description="Remove yourself from the queue")
-        async def leave(self, interaction: discord.Interaction, game: str):
-            logger.info(f"{interaction.user.name} called /leave")
-            qdata = game_queues[game]
+    @app_commands.choices(game=games_choices)
+    @app_commands.command(name="leave", description="Remove yourself from the queue")
+    async def leave(self, interaction: discord.Interaction, game: str):
+        logger.info(f"{interaction.user.name} called /leave")
+        qdata = game_queues[game]
 
-            ephemeral = False
+        ephemeral = False
 
-            if (isinstance(interaction.channel, discord.TextChannel) and
-                    isinstance(interaction.user, discord.Member) and
-                    interaction.channel.id == QUEUE_CHANNEL_ID):
-                player = interaction.user
-                if player in qdata.queue:
-                    qdata.queue.remove(player)
-                    await self.update_ranked_display()
-                    cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
-                    message = (
-                        f"🔴 **{cleaned_display_name}** 🔴\n"
-                        f"removed from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). "
-                        f"*({qdata.queue.qsize()}/{qdata.alliance_size * 2})*"
-                    )
-                else:
-                    message = "You aren't in this queue."
-                    ephemeral = True
+        if (isinstance(interaction.channel, discord.TextChannel) and
+                isinstance(interaction.user, discord.Member) and
+                interaction.channel.id == QUEUE_CHANNEL_ID):
+            player = interaction.user
+            if player in qdata.queue:
+                qdata.queue.remove(player)
+                await self.update_ranked_display()
+                cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
+                message = (
+                    f"🔴 **{cleaned_display_name}** 🔴\n"
+                    f"removed from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). "
+                    f"*({qdata.queue.qsize()}/{qdata.alliance_size * 2})*"
+                )
             else:
-                message = QUEUE_CHANNEL_ERROR_MSG
+                message = "You aren't in this queue."
                 ephemeral = True
+        else:
+            message = QUEUE_CHANNEL_ERROR_MSG
+            ephemeral = True
 
-            await interaction.response.send_message(message, ephemeral=ephemeral)
-            await interaction.channel.send(
-                f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata.queue.qsize()}/{qdata.alliance_size * 2}]**",
-                delete_after=60)
+        await interaction.response.send_message(message, ephemeral=ephemeral)
+        await interaction.channel.send(
+            f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata.queue.qsize()}/{qdata.alliance_size * 2}]**",
+            delete_after=60)
 
     async def leave_all_queues(self, interaction: discord.Interaction, via_command = False):
         send_publicly = False
