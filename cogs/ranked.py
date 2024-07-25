@@ -210,19 +210,15 @@ class Queue:
     def remove_match(self, match: XrcGame):
         self.matches.remove(match)
 
-# Update the start_match method to reset series scores to 0
 async def start_match(self, qdata: Queue, interaction: discord.Interaction, from_button: bool=False):
     if qdata.queue.qsize() < qdata.alliance_size * 2:
         await interaction.followup.send("Queue is not full.", ephemeral=True)
         return
 
-    if not qdata.matches or (qdata.matches and (qdata.matches[-1].red_series == 2 or qdata.matches[-1].blue_series == 2)):
-        match = qdata.create_match()
-        match.red_series = 0  # Reset series score to 0 when starting a match
-        match.blue_series = 0  # Reset series score to 0 when starting a match
-    else:
-        await interaction.followup.send("Current match incomplete.", ephemeral=True)
-        return
+    # Always create a new match and reset series scores to 0
+    match = qdata.create_match()
+    match.red_series = 0  # Reset series score to 0 when starting a match
+    match.blue_series = 0  # Reset series score to 0 when starting a match
 
     if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
         await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
@@ -239,6 +235,7 @@ async def start_match(self, qdata: Queue, interaction: discord.Interaction, from
         match.server_password = password
 
     await self.random(interaction, qdata.api_short)
+
 
 class Queue:
     def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
