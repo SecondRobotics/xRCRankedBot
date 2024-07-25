@@ -1116,13 +1116,13 @@ class Ranked(commands.Cog):
         )
 
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                        match.red_role: discord.PermissionOverwrite(connect(True)),
+                        match.red_role: discord.PermissionOverwrite(connect=True),
                         self.staff: discord.PermissionOverwrite(connect=True),
                         self.bots: discord.PermissionOverwrite(connect=True)}
         overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
                         match.blue_role: discord.PermissionOverwrite(connect=True),
                         self.staff: discord.PermissionOverwrite(connect=True),
-                        self.bots: discord.PermissionOverwrite(connect(True))}
+                        self.bots: discord.PermissionOverwrite(connect=True)}
 
         if match.game_size != 2:
             match.red_channel, match.blue_channel = await asyncio.gather(

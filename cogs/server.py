@@ -1,5 +1,3 @@
-# server.py
-
 import os
 import subprocess
 import logging
@@ -34,8 +32,9 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
         return "⚠ The maximum number of servers are already running", -1
 
     port = -1
-    for port in PORTS:
-        if port not in servers_active:
+    for p in PORTS:
+        if p not in servers_active:
+            port = p
             break
 
     if port == -1:
@@ -52,7 +51,7 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
 
     f = open(f"{SERVER_LOGS_DIR}{port}.log", "a")
     log_files[port] = f
-    f.write(f"Server started at {datetime.now()}")
+    f.write(f"Server started at {datetime.now()}\n")
 
     command = [
         SERVER_PATH, "-batchmode", "-nographics",
@@ -70,11 +69,8 @@ def start_server_process(game: str, comment: str, password: str = "", admin: str
         "NetStats=On", "Profiling=On"
     ]
 
-    servers_active[port] = subprocess.Popen(
-        command,
-        stdout=f, stderr=f, shell=False
-    )
-
+    process = subprocess.Popen(command, stdout=f, stderr=f, shell=False)
+    servers_active[port] = process
     last_active[port] = datetime.now()
 
     logger.info(f"Server launched on port {port}: '{comment}'")
@@ -86,7 +82,7 @@ def stop_server_process(port: int):
         return f"⚠ Server on port {port} not found"
 
     logger.info(f"Shutting down server on port {port}")
-    log_files[port].write(f"Server shut down at {datetime.now()}")
+    log_files[port].write(f"Server shut down at {datetime.now()}\n")
 
     servers_active[port].terminate()
     log_files[port].close()
@@ -96,7 +92,6 @@ def stop_server_process(port: int):
 
     logger.info(f"Server on port {port} shut down")
     return f"✅ Server on port {port} shut down"
-
 
 class ServerActions(commands.Cog):
     def __init__(self, bot):
