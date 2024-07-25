@@ -700,8 +700,9 @@ class Ranked(commands.Cog):
 
         if not qdata.matches or (qdata.matches and (qdata.matches[-1].red_series == 2 or qdata.matches[-1].blue_series == 2)):
             match = qdata.create_match()
-            match.red_series = 0
-            match.blue_series = 0
+            match.red_series = 0 
+            match.blue_series = 0 
+            logger.info(f"New match created with red_series={match.red_series} and blue_series={match.blue_series}")
         else:
             await interaction.followup.send("Current match incomplete.", ephemeral=True)
             return
@@ -721,6 +722,7 @@ class Ranked(commands.Cog):
             match.server_password = password
 
         await self.random(interaction, qdata.api_short)
+
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="queuestatus", description="View who is currently in the queue")
@@ -922,6 +924,8 @@ class Ranked(commands.Cog):
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
 
+            logger.info(f"Checking match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
+
             if current_match.red_series == 2 or current_match.blue_series == 2:
                 await interaction.followup.send("Series is complete already!", ephemeral=True)
                 return
@@ -931,8 +935,10 @@ class Ranked(commands.Cog):
 
         if int(red_score) > int(blue_score):
             current_match.red_series += 1
-        elif int(red_score) < int(blue_score):
+        elif int(blue_score) > int(red_score):
             current_match.blue_series += 1
+
+        logger.info(f"Updated match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
 
         gg = True
         if current_match.red_series == 2:
@@ -958,7 +964,7 @@ class Ranked(commands.Cog):
         logger.info(response)
 
         embed = discord.Embed(color=0x34eb3d,
-                              title=f"[{current_match.full_game_name}] Score submitted | 🟥 {current_match.red_series}-{current_match.blue_series}  🟦 |")
+                            title=f"[{current_match.full_game_name}] Score submitted | 🟥 {current_match.red_series}-{current_match.blue_series}  🟦 |")
         embed.set_thumbnail(url=current_match.game_icon)
 
         red = "\n".join(
@@ -1006,6 +1012,7 @@ class Ranked(commands.Cog):
                     await channel.delete()
         else:
             await interaction.channel.send(embed=embed)
+
 
     async def random(self, interaction, game_type):
         match = create_game(game_type)
