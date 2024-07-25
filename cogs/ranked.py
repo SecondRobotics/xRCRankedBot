@@ -1069,9 +1069,25 @@ class Ranked(commands.Cog):
         red_field = "\n".join([f"🟥{player.mention}" for player in match.game.red])
         blue_field = "\n".join([f"🟦{player.mention}" for player in match.game.blue])
 
-        description = f"""Server "Ranked{match.api_short}" started for you with password **{match.server_password}**
-        || IP: {ip} Port: {match.server_port}||
-        [Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})""" if match.server_port else None
+        # Construct the description with all relevant variables
+        description = (
+            f"Server 'Ranked{match.api_short}' started for you with password **{match.server_password}**\n"
+            f"|| IP: {ip} Port: {match.server_port} ||\n"
+            f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})\n\n"
+            f"Variables:\n"
+            f"match.game_type: {match.game_type}\n"
+            f"match.api_short: {match.api_short}\n"
+            f"match.full_game_name: {match.full_game_name}\n"
+            f"match.server_game: {match.server_game}\n"
+            f"match.server_port: {match.server_port}\n"
+            f"match.server_password: {match.server_password}\n"
+            f"match.red_series: {match.red_series}\n"
+            f"match.blue_series: {match.blue_series}\n"
+            f"match.team_size: {match.team_size}\n"
+            f"match.last_ping_time: {match.last_ping_time}\n"
+            f"red_field: {red_field}\n"
+            f"blue_field: {blue_field}\n"
+        )
 
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for {match.full_game_name}!", description=description
@@ -1100,13 +1116,13 @@ class Ranked(commands.Cog):
         )
 
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                          match.red_role: discord.PermissionOverwrite(connect=True),
-                          self.staff: discord.PermissionOverwrite(connect=True),
-                          self.bots: discord.PermissionOverwrite(connect=True)}
+                        match.red_role: discord.PermissionOverwrite(connect(True)),
+                        self.staff: discord.PermissionOverwrite(connect=True),
+                        self.bots: discord.PermissionOverwrite(connect=True)}
         overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                           match.blue_role: discord.PermissionOverwrite(connect=True),
-                           self.staff: discord.PermissionOverwrite(connect=True),
-                           self.bots: discord.PermissionOverwrite(connect=True)}
+                        match.blue_role: discord.PermissionOverwrite(connect=True),
+                        self.staff: discord.PermissionOverwrite(connect=True),
+                        self.bots: discord.PermissionOverwrite(connect(True))}
 
         if match.game_size != 2:
             match.red_channel, match.blue_channel = await asyncio.gather(
@@ -1130,6 +1146,8 @@ class Ranked(commands.Cog):
 
         await queue_channel.send(f"{match.red_role.mention} {match.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
+
+
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="clearmatch", description="Clears current running match")
