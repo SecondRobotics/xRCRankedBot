@@ -718,36 +718,11 @@ class Ranked(commands.Cog):
                     qdata.queue.remove(player)
                     await self.update_ranked_display()
                     cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
-                    message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). *({qdata.queue.qsize()}/{qdata.alliance_size * 2})*"
-                else:
-                    message = "You aren't in this queue."
-                    ephemeral = True
-            else:
-                message = QUEUE_CHANNEL_ERROR_MSG
-                ephemeral = True
-
-            await interaction.response.send_message(message, ephemeral=ephemeral)
-            await interaction.channel.send(
-                f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata.queue.qsize()}/{qdata.alliance_size * 2}]**",
-                delete_after=60)
-
-            logger.info(f"{interaction.user.name} called /leave")
-            qdata = game_queues[game]
-
-            ephemeral = False
-
-            if (isinstance(interaction.channel, discord.TextChannel) and
-                    isinstance(interaction.user, discord.Member) and
-                    interaction.channel.id == QUEUE_CHANNEL_ID):
-                player = interaction.user
-                if player in qdata.queue:
-                    qdata.queue.remove(player)
-                    await self.update_ranked_display()
-                    cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
-                    message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). 
-                    *({qdata.queue.qsize()}/{qdata.alliance_size * 2})*"
-
-
+                    message = (
+                        f"🔴 **{cleaned_display_name}** 🔴\n"
+                        f"removed from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). "
+                        f"*({qdata.queue.qsize()}/{qdata.alliance_size * 2})*"
+                    )
                 else:
                     message = "You aren't in this queue."
                     ephemeral = True
