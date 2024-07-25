@@ -169,8 +169,8 @@ class XrcGame:
         self.game_type = game
         self.game = None  # type: Game | None
         self.game_size = alliance_size * 2
-        self.red_series = 2  # Keep initial value as 2
-        self.blue_series = 2  # Keep initial value as 2
+        self.red_series = 0
+        self.blue_series = 0
         self.red_captain = None
         self.blue_captain = None
         self.clearmatch_message = None
