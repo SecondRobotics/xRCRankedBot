@@ -993,17 +993,25 @@ class Ranked(commands.Cog):
 
         if gg:
             await interaction.channel.send(embed=embed, view=RejoinQueueView(qdata, current_match, self))
-            await remove_roles(interaction.user.guild, current_match)
 
-            if current_match.server_port:
-                stop_server_process(current_match.server_port)
+            # Delete roles directly
+            await current_match.red_role.delete()
+            await current_match.blue_role.delete()
 
+            # Move players to the lobby and delete voice channels
             lobby = self.bot.get_channel(LOBBY_VC_ID)
             for channel in [current_match.red_channel, current_match.blue_channel]:
                 if channel:
                     for member in channel.members:
                         await member.move_to(lobby)
                     await channel.delete()
+
+            if current_match.server_port:
+                stop_server_process(current_match.server_port)
+
+            # Remove the match from the queue
+            qdata.remove_match(current_match)
+
         else:
             await interaction.channel.send(embed=embed)
 
