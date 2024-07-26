@@ -20,6 +20,7 @@ import zipfile
 import shutil
 from config import *
 from .server import start_server_process, stop_server_process
+import aiohttp
 
 # Constants
 SERVER_PATH = "./server/xRC Simulator.x86_64"
@@ -1002,12 +1003,14 @@ class Ranked(commands.Cog):
 
         async def fetch_player_elo(game, user_id):
             url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
-            response = requests.get(url)
-            if response.status_code == 200:
-                return response.json().get('elo', 0)
-            else:
-                logger.error(f"Failed to fetch ELO for player {user_id}: {response.status_code}")
-                return 0
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get('elo', 0)
+                    else:
+                        logger.error(f"Failed to fetch ELO for player {user_id}: {response.status}")
+                        return 0
 
         async def assign_role(player, role):
             await player.add_roles(role)
@@ -1102,7 +1105,7 @@ class Ranked(commands.Cog):
             if match.game_size != 2:
                 tasks.append(move_player(player, match.red_channel if player in match.game.red else match.blue_channel))
 
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
 
         await queue_channel.send(f"{match.red_role.mention} {match.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
