@@ -205,55 +205,11 @@ class Queue:
     def create_match(self):
         match = XrcGame(self.game_type, self.alliance_size, self.api_short, self.full_game_name)
         self.matches.append(match)
+        logger.info('Create match called')
         return match
 
     def remove_match(self, match: XrcGame):
         self.matches.remove(match)
-
-async def start_match(self, qdata: Queue, interaction: discord.Interaction, from_button: bool=False):
-    if qdata.queue.qsize() < qdata.alliance_size * 2:
-        await interaction.followup.send("Queue is not full.", ephemeral=True)
-        return
-
-    # Always create a new match and reset series scores to 0
-    match = qdata.create_match()
-    match.red_series = 0  # Reset series score to 0 when starting a match
-    match.blue_series = 0  # Reset series score to 0 when starting a match
-
-    if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
-        await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
-        return
-
-    password = str(random.randint(100, 999))
-    min_players = games_players[qdata.api_short]
-    message, port = start_server_process(
-        match.server_game, f"Ranked{qdata.api_short}", password, min_players=min_players)
-    if port == -1:
-        logger.warning("Server couldn't auto-start for ranked: " + message)
-    else:
-        match.server_port = port
-        match.server_password = password
-
-    await self.random(interaction, qdata.api_short)
-
-
-class Queue:
-    def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
-        self.queue = PlayerQueue()
-        self.matches = []
-        self.game_type = game
-        self.alliance_size = alliance_size
-        self.api_short = api_short
-        self.full_game_name = full_game_name
-
-    def create_match(self):
-        match = XrcGame(self.game_type, self.alliance_size, self.api_short, self.full_game_name)
-        self.matches.append(match)
-        return match
-
-    def remove_match(self, match: XrcGame):
-        self.matches.remove(match)
-
 
 async def handle_score_edit(interaction: discord.Interaction, qdata: XrcGame, red_score: int, blue_score: int):
     url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
@@ -696,25 +652,11 @@ class Ranked(commands.Cog):
             return
 
         # Always create a new match and reset series scores to 0
-        match = qdata.create_match()
-        match.red_series = 0  # Reset series score to 0 when starting a match
-        match.blue_series = 0  # Reset series score to 0 when starting a match
+        # match = qdata.create_match()
+        
+        # Moved rest of code to random to fix referencing error
 
-        if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
-            await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
-            return
-
-        password = str(random.randint(100, 999))
-        min_players = games_players[qdata.api_short]
-        message, port = start_server_process(
-            match.server_game, f"Ranked{qdata.api_short}", password, min_players=min_players)
-        if port == -1:
-            logger.warning("Server couldn't auto-start for ranked: " + message)
-        else:
-            match.server_port = port
-            match.server_password = password
-
-        await self.random(interaction, qdata.api_short)
+        await self.random(qdata, interaction, qdata.api_short)
 
 
 
@@ -1016,7 +958,7 @@ class Ranked(commands.Cog):
             await interaction.channel.send(embed=embed)
 
 
-    async def random(self, interaction, game_type):
+    async def random(self, qdata: Queue, interaction, game_type):
         match = create_game(game_type)
 
         if not match.game:
@@ -1035,6 +977,24 @@ class Ranked(commands.Cog):
             match.game.add_to_blue(player)
 
         logger.info(f"Blue: {blue}")
+
+        # Code from start_match
+        match.red_series = 0  # Reset series score to 0 when starting a match
+        match.blue_series = 0  # Reset series score to 0 when starting a match
+
+        if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
+            await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
+            return
+
+        password = str(random.randint(100, 999))
+        min_players = games_players[qdata.api_short]
+        message, port = start_server_process(
+            match.server_game, f"Ranked{qdata.api_short}", password, min_players=min_players)
+        if port == -1:
+            logger.warning("Server couldn't auto-start for ranked: " + message)
+        else:
+            match.server_port = port
+            match.server_password = password
 
         await self.display_teams(interaction, match)
 
