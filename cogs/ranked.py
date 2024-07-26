@@ -652,6 +652,11 @@ class Ranked(commands.Cog):
             await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
 
+        if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
+            await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
+            return
+
+
         # Always create a new match and reset series scores to 0
         # match = qdata.create_match()
         
@@ -982,10 +987,6 @@ class Ranked(commands.Cog):
         # Code from start_match
         match.red_series = 0  # Reset series score to 0 when starting a match
         match.blue_series = 0  # Reset series score to 0 when starting a match
-
-        if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
-            await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
-            return
 
         password = str(random.randint(100, 999))
         min_players = games_players[qdata.api_short]
