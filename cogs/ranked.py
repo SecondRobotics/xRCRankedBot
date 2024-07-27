@@ -55,6 +55,9 @@ inactive_games.remove("Relic Recovery")
 
 daily_game = random.choice(inactive_games)
 
+# TEMP FORCE DUE TO ACTIVE QUEUE AT TIME OF DEBUGGING
+daily_game = 'Ultimate Goal'
+
 games = requests.get("https://secondrobotics.org/api/ranked/").json()
 
 games_choices = [Choice(name=game['name'], value=game['short_code'])
@@ -1014,7 +1017,9 @@ class Ranked(commands.Cog):
                         return 0
 
         async def assign_role(player, role):
+            logger.info(f'Assign role start for {player}')
             await player.add_roles(role)
+            logger.info(f'Assign role end for {player}')
 
         async def move_player(player, channel):
             try:
