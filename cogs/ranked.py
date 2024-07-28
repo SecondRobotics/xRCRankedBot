@@ -589,8 +589,8 @@ class Ranked(commands.Cog):
 
                 logger.info('ranked ping logging')
                 logger.info(f'{qdata.queue}')
-                logger.info(f'{qdata.matches[-1].last_ping_time}')
-                logger.info(f'{(current_time - qdata.matches[-1].last_ping_time).total_seconds()}')
+                logger.info(f'{qdata.last_ping_time}')
+                logger.info(f'{(current_time - qdata.last_ping_time).total_seconds()}')
                 if not qdata.last_ping_time or (qdata.last_ping_time and qdata.last_ping_time is None or (current_time - qdata.last_ping_time).total_seconds() > 3600):
                     qdata.last_ping_time = current_time
 
