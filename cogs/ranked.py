@@ -189,7 +189,6 @@ class XrcGame:
         self.blue_role = None  # type: discord.Role | None
         self.red_channel = None  # type: discord.VoiceChannel | None
         self.blue_channel = None  # type: discord.VoiceChannel | None
-        self.last_ping_time = None  # type: datetime | None
 
         try:
             self.game_icon = game_logos[game]
@@ -205,6 +204,7 @@ class Queue:
         self.alliance_size = alliance_size
         self.api_short = api_short
         self.full_game_name = full_game_name
+        self.last_ping_time = None  # type: datetime | None
 
     def create_match(self):
         match = XrcGame(self.game_type, self.alliance_size, self.api_short, self.full_game_name)
@@ -588,11 +588,11 @@ class Ranked(commands.Cog):
                 current_time = datetime.now()
 
                 logger.info('ranked ping logging')
-                logger.info(f'{qdata.matches}')
+                logger.info(f'{qdata.queue}')
                 logger.info(f'{qdata.matches[-1].last_ping_time}')
                 logger.info(f'{(current_time - qdata.matches[-1].last_ping_time).total_seconds()}')
-                if not qdata.matches or (qdata.matches and qdata.matches[-1].last_ping_time is None or (current_time - qdata.matches[-1].last_ping_time).total_seconds() > 3600):
-                    qdata.matches[-1].last_ping_time = current_time
+                if not qdata.last_ping_time or (qdata.last_ping_time and qdata.last_ping_time is None or (current_time - qdata.last_ping_time).total_seconds() > 3600):
+                    qdata.last_ping_time = current_time
 
                     ping_role_name = f"{qdata.game_type} Ping"
                     logger.info(f"Pinging {ping_role_name}")
