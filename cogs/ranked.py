@@ -585,8 +585,8 @@ class Ranked(commands.Cog):
 
             logger.info(f'q size {qdata.queue.qsize()} with alliance size {qdata.alliance_size}')
 
-            if (qdata.queue.qsize() == 3 and qdata.alliance_size == 4) or (
-                    qdata.queue.qsize() == 4 and qdata.alliance_size == 6):
+            if (qdata.queue.qsize() == 3 and qdata.alliance_size == 2) or (
+                    qdata.queue.qsize() == 4 and qdata.alliance_size == 3):
                 current_time = datetime.now()
                 if not qdata.matches or (qdata.matches and qdata.matches[-1].last_ping_time is None or (current_time - qdata.matches[-1].last_ping_time).total_seconds() > 3600):
                     qdata.matches[-1].last_ping_time = current_time
