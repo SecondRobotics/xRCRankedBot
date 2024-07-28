@@ -583,7 +583,7 @@ class Ranked(commands.Cog):
             
             await followup.delete(delay=60)
 
-            logger.info(f'q size {qdata.queue.qize()} with alliance size {qdata.alliance_size}')
+            logger.info(f'q size {qdata.queue.qsize()} with alliance size {qdata.alliance_size}')
 
             if (qdata.queue.qsize() == 3 and qdata.alliance_size == 4) or (
                     qdata.queue.qsize() == 4 and qdata.alliance_size == 6):
