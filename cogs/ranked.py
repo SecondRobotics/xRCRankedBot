@@ -55,6 +55,9 @@ inactive_games.remove("Relic Recovery")
 
 daily_game = random.choice(inactive_games)
 
+#Temp force on day of bote development
+daily_game = 'Infinite Recharge'
+
 games = requests.get("https://secondrobotics.org/api/ranked/").json()
 
 games_choices = [Choice(name=game['name'], value=game['short_code'])
@@ -580,6 +583,8 @@ class Ranked(commands.Cog):
             
             await followup.delete(delay=60)
 
+            logger.info(f'q size {qdata.queue.qize()} with alliance size {qdata.alliance_size}')
+
             if (qdata.queue.qsize() == 3 and qdata.alliance_size == 4) or (
                     qdata.queue.qsize() == 4 and qdata.alliance_size == 6):
                 current_time = datetime.now()
@@ -832,6 +837,13 @@ class Ranked(commands.Cog):
         current_match = None
         for queue in game_queues.values():
             for match in queue.matches:
+                if interaction.user in match.game:
+                    logger.info(f"found game {match} via player list")
+                    qdata = queue
+                    current_match = match
+                    logger.info(f"qdata {qdata}")
+                    break
+
                 red = match.red_role
                 blue = match.blue_role
                 if red in interaction.user.roles or blue in interaction.user.roles:
