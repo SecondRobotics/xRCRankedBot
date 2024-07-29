@@ -865,20 +865,6 @@ class Ranked(commands.Cog):
                 and interaction.channel.id == QUEUE_CHANNEL_ID
                 and isinstance(interaction.user, discord.Member)
         ):
-            roles = [role.id for role in interaction.user.roles]
-
-            if current_match.red_role and current_match.blue_role:
-                ranked_roles = [EVENT_STAFF_ID,
-                                current_match.red_role.id, current_match.blue_role.id]
-            else:
-                ranked_roles = [EVENT_STAFF_ID]
-
-            submit_check = any(role in ranked_roles for role in roles)
-
-            if not submit_check:
-                await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
-                return
-
             logger.info(f"Checking match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
 
             if current_match.red_series == 2 or current_match.blue_series == 2:
