@@ -366,6 +366,8 @@ class Ranked(commands.Cog):
                         value="Queue to get a match started!", inline=False)
         self.ranked_display = await qstatus_channel.send(embed=embed)
 
+        channels = self.bot.
+
         await self.update_ranked_display()
 
     async def create_ping_roles(self):
@@ -587,9 +589,6 @@ class Ranked(commands.Cog):
                     qdata.queue.qsize() == 4 and qdata.alliance_size == 3):
                 current_time = datetime.now()
 
-                logger.info('ranked ping logging')
-                logger.info(f'{qdata.queue}')
-                logger.info(f'{qdata.last_ping_time}')
                 if not qdata.last_ping_time or (qdata.last_ping_time and qdata.last_ping_time is None or (current_time - qdata.last_ping_time).total_seconds() > 3600):
                     qdata.last_ping_time = current_time
 
@@ -1141,6 +1140,7 @@ class Ranked(commands.Cog):
                                                                                    interaction.user.roles]:
             await interaction.response.defer()
             await self.do_clear_match(interaction.user.guild, current_match)
+            qdata.remove_match(current_match)
             message = "Cleared successfully!"
         else:
             message = "You don't have permission to do that!"
