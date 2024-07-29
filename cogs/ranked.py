@@ -366,8 +366,6 @@ class Ranked(commands.Cog):
                         value="Queue to get a match started!", inline=False)
         self.ranked_display = await qstatus_channel.send(embed=embed)
 
-        channels = self.bot.
-
         await self.update_ranked_display()
 
     async def create_ping_roles(self):
