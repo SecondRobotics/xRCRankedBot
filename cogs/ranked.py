@@ -55,9 +55,6 @@ inactive_games.remove("Relic Recovery")
 
 daily_game = random.choice(inactive_games)
 
-#Temp force on day of bote development
-daily_game = 'Infinite Recharge'
-
 games = requests.get("https://secondrobotics.org/api/ranked/").json()
 
 games_choices = [Choice(name=game['name'], value=game['short_code'])
