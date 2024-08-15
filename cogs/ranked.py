@@ -1188,6 +1188,21 @@ class Ranked(commands.Cog):
     async def before_check_empty_servers(self):
         await self.bot.wait_until_ready()
 
+ 
+    async def fetch_leaderboard_data(url):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=HEADER) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        logger.error(f"Failed to fetch leaderboard data: {response.status}")
+                        return None
+        except Exception as e:
+            logger.error(f"Error fetching leaderboard data: {str(e)}")
+            return None
+
+    # Replace this part in your Ranked class
     @tasks.loop(hours=1)
     async def update_roles_task(self):
         await self.update_player_roles()
@@ -1203,40 +1218,29 @@ class Ranked(commands.Cog):
             return
 
         url = "https://secondrobotics.org/api/ranked/leaderboard/CR3v3/"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=HEADER) as response:
-                if response.status != 200:
-                    logger.error(f"Failed to fetch leaderboard data: {response.status}")
-                    return
+        leaderboard_data = await fetch_leaderboard_data(url)
+        if not leaderboard_data:
+            return
 
-                leaderboard_data = await response.json()
-                for player_data in leaderboard_data:
-                    discord_id = player_data['player_id']
-                    rank_name = player_data['rank_name']
-                    member = guild.get_member(discord_id)
+        for player_data in leaderboard_data:
+            discord_id = player_data['player_id']
+            rank_name = player_data['rank_name']
+            member = guild.get_member(discord_id)
 
-                    if not member:
-                        continue
+            if not member:
+                continue
 
-                    current_roles = set(member.roles)
-                    rank_role = get(guild.roles, name=rank_name)
-                    if not rank_role:
-                        rank_role = await guild.create_role(name=rank_name)
+            current_roles = set(member.roles)
+            rank_role = get(guild.roles, name=rank_name)
+            if not rank_role:
+                rank_role = await guild.create_role(name=rank_name)
 
-                    roles_to_remove = [role for role in current_roles if role.name.startswith('Rank_')]
-                    if rank_role not in current_roles:
-                        await member.add_roles(rank_role)
-                    for role in roles_to_remove:
-                        if role != rank_role:
-                            await member.remove_roles(role)
-
-
-queue_joins = {}
-last_active = {}
-game_queues = {game['short_code']: Queue(
-    game['game'], game['players_per_alliance'], game['short_code'], game['name']) for game in games}
-cog = None
-guild = None
+            roles_to_remove = [role for role in current_roles if role.name.startswith('Rank_')]
+            if rank_role not in current_roles:
+                await member.add_roles(rank_role)
+            for role in roles_to_remove:
+                if role != rank_role:
+                    await member.remove_roles(role)
 
 
 async def setup(bot: commands.Bot) -> None:
