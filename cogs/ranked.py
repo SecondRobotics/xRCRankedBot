@@ -906,17 +906,13 @@ class Ranked(commands.Cog):
 
         red = "\n".join(
             f"[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{current_match.api_short}/{response['red_player_elos'][i]['player']}) "
-            f"[{round(player['elo'], 2)}] 
-diff\n{'%+.2f' % (round(response['red_elo_changes'][i], 3))}\n
-"
+            f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response['red_elo_changes'][i], 3))}\n```"
             for i, player in enumerate(response['red_player_elos'])
         )
 
         blue = "\n".join(
             f"[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{current_match.api_short}/{response['blue_player_elos'][i]['player']}) "
-            f"[{round(player['elo'], 2)}] 
-diff\n{'%+.2f' % (round(response['blue_elo_changes'][i], 3))}\n
-"
+            f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response['blue_elo_changes'][i], 3))}\n```"
             for i, player in enumerate(response['blue_player_elos'])
         )
 
