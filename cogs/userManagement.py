@@ -4,6 +4,7 @@ from datetime import datetime
 import aiohttp
 import logging
 from config import GUILD_ID, SRC_API_TOKEN
+import time
 
 logger = logging.getLogger('discord')
 HEADER = {"x-api-key": SRC_API_TOKEN}
@@ -22,6 +23,9 @@ class UserManagement(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def update_player_roles(self):
+        start_time = time.time()
+        logger.info("Starting role update process")
+        
         guild = self.bot.get_guild(GUILD_ID)
         if not guild:
             logger.error("Guild not found.")
@@ -52,6 +56,10 @@ class UserManagement(commands.Cog):
                 if role != rank_role:
                     await member.remove_roles(role)
 
+        end_time = time.time()
+        duration = end_time - start_time
+        logger.info(f"Role update process completed in {duration:.2f} seconds")
+
     async def fetch_leaderboard_data(self, url):
         try:
             async with aiohttp.ClientSession() as session:
@@ -66,11 +74,4 @@ class UserManagement(commands.Cog):
             return None
 
 async def setup(bot: commands.Bot) -> None:
-    cog = UserManagement(bot)
-    guild = await bot.fetch_guild(GUILD_ID)
-    assert guild is not None
-
-    await bot.add_cog(
-        cog,
-        guilds=[guild]
-    )
+    await bot.add_cog(UserManagement(bot))
