@@ -212,7 +212,6 @@ class Queue:
     def remove_match(self, match: XrcGame):
         self.matches.remove(match)
 
-
 async def handle_score_edit(interaction: discord.Interaction, qdata: XrcGame, red_score: int, blue_score: int):
     url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
     json = {
@@ -335,8 +334,6 @@ class Ranked(commands.Cog):
         self.lobby = self.bot.get_channel(LOBBY_VC_ID)
 
         self.bot.set_ranked_cog_reference(self)
-
-        self.update_roles_task.start()
 
         # self.check_empty_servers.start() # FIXME: Disabled for now
     
@@ -1082,10 +1079,10 @@ class Ranked(commands.Cog):
                         match.red_role: discord.PermissionOverwrite(connect=True),
                         self.staff: discord.PermissionOverwrite(connect=True),
                         self.bots: discord.PermissionOverwrite(connect=True)}
-        overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect(False)),
+        overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
                         match.blue_role: discord.PermissionOverwrite(connect=True),
                         self.staff: discord.PermissionOverwrite(connect=True),
-                        self.bots: discord.PermissionOverwrite(connect(True))}
+                        self.bots: discord.PermissionOverwrite(connect=True)}
 
         if match.game_size != 2:
             match.red_channel, match.blue_channel = await asyncio.gather(
@@ -1109,6 +1106,8 @@ class Ranked(commands.Cog):
 
         await queue_channel.send(f"{match.red_role.mention} {match.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
+
+
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="clearmatch", description="Clears current running match")
@@ -1188,59 +1187,13 @@ class Ranked(commands.Cog):
     async def before_check_empty_servers(self):
         await self.bot.wait_until_ready()
 
- 
-    async def fetch_leaderboard_data(url):
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=HEADER) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    else:
-                        logger.error(f"Failed to fetch leaderboard data: {response.status}")
-                        return None
-        except Exception as e:
-            logger.error(f"Error fetching leaderboard data: {str(e)}")
-            return None
 
-    # Replace this part in your Ranked class
-    @tasks.loop(hours=1)
-    async def update_roles_task(self):
-        await self.update_player_roles()
-
-    @update_roles_task.before_loop
-    async def before_update_roles_task(self):
-        await self.bot.wait_until_ready()
-
-    async def update_player_roles(self):
-        guild = self.bot.get_guild(GUILD_ID)
-        if not guild:
-            logger.error("Guild not found.")
-            return
-
-        url = "https://secondrobotics.org/api/ranked/leaderboard/CR3v3/"
-        leaderboard_data = await fetch_leaderboard_data(url)
-        if not leaderboard_data:
-            return
-
-        for player_data in leaderboard_data:
-            discord_id = player_data['player_id']
-            rank_name = player_data['rank_name']
-            member = guild.get_member(discord_id)
-
-            if not member:
-                continue
-
-            current_roles = set(member.roles)
-            rank_role = get(guild.roles, name=rank_name)
-            if not rank_role:
-                rank_role = await guild.create_role(name=rank_name)
-
-            roles_to_remove = [role for role in current_roles if role.name.startswith('Rank_')]
-            if rank_role not in current_roles:
-                await member.add_roles(rank_role)
-            for role in roles_to_remove:
-                if role != rank_role:
-                    await member.remove_roles(role)
+queue_joins = {}
+last_active = {}
+game_queues = {game['short_code']: Queue(
+    game['game'], game['players_per_alliance'], game['short_code'], game['name']) for game in games}
+cog = None
+guild = None
 
 
 async def setup(bot: commands.Bot) -> None:
