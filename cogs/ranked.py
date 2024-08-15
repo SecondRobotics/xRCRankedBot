@@ -1196,6 +1196,14 @@ cog = None
 guild = None
 
 
+queue_joins = {}
+last_active = {}
+game_queues = {game['short_code']: Queue(
+    game['game'], game['players_per_alliance'], game['short_code'], game['name']) for game in games}
+cog = None
+guild = None
+
+
 async def setup(bot: commands.Bot) -> None:
     cog = Ranked(bot)
 
