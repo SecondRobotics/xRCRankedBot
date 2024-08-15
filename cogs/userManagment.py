@@ -66,4 +66,11 @@ class UserManagement(commands.Cog):
             return None
 
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(UserManagement(bot))
+    cog = UserManagement(bot)
+    guild = await bot.fetch_guild(GUILD_ID)
+    assert guild is not None
+
+    await bot.add_cog(
+        cog,
+        guilds=[guild]
+    )
