@@ -1009,33 +1009,7 @@ class Ranked(commands.Cog):
 
         await self.display_teams(interaction, match)
 
-        match = create_game(game_type)
-
-        if not match.game:
-            await interaction.followup.send("No game found", ephemeral=True)
-            return
-
-    
-        # Code from start_match
-        match.red_series = 0  # Reset series score to 0 when starting a match
-        match.blue_series = 0  # Reset series score to 0 when starting a match
-
-        if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
-            await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
-            return
-
-        password = str(random.randint(100, 999))
-        min_players = games_players[qdata.api_short]
-        message, port = start_server_process(
-            match.server_game, f"Ranked{qdata.api_short}", password, min_players=min_players)
-        if port == -1:
-            logger.warning("Server couldn't auto-start for ranked: " + message)
-        else:
-            match.server_port = port
-            match.server_password = password
-
-        await self.display_teams(interaction, match)
-
+       
     async def display_teams(self, ctx, match: XrcGame):
 
         async def fetch_player_elo(game, user_id):
