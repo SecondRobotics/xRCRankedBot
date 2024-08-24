@@ -965,16 +965,27 @@ class Ranked(commands.Cog):
             await interaction.followup.send("No game found", ephemeral=True)
             return
 
+        # Create roles before assigning players to teams
+        match.red_role = await interaction.guild.create_role(
+            name=f"Red {match.full_game_name}", colour=discord.Color(0xFF0000))
+        match.blue_role = await interaction.guild.create_role(
+            name=f"Blue {match.full_game_name}", colour=discord.Color(0x0000FF))
+
         logger.info(f"Getting players for {match.game_type}")
+
+        # Assign players to red team and give them the red role
         red = random.sample(match.game.players, int(match.team_size))
         for player in red:
             match.game.add_to_red(player)
+            await player.add_roles(match.red_role)  # Assign red role to the player
 
         logger.info(f"Red: {red}")
 
+        # Assign players to blue team and give them the blue role
         blue = list(match.game.players)
         for player in blue:
             match.game.add_to_blue(player)
+            await player.add_roles(match.blue_role)  # Assign blue role to the player
 
         logger.info(f"Blue: {blue}")
 
@@ -1007,11 +1018,6 @@ class Ranked(commands.Cog):
                         logger.error(f"Failed to fetch ELO for player {user_id}: {response.status}")
                         return 0
 
-        async def assign_role(player, role):
-            logger.info(f'Assign role start for {player}')
-            await player.add_roles(role)
-            logger.info(f'Assign role end for {player}')
-
         async def move_player(player, channel):
             try:
                 await player.move_to(channel)
@@ -1034,19 +1040,6 @@ class Ranked(commands.Cog):
             f"Server 'Ranked{match.api_short}' started for you with password **{match.server_password}**\n"
             f"|| IP: {ip} Port: {match.server_port} ||\n"
             f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})\n\n"
-            # f"Variables:\n"
-            # f"match.game_type: {match.game_type}\n"
-            # f"match.api_short: {match.api_short}\n"
-            # f"match.full_game_name: {match.full_game_name}\n"
-            # f"match.server_game: {match.server_game}\n"
-            # f"match.server_port: {match.server_port}\n"
-            # f"match.server_password: {match.server_password}\n"
-            # f"match.red_series: {match.red_series}\n"
-            # f"match.blue_series: {match.blue_series}\n"
-            # f"match.team_size: {match.team_size}\n"
-            # f"match.last_ping_time: {match.last_ping_time}\n"
-            # f"red_field: {red_field}\n"
-            # f"blue_field: {blue_field}\n"
         )
 
         embed = discord.Embed(
@@ -1069,11 +1062,6 @@ class Ranked(commands.Cog):
         embed.add_field(name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
 
         await queue_channel.send(embed=embed)
-
-        match.red_role, match.blue_role = await asyncio.gather(
-            ctx.guild.create_role(name=f"Red {match.full_game_name}", colour=discord.Color(0xFF0000)),
-            ctx.guild.create_role(name=f"Blue {match.full_game_name}", colour=discord.Color(0x0000FF))
-        )
 
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
                         match.red_role: discord.PermissionOverwrite(connect=True),
@@ -1098,7 +1086,6 @@ class Ranked(commands.Cog):
 
         tasks = []
         for player in match.game.red | match.game.blue:
-            tasks.append(assign_role(player, match.red_role if player in match.game.red else match.blue_role))
             if match.game_size != 2:
                 tasks.append(move_player(player, match.red_channel if player in match.game.red else match.blue_channel))
 
