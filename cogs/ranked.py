@@ -186,6 +186,7 @@ class XrcGame:
         self.blue_role = None  # type: discord.Role | None
         self.red_channel = None  # type: discord.VoiceChannel | None
         self.blue_channel = None  # type: discord.VoiceChannel | None
+        self.last_ping_time = None  # type: datetime | None
 
         try:
             self.game_icon = game_logos[game]
@@ -201,7 +202,6 @@ class Queue:
         self.alliance_size = alliance_size
         self.api_short = api_short
         self.full_game_name = full_game_name
-        self.last_ping_time = None  # type: datetime | None
 
     def create_match(self):
         match = XrcGame(self.game_type, self.alliance_size, self.api_short, self.full_game_name)
@@ -580,12 +580,11 @@ class Ranked(commands.Cog):
             
             await followup.delete(delay=60)
 
-            if (qdata.queue.qsize() == 3 and qdata.alliance_size == 2) or (
-                    qdata.queue.qsize() == 4 and qdata.alliance_size == 3):
+            if (qdata.queue.qsize() == 3 and qdata.alliance_size == 4) or (
+                    qdata.queue.qsize() == 4 and qdata.alliance_size == 6):
                 current_time = datetime.now()
-
-                if not qdata.last_ping_time or (qdata.last_ping_time and qdata.last_ping_time is None or (current_time - qdata.last_ping_time).total_seconds() > 3600):
-                    qdata.last_ping_time = current_time
+                if not qdata.matches or (qdata.matches and qdata.matches[-1].last_ping_time is None or (current_time - qdata.matches[-1].last_ping_time).total_seconds() > 3600):
+                    qdata.matches[-1].last_ping_time = current_time
 
                     ping_role_name = f"{qdata.game_type} Ping"
                     logger.info(f"Pinging {ping_role_name}")
@@ -652,11 +651,6 @@ class Ranked(commands.Cog):
         if qdata.queue.qsize() < qdata.alliance_size * 2:
             await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
-
-        if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
-            await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
-            return
-
 
         # Always create a new match and reset series scores to 0
         # match = qdata.create_match()
@@ -833,13 +827,6 @@ class Ranked(commands.Cog):
         current_match = None
         for queue in game_queues.values():
             for match in queue.matches:
-                if interaction.user in match.game:
-                    logger.info(f"found game {match} via player list")
-                    qdata = queue
-                    current_match = match
-                    logger.info(f"qdata {qdata}")
-                    break
-
                 red = match.red_role
                 blue = match.blue_role
                 if red in interaction.user.roles or blue in interaction.user.roles:
@@ -860,6 +847,20 @@ class Ranked(commands.Cog):
                 and interaction.channel.id == QUEUE_CHANNEL_ID
                 and isinstance(interaction.user, discord.Member)
         ):
+            roles = [role.id for role in interaction.user.roles]
+
+            if current_match.red_role and current_match.blue_role:
+                ranked_roles = [EVENT_STAFF_ID,
+                                current_match.red_role.id, current_match.blue_role.id]
+            else:
+                ranked_roles = [EVENT_STAFF_ID]
+
+            submit_check = any(role in ranked_roles for role in roles)
+
+            if not submit_check:
+                await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
+                return
+
             logger.info(f"Checking match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
 
             if current_match.red_series == 2 or current_match.blue_series == 2:
@@ -993,6 +994,10 @@ class Ranked(commands.Cog):
         match.red_series = 0  # Reset series score to 0 when starting a match
         match.blue_series = 0  # Reset series score to 0 when starting a match
 
+        if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
+            await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
+            return
+
         password = str(random.randint(100, 999))
         min_players = games_players[qdata.api_short]
         message, port = start_server_process(
@@ -1108,7 +1113,6 @@ class Ranked(commands.Cog):
                                                                                    interaction.user.roles]:
             await interaction.response.defer()
             await self.do_clear_match(interaction.user.guild, current_match)
-            qdata.remove_match(current_match)
             message = "Cleared successfully!"
         else:
             message = "You don't have permission to do that!"
