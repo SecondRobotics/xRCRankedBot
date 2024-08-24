@@ -1015,30 +1015,7 @@ class Ranked(commands.Cog):
             await interaction.followup.send("No game found", ephemeral=True)
             return
 
-        # Create roles before assigning players to teams
-        match.red_role = await interaction.guild.create_role(
-            name=f"Red {match.full_game_name}", colour=discord.Color(0xFF0000))
-        match.blue_role = await interaction.guild.create_role(
-            name=f"Blue {match.full_game_name}", colour=discord.Color(0x0000FF))
-
-        logger.info(f"Getting players for {match.game_type}")
-
-        # Assign players to red team and give them the red role
-        red = random.sample(match.game.players, int(match.team_size))
-        for player in red:
-            match.game.add_to_red(player)
-            await player.add_roles(match.red_role)  # Assign red role to the player
-
-        logger.info(f"Red: {red}")
-
-        # Assign players to blue team and give them the blue role
-        blue = list(match.game.players)
-        for player in blue:
-            match.game.add_to_blue(player)
-            await player.add_roles(match.blue_role)  # Assign blue role to the player
-
-        logger.info(f"Blue: {blue}")
-
+    
         # Code from start_match
         match.red_series = 0  # Reset series score to 0 when starting a match
         match.blue_series = 0  # Reset series score to 0 when starting a match
