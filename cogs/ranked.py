@@ -19,7 +19,6 @@ from discord.app_commands import Choice
 import zipfile
 import shutil
 from config import *
-from .server import start_server_process, stop_server_process
 import aiohttp
 
 # Constants
@@ -45,8 +44,6 @@ servers_active: Dict[int, subprocess.Popen] = {}
 log_files: Dict[int, TextIOWrapper] = {}
 
 listener = commands.Cog.listener
-
-ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
 active_games = list(server_games.keys())[-3:]
 inactive_games = list(server_games.keys())[:-3]
@@ -204,13 +201,15 @@ class Queue:
         self.full_game_name = full_game_name
 
     def create_match(self):
-        match = XrcGame(self.game_type, self.alliance_size, self.api_short, self.full_game_name)
+        match = XrcGame(self.game_type, self.alliance_size,
+                        self.api_short, self.full_game_name)
         self.matches.append(match)
         logger.info('Create match called')
         return match
 
     def remove_match(self, match: XrcGame):
         self.matches.remove(match)
+
 
 async def handle_score_edit(interaction: discord.Interaction, qdata: XrcGame, red_score: int, blue_score: int):
     url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
@@ -336,12 +335,13 @@ class Ranked(commands.Cog):
         self.bot.set_ranked_cog_reference(self)
 
         # self.check_empty_servers.start() # FIXME: Disabled for now
-    
+
     async def startup(self):
         logger.info("Running startup code for ranked cog")
 
         global qstatus_channel
-        qstatus_channel = get(self.bot.get_all_channels(), id=QUEUE_STATUS_CHANNEL_ID)
+        qstatus_channel = get(self.bot.get_all_channels(),
+                              id=QUEUE_STATUS_CHANNEL_ID)
         if qstatus_channel is None or not isinstance(qstatus_channel, discord.TextChannel):
             logger.fatal("Could not find queue status channel")
             raise RuntimeError("Could not find queue status channel")
@@ -355,7 +355,7 @@ class Ranked(commands.Cog):
         if queue_channel is None or not isinstance(queue_channel, discord.TextChannel):
             logger.fatal("Could not find queue channel")
             raise RuntimeError("Could not find queue channel")
-        
+
         embed = discord.Embed(title="xRC Sim Ranked Queues",
                               description="Ranked queues are open!", color=0x00ff00)
         embed.set_thumbnail(url=XRC_SIM_LOGO_URL)
@@ -384,18 +384,18 @@ class Ranked(commands.Cog):
         current_time = datetime.now()
 
         if current_time.hour == 13 and current_time.minute <= 10 and guild and not self.has_daily_pinged:
-            logger.info(f"Initiating daily game ping, current time is {current_time}")
+            logger.info(
+                f"Initiating daily game ping, current time is {current_time}")
 
             self.has_daily_pinged = True
 
             daily_game_ping_role = discord.utils.get(
-                        await guild.fetch_roles(), name=f"{daily_game} Ping")
+                await guild.fetch_roles(), name=f"{daily_game} Ping")
             if daily_game_ping_role is not None:
                 await queue_channel.send(
                     f"{daily_game} is today's game of the day!\n{daily_game_ping_role.mention}")
-            
-            self.check_daily_ping.cancel()
 
+            self.check_daily_ping.cancel()
 
     async def update_ranked_display(self):
         if self.ranked_display is None:
@@ -433,14 +433,16 @@ class Ranked(commands.Cog):
             placeholder="Choose a game to toggle ping", options=options)
         select.callback = self.dropdown_callback
 
-        leave_all = discord.ui.Button(label="Leave All Queues", style=ButtonStyle.red, row=2)
+        leave_all = discord.ui.Button(
+            label="Leave All Queues", style=ButtonStyle.red, row=2)
         leave_all.callback = self.leave_all_queues
-        
+
         view = discord.ui.View(timeout=None)
         view.add_item(select)
 
         for i, game in enumerate(games_categories):
-            view.add_item(GameButton(game, short_code=short_codes[game], cog=self))
+            view.add_item(GameButton(
+                game, short_code=short_codes[game], cog=self))
 
         view.add_item(leave_all)
 
@@ -539,7 +541,7 @@ class Ranked(commands.Cog):
     async def q(self, interaction: discord.Interaction, game: str):
         await self.queue_player(interaction, game, False)
 
-    async def queue_player(self, interaction: discord.Interaction, game: str, from_button: bool=False):
+    async def queue_player(self, interaction: discord.Interaction, game: str, from_button: bool = False):
         logger.info(f"{interaction.user.name} called /q")
         await interaction.response.defer(ephemeral=True)
 
@@ -577,7 +579,7 @@ class Ranked(commands.Cog):
                 f"🟢 **{res['display_name']}** 🟢\nadded to queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
                 f" *({qdata.queue.qsize()}/{qdata.alliance_size * 2})*\n"
                 f"[Edit Display Name](https://secondrobotics.org/user/settings/)", ephemeral=True)
-            
+
             await followup.delete(delay=60)
 
             if (qdata.queue.qsize() == 3 and qdata.alliance_size == 4) or (
@@ -656,9 +658,6 @@ class Ranked(commands.Cog):
         # Always create a new match and reset series scores to 0
         await self.random(qdata, interaction, qdata.api_short, from_button)
 
-
-
-
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="queuestatus", description="View who is currently in the queue")
     @app_commands.checks.has_any_role("Event Staff")
@@ -668,13 +667,15 @@ class Ranked(commands.Cog):
         try:
             players = []
             for _ in range(0, 2):
-                players = [qdata.queue.get() for _ in range(qdata.queue.qsize())]
+                players = [qdata.queue.get()
+                           for _ in range(qdata.queue.qsize())]
                 for player in players:
                     qdata.queue.put(player)
             embed = discord.Embed(
                 color=0xcda03f, title=f"Signed up players for {game}")
 
-            embed.set_thumbnail(url=qdata.matches[-1].game_icon if qdata.matches else None)
+            embed.set_thumbnail(
+                url=qdata.matches[-1].game_icon if qdata.matches else None)
             embed.add_field(name='Players',
                             value="{}".format(
                                 "\n".join([player.mention for player in players])),
@@ -701,7 +702,8 @@ class Ranked(commands.Cog):
             if player in qdata.queue:
                 qdata.queue.remove(player)
                 await self.update_ranked_display()
-                cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
+                cleaned_display_name = ''.join(
+                    char for char in player.display_name if char.isalnum())
                 message = (
                     f"🔴 **{cleaned_display_name}** 🔴\n"
                     f"removed from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). "
@@ -719,12 +721,12 @@ class Ranked(commands.Cog):
             f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata.queue.qsize()}/{qdata.alliance_size * 2}]**",
             delete_after=60)
 
-    async def leave_all_queues(self, interaction: discord.Interaction, via_command = False):
+    async def leave_all_queues(self, interaction: discord.Interaction, via_command=False):
         send_publicly = False
 
         if (not via_command or (isinstance(interaction.channel, discord.TextChannel) and
-                isinstance(interaction.user, discord.Member) and
-                interaction.channel.id == QUEUE_CHANNEL_ID and via_command)):
+                                isinstance(interaction.user, discord.Member) and
+                                interaction.channel.id == QUEUE_CHANNEL_ID and via_command)):
             player = interaction.user
             cleaned_display_name = ''.join(
                 char for char in player.display_name if char.isalnum())
@@ -747,17 +749,15 @@ class Ranked(commands.Cog):
         await interaction.response.send_message(message, ephemeral=True, delete_after=30)
         if send_publicly:
             await queue_channel.send(message)
-        for qdata in dequeued:        
+        for qdata in dequeued:
             await queue_channel.send(
                 f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata.queue.qsize()}/{qdata.alliance_size * 2}]**",
                 delete_after=60)
-        
 
     @app_commands.command(name="leaveall", description="Remove yourself from all queues")
     async def leaveall(self, interaction: discord.Interaction):
         logger.info(f"{interaction.user.name} called /leaveall")
         await self.leave_all_queues(interaction, True)
-
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Remove someone else from the queue")
@@ -792,7 +792,8 @@ class Ranked(commands.Cog):
         else:
             roles = [role.id for role in interaction.user.roles]
             if current_match.red_role and current_match.blue_role:
-                ranked_roles = [current_match.red_role.id, current_match.blue_role.id]
+                ranked_roles = [current_match.red_role.id,
+                                current_match.blue_role.id]
             else:
                 ranked_roles = []
 
@@ -805,14 +806,18 @@ class Ranked(commands.Cog):
                 description=f"{interaction.user.mention} has proposed a score edit.",
                 color=discord.Color.orange()
             )
-            embed.add_field(name="Proposed Red Score", value=str(red_score), inline=True)
-            embed.add_field(name="Proposed Blue Score", value=str(blue_score), inline=True)
-            embed.set_footer(text="Please vote to approve or reject this edit.")
+            embed.add_field(name="Proposed Red Score",
+                            value=str(red_score), inline=True)
+            embed.add_field(name="Proposed Blue Score",
+                            value=str(blue_score), inline=True)
+            embed.set_footer(
+                text="Please vote to approve or reject this edit.")
 
             await interaction.followup.send(
                 f"A score edit is being attempted. {current_match.red_role.mention} {current_match.blue_role.mention}",
                 embed=embed,
-                view=VoteView(interaction, current_match, red_score, blue_score)
+                view=VoteView(interaction, current_match,
+                              red_score, blue_score)
             )
 
     @app_commands.command(description="Submit Score")
@@ -859,7 +864,8 @@ class Ranked(commands.Cog):
                 await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
                 return
 
-            logger.info(f"Checking match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
+            logger.info(
+                f"Checking match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
 
             if current_match.red_series == 2 or current_match.blue_series == 2:
                 await interaction.followup.send("Series is complete already!", ephemeral=True)
@@ -873,7 +879,8 @@ class Ranked(commands.Cog):
         elif int(blue_score) > int(red_score):
             current_match.blue_series += 1
 
-        logger.info(f"Updated match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
+        logger.info(
+            f"Updated match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
 
         gg = True
         if current_match.red_series == 2:
@@ -884,7 +891,8 @@ class Ranked(commands.Cog):
             await interaction.followup.send("Score Submitted")
             gg = False
 
-        red_ids = [player.id for player in current_match.game.red] if current_match.game else []
+        red_ids = [
+            player.id for player in current_match.game.red] if current_match.game else []
         blue_ids = [
             player.id for player in current_match.game.blue] if current_match.game else []
 
@@ -899,7 +907,7 @@ class Ranked(commands.Cog):
         logger.info(response)
 
         embed = discord.Embed(color=0x34eb3d,
-                            title=f"[{current_match.full_game_name}] Score submitted | 🟥 {current_match.red_series}-{current_match.blue_series}  🟦 |")
+                              title=f"[{current_match.full_game_name}] Score submitted | 🟥 {current_match.red_series}-{current_match.blue_series}  🟦 |")
         embed.set_thumbnail(url=current_match.game_icon)
 
         red = "\n".join(
@@ -948,14 +956,14 @@ class Ranked(commands.Cog):
                     await channel.delete()
 
             if current_match.server_port:
-                stop_server_process(current_match.server_port)
+                server_actions = self.bot.get_cog('ServerActions')
+                server_actions.stop_server_process(current_match.server_port)
 
             # Remove the match from the queue
             qdata.remove_match(current_match)
 
         else:
             await interaction.channel.send(embed=embed)
-
 
     async def random(self, qdata: Queue, interaction, game_type, from_button: bool = False):
         match = create_game(game_type)
@@ -976,7 +984,8 @@ class Ranked(commands.Cog):
         red = random.sample(match.game.players, int(match.team_size))
         for player in red:
             match.game.add_to_red(player)
-            await player.add_roles(match.red_role)  # Assign red role to the player
+            # Assign red role to the player
+            await player.add_roles(match.red_role)
 
         logger.info(f"Red: {red}")
 
@@ -984,7 +993,8 @@ class Ranked(commands.Cog):
         blue = list(match.game.players)
         for player in blue:
             match.game.add_to_blue(player)
-            await player.add_roles(match.blue_role)  # Assign blue role to the player
+            # Assign blue role to the player
+            await player.add_roles(match.blue_role)
 
         logger.info(f"Blue: {blue}")
 
@@ -999,7 +1009,8 @@ class Ranked(commands.Cog):
 
         password = str(random.randint(100, 999))
         min_players = games_players[qdata.api_short]
-        message, port = start_server_process(
+        server_actions = self.bot.get_cog('ServerActions')
+        message, port = server_actions.start_server_process(
             match.server_game, f"Ranked{qdata.api_short}", password, min_players=min_players)
         if port == -1:
             logger.warning("Server couldn't auto-start for ranked: " + message)
@@ -1009,7 +1020,6 @@ class Ranked(commands.Cog):
 
         await self.display_teams(interaction, match)
 
-       
     async def display_teams(self, ctx, match: XrcGame):
 
         async def fetch_player_elo(game, user_id):
@@ -1020,7 +1030,8 @@ class Ranked(commands.Cog):
                         data = await response.json()
                         return data.get('elo', 0)
                     else:
-                        logger.error(f"Failed to fetch ELO for player {user_id}: {response.status}")
+                        logger.error(
+                            f"Failed to fetch ELO for player {user_id}: {response.status}")
                         return 0
 
         async def move_player(player, channel):
@@ -1028,17 +1039,20 @@ class Ranked(commands.Cog):
                 await player.move_to(channel)
             except Exception as e:
                 logger.error(e)
-        
+
         logger.info(f"Displaying teams for {match.game_type}")
         channel = ctx.channel
-        self.category = self.category or get(ctx.guild.categories, id=CATEGORY_ID)
+        self.category = self.category or get(
+            ctx.guild.categories, id=CATEGORY_ID)
         self.staff = self.staff or get(ctx.guild.roles, id=EVENT_STAFF_ID)
         self.bots = self.bots or get(ctx.guild.roles, id=BOTS_ROLE_ID)
 
         logger.info(f"Getting IP for {match.game_type}")
 
-        red_field = "\n".join([f"🟥{player.mention}" for player in match.game.red])
-        blue_field = "\n".join([f"🟦{player.mention}" for player in match.game.blue])
+        red_field = "\n".join(
+            [f"🟥{player.mention}" for player in match.game.red])
+        blue_field = "\n".join(
+            [f"🟦{player.mention}" for player in match.game.blue])
 
         # Construct the description with all relevant variables
         description = (
@@ -1053,8 +1067,10 @@ class Ranked(commands.Cog):
         embed.set_thumbnail(url=match.game_icon)
 
         # Fetch ELOs concurrently
-        red_elo_tasks = [fetch_player_elo(match.api_short, player.id) for player in match.game.red]
-        blue_elo_tasks = [fetch_player_elo(match.api_short, player.id) for player in match.game.blue]
+        red_elo_tasks = [fetch_player_elo(
+            match.api_short, player.id) for player in match.game.red]
+        blue_elo_tasks = [fetch_player_elo(
+            match.api_short, player.id) for player in match.game.blue]
 
         red_elos = await asyncio.gather(*red_elo_tasks)
         blue_elos = await asyncio.gather(*blue_elo_tasks)
@@ -1063,26 +1079,28 @@ class Ranked(commands.Cog):
         avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
         avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
 
-        embed.add_field(name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
-        embed.add_field(name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
+        embed.add_field(
+            name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
+        embed.add_field(
+            name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
 
         await queue_channel.send(embed=embed)
 
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                        match.red_role: discord.PermissionOverwrite(connect=True),
-                        self.staff: discord.PermissionOverwrite(connect=True),
-                        self.bots: discord.PermissionOverwrite(connect=True)}
+                          match.red_role: discord.PermissionOverwrite(connect=True),
+                          self.staff: discord.PermissionOverwrite(connect=True),
+                          self.bots: discord.PermissionOverwrite(connect=True)}
         overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                        match.blue_role: discord.PermissionOverwrite(connect=True),
-                        self.staff: discord.PermissionOverwrite(connect=True),
-                        self.bots: discord.PermissionOverwrite(connect=True)}
+                           match.blue_role: discord.PermissionOverwrite(connect=True),
+                           self.staff: discord.PermissionOverwrite(connect=True),
+                           self.bots: discord.PermissionOverwrite(connect=True)}
 
         if match.game_size != 2:
             match.red_channel, match.blue_channel = await asyncio.gather(
                 ctx.guild.create_voice_channel(name=f"🟥{match.full_game_name}🟥",
-                                            category=self.category, overwrites=overwrites_red),
+                                               category=self.category, overwrites=overwrites_red),
                 ctx.guild.create_voice_channel(name=f"🟦{match.full_game_name}🟦",
-                                            category=self.category, overwrites=overwrites_blue)
+                                               category=self.category, overwrites=overwrites_blue)
             )
 
             if not match.game:
@@ -1092,14 +1110,13 @@ class Ranked(commands.Cog):
         tasks = []
         for player in match.game.red | match.game.blue:
             if match.game_size != 2:
-                tasks.append(move_player(player, match.red_channel if player in match.game.red else match.blue_channel))
+                tasks.append(move_player(
+                    player, match.red_channel if player in match.game.red else match.blue_channel))
 
         await asyncio.gather(*tasks, return_exceptions=True)
 
         await queue_channel.send(f"{match.red_role.mention} {match.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
-
-
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="clearmatch", description="Clears current running match")
@@ -1110,7 +1127,7 @@ class Ranked(commands.Cog):
 
         ephemeral = False
         if isinstance(interaction.user, discord.Member) and EVENT_STAFF_ID in [y.id for y in
-                                                                                   interaction.user.roles]:
+                                                                               interaction.user.roles]:
             await interaction.response.defer()
             await self.do_clear_match(interaction.user.guild, current_match)
             message = "Cleared successfully!"
@@ -1122,7 +1139,8 @@ class Ranked(commands.Cog):
 
     async def do_clear_match(self, guild: discord.Guild, match: XrcGame):
         if match.server_port:
-            stop_server_process(match.server_port)
+            server_actions = self.bot.get_cog('ServerActions')
+            server_actions.stop_server_process(match.server_port)
 
         match.red_series = match.blue_series = 2
 
@@ -1215,7 +1233,7 @@ async def shutdown_server_inactivity(server: int):
                             "Your ranked match has been cancelled due to inactivity.")
                 return
 
-    stop_server_process(server)
+    # stop_server_process(server)  # FIXME
 
 
 async def server_has_players(server: int) -> bool:
@@ -1274,7 +1292,8 @@ class GameButton(discord.ui.Button['game']):
     async def callback(self, interaction: discord.Interaction):
         logger.info('{} game button pressed'.format(self.game))
 
-        embed = discord.Embed(title=self.game, description=f"Queue for {self.game}!", color=0x00ff00)
+        embed = discord.Embed(
+            title=self.game, description=f"Queue for {self.game}!", color=0x00ff00)
 
         try:
             game_icon = game_logos[self.game]
@@ -1288,11 +1307,13 @@ class GameButton(discord.ui.Button['game']):
 
         max_alliance = int(default_game_players[server_games[self.game]] / 2)
 
-        logger.info("Max of {} players per alliance, generating buttons".format(max_alliance))
+        logger.info(
+            "Max of {} players per alliance, generating buttons".format(max_alliance))
 
         for n in range(1, max_alliance+1):
-            view.add_item(QueueButton(game=f'{self.game} {n}v{n}', short_code=self.short_code+f'{n}v{n}', display=f'{n}v{n}', cog=self.cog))
-        
+            view.add_item(QueueButton(
+                game=f'{self.game} {n}v{n}', short_code=self.short_code+f'{n}v{n}', display=f'{n}v{n}', cog=self.cog))
+
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True, delete_after=30)
 
 
@@ -1303,7 +1324,7 @@ class QueueButton(discord.ui.Button['queue']):
         self.short_code = short_code
         self.display = display
         self.cog = cog
-    
+
     async def callback(self, interaction: discord.Interaction):
         logger.info('{} button pressed!'.format(self.game))
 
