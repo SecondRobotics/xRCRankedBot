@@ -189,7 +189,8 @@ class XrcGame:
 
         try:
             self.game_icon = game_logos[game]
-        except:
+        except Exception as e:
+            logger.warning(f"Error setting game icon: {e}")
             self.game_icon = None
 
 
@@ -546,7 +547,22 @@ class Ranked(commands.Cog):
                 f"You must register for an account at <{REGISTRATION_URL}> before you can queue.",
                 ephemeral=True)
             return False
+
+        # Check if the player is already in a game
+        if await self.is_player_in_match(interaction.user):
+            await interaction.followup.send(
+                "You are already in a match. Please finish your current match before queuing for a new one.",
+                ephemeral=True)
+            return False
+
         return True
+
+    async def is_player_in_match(self, player: discord.Member) -> bool:
+        for qdata in game_queues.values():
+            for match in qdata.matches:
+                if match.red_role in player.roles or match.blue_role in player.roles:
+                    return True
+        return False
 
     def is_valid_queue_channel(self, interaction: discord.Interaction, from_button: bool) -> bool:
         return (isinstance(interaction.channel, discord.TextChannel) and
@@ -1128,21 +1144,9 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
 
-        qdata = None
-        current_match = None
-        user_roles = set(interaction.user.roles)
-        for queue in game_queues.values():
-            for match in queue.matches:
-                if match.red_role in user_roles or match.blue_role in user_roles:
-                    logger.info(f"found game {match}")
-                    qdata = queue
-                    current_match = match
-                    logger.info(f"qdata {qdata}")
-                    break
-            if current_match:
-                break
-
-        if qdata is None or current_match is None:
+        # Find the current match and queue data
+        qdata, current_match = self.find_current_match(interaction.user.roles)
+        if not qdata or not current_match:
             await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
             return
 
@@ -1150,77 +1154,86 @@ class Ranked(commands.Cog):
             await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
             return
 
-        roles = [role.id for role in interaction.user.roles]
-
-        if current_match.red_role and current_match.blue_role:
-            ranked_roles = [EVENT_STAFF_ID, current_match.red_role.id, current_match.blue_role.id]
-        else:
-            ranked_roles = [EVENT_STAFF_ID]
-
-        submit_check = any(role in ranked_roles for role in roles)
-
-        if not submit_check:
+        if not self.is_eligible_to_submit(interaction.user.roles, current_match):
             await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
             return
 
-        logger.info(f"Checking match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
-
-        if current_match.red_series == 2 or current_match.blue_series == 2:
+        if self.is_series_complete(current_match):
             await interaction.followup.send("Series is complete already!", ephemeral=True)
             return
 
-        if int(red_score) > int(blue_score):
-            current_match.red_series += 1
-        elif int(blue_score) > int(red_score):
-            current_match.blue_series += 1
+        self.update_series_score(current_match, red_score, blue_score)
+        
+        gg, result_message = self.check_series_end(current_match)
+        await interaction.followup.send(result_message)
 
+        response = await self.submit_score_to_api(current_match, red_score, blue_score)
+        embed = self.create_score_embed(current_match, red_score, blue_score, response)
+
+        if gg:
+            await self.handle_game_end(interaction, qdata, current_match, embed)
+        else:
+            await interaction.channel.send(embed=embed)
+
+    # Helper methods
+    def find_current_match(self, user_roles):
+        user_roles = set(user_roles)
+        for queue in game_queues.values():
+            for match in queue.matches:
+                if match.red_role in user_roles or match.blue_role in user_roles:
+                    return queue, match
+        return None, None
+
+    def is_eligible_to_submit(self, user_roles, current_match):
+        ranked_roles = [EVENT_STAFF_ID, current_match.red_role.id, current_match.blue_role.id] if current_match.red_role and current_match.blue_role else [EVENT_STAFF_ID]
+        return any(role.id in ranked_roles for role in user_roles)
+
+    def is_series_complete(self, current_match):
+        return current_match.red_series == 2 or current_match.blue_series == 2
+
+    def update_series_score(self, current_match, red_score, blue_score):
+        if red_score > blue_score:
+            current_match.red_series += 1
+        elif blue_score > red_score:
+            current_match.blue_series += 1
         logger.info(f"Updated match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
 
-        gg = True
+    def check_series_end(self, current_match):
         if current_match.red_series == 2:
-            await interaction.followup.send("🟥 Red Wins! 🟥")
+            return True, "🟥 Red Wins! 🟥"
         elif current_match.blue_series == 2:
-            await interaction.followup.send("🟦 Blue Wins! 🟦")
-        else:
-            await interaction.followup.send("Score Submitted")
-            gg = False
+            return True, "🟦 Blue Wins! 🟦"
+        return False, "Score Submitted"
 
-        red_ids = [player.id for player in current_match.game.red] if current_match.game else []
-        blue_ids = [player.id for player in current_match.game.blue] if current_match.game else []
-
+    async def submit_score_to_api(self, current_match, red_score, blue_score):
         url = f'https://secondrobotics.org/api/ranked/{current_match.api_short}/match/'
         json_data = {
-            "red_alliance": red_ids,
-            "blue_alliance": blue_ids,
+            "red_alliance": [player.id for player in current_match.game.red] if current_match.game else [],
+            "blue_alliance": [player.id for player in current_match.game.blue] if current_match.game else [],
             "red_score": red_score,
             "blue_score": blue_score
         }
-        response = requests.post(url, json=json_data, headers=HEADER).json()
-        logger.info(response)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=json_data, headers=HEADER) as resp:
+                return await resp.json()
 
+    def create_score_embed(self, current_match, red_score, blue_score, response):
         embed = discord.Embed(color=0x34eb3d,
                               title=f"[{current_match.full_game_name}] Score submitted | 🟥 {current_match.red_series}-{current_match.blue_series}  🟦 |")
         embed.set_thumbnail(url=current_match.game_icon)
 
-        red = "\n".join(
-            f"[{response['red_display_names'][i]}](https://secondrobotics.org/ranked/{current_match.api_short}/{response['red_player_elos'][i]['player']}) "
-            f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response['red_elo_changes'][i], 3))}\n```"
-            for i, player in enumerate(response['red_player_elos'])
-        )
+        for color, score in [('red', red_score), ('blue', blue_score)]:
+            players = "\n".join(
+                f"[{response[f'{color}_display_names'][i]}](https://secondrobotics.org/ranked/{current_match.api_short}/{player['player']}) "
+                f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response[f'{color}_elo_changes'][i], 3))}\n```"
+                for i, player in enumerate(response[f'{color}_player_elos'])
+            )
+            embed.add_field(name=f'{color.upper()} {"🟥" if color == "red" else "🟦"} ({score})',
+                            value=players,
+                            inline=True)
+        return embed
 
-        blue = "\n".join(
-            f"[{response['blue_display_names'][i]}](https://secondrobotics.org/ranked/{current_match.api_short}/{response['blue_player_elos'][i]['player']}) "
-            f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response['blue_elo_changes'][i], 3))}\n```"
-            for i, player in enumerate(response['blue_player_elos'])
-        )
-
-        embed.add_field(name=f'RED 🟥 ({red_score})',
-                        value=red,
-                        inline=True)
-        embed.add_field(name=f'BLUE 🟦 ({blue_score})',
-                        value=blue,
-                        inline=True)
-
+    async def handle_game_end(self, interaction, qdata, current_match, embed):
         class RejoinQueueView(discord.ui.View):
             def __init__(self, qdata: Queue, match: XrcGame, cog: Ranked):
                 super().__init__()
@@ -1229,34 +1242,32 @@ class Ranked(commands.Cog):
                 self.cog = cog
 
             @discord.ui.button(label="Rejoin Queue", style=discord.ButtonStyle.blurple, emoji="🔄")
-            async def rejoin_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
-                await self.cog.queue_player(interaction, self.qdata.api_short)
+            async def rejoin_queue(self, button_interaction: discord.Interaction, button: discord.ui.Button):
+                await self.cog.queue_player(button_interaction, self.qdata.api_short)
 
-        if gg:
-            view = RejoinQueueView(qdata, current_match, self)
-            await interaction.channel.send(embed=embed, view=view)
+        view = RejoinQueueView(qdata, current_match, self)
+        await interaction.channel.send(embed=embed, view=view)
 
-            # Delete roles directly
-            await current_match.red_role.delete()
-            await current_match.blue_role.delete()
+        await asyncio.gather(
+            current_match.red_role.delete(),
+            current_match.blue_role.delete()
+        )
 
-            # Move players to the lobby and delete voice channels
-            lobby = self.bot.get_channel(LOBBY_VC_ID)
-            for channel in [current_match.red_channel, current_match.blue_channel]:
-                if channel:
-                    for member in channel.members:
-                        await member.move_to(lobby)
-                    await channel.delete()
+        lobby = self.bot.get_channel(LOBBY_VC_ID)
+        move_tasks = []
+        for channel in [current_match.red_channel, current_match.blue_channel]:
+            if channel:
+                move_tasks.extend([member.move_to(lobby) for member in channel.members])
+                move_tasks.append(channel.delete())
+        await asyncio.gather(*move_tasks)
 
-            if current_match.server_port:
-                server_actions = self.bot.get_cog('ServerActions')
-                server_actions.stop_server_process(current_match.server_port)
+        if current_match.server_port:
+            server_actions = self.bot.get_cog('ServerActions')
+            server_actions.stop_server_process(current_match.server_port)
 
-            # Remove the match from the queue
-            qdata.remove_match(current_match)
-        else:
-            await interaction.channel.send(embed=embed)
+        qdata.remove_match(current_match)
 
+   
     
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="clearmatch", description="Clears current running match")
