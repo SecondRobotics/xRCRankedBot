@@ -64,6 +64,7 @@ if not BOTS_ROLE_ID:
     raise RuntimeError('BOTS_ROLE_ID not found')
 
 server_games = {
+    "Test": "-1",
     "Splish Splash": "0",
     "Relic Recovery": "1",
     "Rover Ruckus": "2",
@@ -100,6 +101,7 @@ server_game_settings = {
 
 
 short_codes = {
+    "Test": "Test",
     "Splish Splash": "S",
     "Relic Recovery": "",
     "Rover Ruckus": "RoRu",
@@ -121,6 +123,7 @@ short_codes = {
 }
 
 default_game_players = {
+    "-1": 6,
     "0": 4,
     "1": 4,
     "2": 4,

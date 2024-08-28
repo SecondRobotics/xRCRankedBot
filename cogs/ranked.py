@@ -7,7 +7,7 @@ from discord import app_commands, ButtonStyle
 from discord.ui import View, Button
 import random
 from queue import Queue as BaseQueue, Empty
-from discord.utils import get
+from discord.utils import get, escape_mentions
 import discord
 import logging
 from discord.ext import commands, tasks
@@ -49,6 +49,7 @@ active_games = list(server_games.keys())[-3:]
 inactive_games = list(server_games.keys())[:-3]
 inactive_games.remove("Bot Royale")
 inactive_games.remove("Relic Recovery")
+#active_games.append("Test")
 
 daily_game = random.choice(inactive_games)
 
@@ -591,15 +592,21 @@ class Ranked(commands.Cog):
 
     async def ping_queue(self, qdata: Queue, interaction: discord.Interaction):
         current_time = datetime.now()
-        if not qdata.matches or (qdata.matches and qdata.matches[-1].last_ping_time is None or (current_time - qdata.matches[-1].last_ping_time).total_seconds() > 3600):
-            qdata.matches[-1].last_ping_time = current_time
+        last_match = qdata.matches[-1] if qdata.matches else None
+        
+        if not last_match or last_match.last_ping_time is None or (current_time - last_match.last_ping_time).total_seconds() > 3600:
+            if last_match:
+                last_match.last_ping_time = current_time
 
             ping_role_name = f"{qdata.game_type} Ping"
             logger.info(f"Pinging {ping_role_name}")
             ping_role = discord.utils.get(interaction.guild.roles, name=ping_role_name)
-            if ping_role is not None:
+            
+            if ping_role:
                 await queue_channel.send(
-                    f"{ping_role.mention} Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now {qdata._queue.qsize()}/{qdata.alliance_size * 2}!")
+                    f"{ping_role.mention} Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) "
+                    f"is now {qdata._queue.qsize()}/{qdata.alliance_size * 2}!"
+                )
                 
 
     async def send_queue_status(self, qdata: Queue, interaction: discord.Interaction):
@@ -625,37 +632,41 @@ class Ranked(commands.Cog):
         await self.random(qdata, interaction, qdata.api_short, from_button)
 
     async def leave_all_queues(self, interaction: discord.Interaction, via_command=False):
-        send_publicly = False
-
-        if (not via_command or (isinstance(interaction.channel, discord.TextChannel) and
-                                isinstance(interaction.user, discord.Member) and
-                                interaction.channel.id == QUEUE_CHANNEL_ID and via_command)):
-            player = interaction.user
-            cleaned_display_name = ''.join(
-                char for char in player.display_name if char.isalnum())
-            message = f"🔴 **{cleaned_display_name}** 🔴\nremoved from the queue for "
-            dequeued = []
-            for queue in game_queues.values():
-                if player in queue._queue:
-                    queue._queue.remove(player)
-                    message += f"__{queue.full_game_name}__. *({queue._queue.qsize()}/{queue.alliance_size * 2})*, "
-                    dequeued.append(queue)
-                    send_publicly = True
-            await self.update_ranked_display()
-            if (len(dequeued) == 0):
-                message = "You aren't in any queues."
-                send_publicly = False
-        else:
-
+        if not isinstance(interaction.channel, discord.TextChannel) or not isinstance(interaction.user, discord.Member):
             return
 
+        if not via_command and interaction.channel.id != QUEUE_CHANNEL_ID:
+            return
+
+        player = interaction.user
+        
+        relevant_queues = [queue for queue in game_queues.values() if player in queue._queue]
+        
+        if not relevant_queues:
+            await interaction.response.send_message("You aren't in any queues.", ephemeral=True, delete_after=30)
+            return
+
+        message_parts = [f"🔴 **{escape_mentions(player.display_name)}** 🔴\nremoved from the queue for "]
+        
+        for queue in relevant_queues:
+            try:
+                queue._queue.remove(player)
+                message_parts.append(f"__{queue.full_game_name}__. *({queue._queue.qsize()}/{queue.alliance_size * 2})*")
+            except ValueError:
+                pass  # Player was not in this queue
+
+        message = ", ".join(message_parts)
+        
+        await self.update_ranked_display()
         await interaction.response.send_message(message, ephemeral=True, delete_after=30)
-        if send_publicly:
-            await queue_channel.send(message)
-        for qdata in dequeued:
+        await queue_channel.send(message)
+
+        for queue in relevant_queues:
             await queue_channel.send(
-                f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata._queue.qsize()}/{qdata.alliance_size * 2}]**",
-                delete_after=60)
+                f"Queue for [{queue.full_game_name}](https://secondrobotics.org/ranked/{queue.api_short}) "
+                f"is now **[{queue._queue.qsize()}/{queue.alliance_size * 2}]**",
+                delete_after=60
+            )
             
     async def random(self, qdata: Queue, interaction, game_type, from_button: bool = False):
         match = create_game(game_type)
@@ -737,7 +748,7 @@ class Ranked(commands.Cog):
                 logger.error(e)
 
         logger.info(f"Displaying teams for {match.game_type}")
-        channel = ctx.channel
+
         self.category = self.category or get(
             ctx.guild.categories, id=CATEGORY_ID)
         self.staff = self.staff or get(ctx.guild.roles, id=EVENT_STAFF_ID)
@@ -1029,9 +1040,8 @@ class Ranked(commands.Cog):
         if player in qdata._queue:
             qdata._queue.remove(player)
             await self.update_ranked_display()
-            cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
             message = (
-                f"🔴 **{cleaned_display_name}** 🔴\n"
+                f"🔴 **{escape_mentions(player.display_name)}** 🔴\n"
                 f"removed from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). "
                 f"*({qdata._queue.qsize()}/{qdata.alliance_size * 2})*"
             )
@@ -1111,6 +1121,7 @@ class Ranked(commands.Cog):
                               red_score, blue_score)
             )
 
+    
     @app_commands.command(description="Submit Score")
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, red_score: int, blue_score: int):
@@ -1119,11 +1130,10 @@ class Ranked(commands.Cog):
 
         qdata = None
         current_match = None
+        user_roles = set(interaction.user.roles)
         for queue in game_queues.values():
             for match in queue.matches:
-                red = match.red_role
-                blue = match.blue_role
-                if red in interaction.user.roles or blue in interaction.user.roles:
+                if match.red_role in user_roles or match.blue_role in user_roles:
                     logger.info(f"found game {match}")
                     qdata = queue
                     current_match = match
@@ -1136,33 +1146,27 @@ class Ranked(commands.Cog):
             await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
             return
 
-        if (
-                isinstance(interaction.channel, discord.TextChannel)
-                and interaction.channel.id == QUEUE_CHANNEL_ID
-                and isinstance(interaction.user, discord.Member)
-        ):
-            roles = [role.id for role in interaction.user.roles]
-
-            if current_match.red_role and current_match.blue_role:
-                ranked_roles = [EVENT_STAFF_ID,
-                                current_match.red_role.id, current_match.blue_role.id]
-            else:
-                ranked_roles = [EVENT_STAFF_ID]
-
-            submit_check = any(role in ranked_roles for role in roles)
-
-            if not submit_check:
-                await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
-                return
-
-            logger.info(
-                f"Checking match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
-
-            if current_match.red_series == 2 or current_match.blue_series == 2:
-                await interaction.followup.send("Series is complete already!", ephemeral=True)
-                return
-        else:
+        if not self.is_valid_queue_channel(interaction, False):
             await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
+            return
+
+        roles = [role.id for role in interaction.user.roles]
+
+        if current_match.red_role and current_match.blue_role:
+            ranked_roles = [EVENT_STAFF_ID, current_match.red_role.id, current_match.blue_role.id]
+        else:
+            ranked_roles = [EVENT_STAFF_ID]
+
+        submit_check = any(role in ranked_roles for role in roles)
+
+        if not submit_check:
+            await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
+            return
+
+        logger.info(f"Checking match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
+
+        if current_match.red_series == 2 or current_match.blue_series == 2:
+            await interaction.followup.send("Series is complete already!", ephemeral=True)
             return
 
         if int(red_score) > int(blue_score):
@@ -1170,8 +1174,7 @@ class Ranked(commands.Cog):
         elif int(blue_score) > int(red_score):
             current_match.blue_series += 1
 
-        logger.info(
-            f"Updated match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
+        logger.info(f"Updated match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
 
         gg = True
         if current_match.red_series == 2:
@@ -1182,10 +1185,8 @@ class Ranked(commands.Cog):
             await interaction.followup.send("Score Submitted")
             gg = False
 
-        red_ids = [
-            player.id for player in current_match.game.red] if current_match.game else []
-        blue_ids = [
-            player.id for player in current_match.game.blue] if current_match.game else []
+        red_ids = [player.id for player in current_match.game.red] if current_match.game else []
+        blue_ids = [player.id for player in current_match.game.blue] if current_match.game else []
 
         url = f'https://secondrobotics.org/api/ranked/{current_match.api_short}/match/'
         json_data = {
@@ -1232,7 +1233,8 @@ class Ranked(commands.Cog):
                 await self.cog.queue_player(interaction, self.qdata.api_short)
 
         if gg:
-            await interaction.channel.send(embed=embed, view=RejoinQueueView(qdata, current_match, self))
+            view = RejoinQueueView(qdata, current_match, self)
+            await interaction.channel.send(embed=embed, view=view)
 
             # Delete roles directly
             await current_match.red_role.delete()
@@ -1252,7 +1254,6 @@ class Ranked(commands.Cog):
 
             # Remove the match from the queue
             qdata.remove_match(current_match)
-
         else:
             await interaction.channel.send(embed=embed)
 
