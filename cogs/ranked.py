@@ -670,8 +670,9 @@ class Ranked(commands.Cog):
         player = interaction.user
         
         relevant_queues = [queue for queue in game_queues.values() if player in queue._queue]
+        relevant_vote_queues = [queue for queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1] if any(p[0] == player for p in queue._queue)]
         
-        if not relevant_queues:
+        if not relevant_queues and not relevant_vote_queues:
             await interaction.response.send_message("You aren't in any queues.", ephemeral=True, delete_after=30)
             return
 
@@ -684,13 +685,20 @@ class Ranked(commands.Cog):
             except ValueError:
                 pass  # Player was not in this queue
 
+        for vote_queue in relevant_vote_queues:
+            try:
+                vote_queue._queue = [item for item in vote_queue._queue if item[0] != player]
+                message_parts.append(f"__{vote_queue.full_game_name}__. *({vote_queue._queue.qsize()}/{vote_queue.alliance_size * 2})*")
+            except ValueError:
+                pass  # Player was not in this queue
+
         message = ", ".join(message_parts)
         
         await self.update_ranked_display()
         await interaction.response.send_message(message, ephemeral=True, delete_after=30)
         await queue_channel.send(message)
 
-        for queue in relevant_queues:
+        for queue in relevant_queues + relevant_vote_queues:
             await queue_channel.send(
                 f"Queue for [{queue.full_game_name}](https://secondrobotics.org/ranked/{queue.api_short}) "
                 f"is now **[{queue._queue.qsize()}/{queue.alliance_size * 2}]**",
@@ -1147,6 +1155,7 @@ class Ranked(commands.Cog):
             276900035512500224,
             262011554403319809
         ]
+
 
         added_players = ""
         
