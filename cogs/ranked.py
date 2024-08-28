@@ -143,9 +143,10 @@ class PlayerQueue(BaseQueue):
 
 
 class Game:
-    def __init__(self, players: list[discord.Member]):
-        self.players = set(players)
-        if len(players) > 2:
+    def __init__(self, players):
+        self.players = list(players)  # Ensure players is a list
+        self.captains = []
+        if len(self.players) >= 2:
             self.captains = random.sample(self.players, 2)
         self.red = set()
         self.blue = set()
@@ -335,6 +336,47 @@ class Ranked(commands.Cog):
         self.bot.set_ranked_cog_reference(self)
 
         # self.check_empty_servers.start() # FIXME: Disabled for now
+        self.bot.loop.create_task(self.cleanup_old_data())
+
+    async def cleanup_old_data(self):
+        await self.bot.wait_until_ready()
+        
+        for guild in self.bot.guilds:
+            category = guild.get_channel(CATEGORY_ID)
+            if category and isinstance(category, discord.CategoryChannel):
+                # Clean up old channels
+                channel_tasks = []
+                for channel in category.channels:
+                    if channel.name.startswith("🟥") or channel.name.startswith("🟦"):
+                        channel_tasks.append(self.delete_channel(channel))
+                await asyncio.gather(*channel_tasks)
+
+            # Clean up old roles
+            role_tasks = []
+            for role in guild.roles:
+                if role.name.startswith("Red ") or role.name.startswith("Blue "):
+                    role_tasks.append(self.delete_role(role))
+            await asyncio.gather(*role_tasks)
+
+        print("Cleanup of old data completed.")
+
+    async def delete_channel(self, channel):
+        try:
+            await channel.delete()
+            logger.info(f"Deleted old channel: {channel.name}")
+        except discord.errors.Forbidden:
+            logger.warning(f"No permission to delete channel: {channel.name}")
+        except Exception as e:
+            logger.error(f"Error deleting channel {channel.name}: {str(e)}")
+
+    async def delete_role(self, role):
+        try:
+            await role.delete()
+            logger.info(f"Deleted old role: {role.name}")
+        except discord.errors.Forbidden:
+            logger.warning(f"No permission to delete role: {role.name}")
+        except Exception as e:
+            logger.error(f"Error deleting role {role.name}: {str(e)}")
 
     async def startup(self):
         logger.info("Running startup code for ranked cog")
@@ -515,8 +557,9 @@ class Ranked(commands.Cog):
             await player.send("You are already in this queue.", ephemeral=True)
             return True
 
-        roles = [y.id for y in player.roles]
-        if any(match.red_role and match.blue_role and (match.red_role.id in roles or match.blue_role.id in roles)
+        roles = set(role.id for role in player.roles)
+        if any(match.red_role and match.blue_role and 
+               (match.red_role.id in roles or match.blue_role.id in roles)
                for match in qdata.matches):
             await player.send("You are already playing in a game!", ephemeral=True)
             return True
@@ -544,8 +587,7 @@ class Ranked(commands.Cog):
             await self.send_queue_status(qdata, interaction)
 
     def should_ping_queue(self, qdata: Queue) -> bool:
-        return ((qdata._queue.qsize() == 3 and qdata.alliance_size == 4) or
-                (qdata._queue.qsize() == 4 and qdata.alliance_size == 6))
+        return qdata._queue.qsize() in {3, 4} and qdata.alliance_size in {4, 6}
 
     async def ping_queue(self, qdata: Queue, interaction: discord.Interaction):
         current_time = datetime.now()
@@ -750,15 +792,28 @@ class Ranked(commands.Cog):
                            self.bots: discord.PermissionOverwrite(connect=True)}
 
         if match.game_size != 2:
-            match.red_channel, match.blue_channel = await asyncio.gather(
-                ctx.guild.create_voice_channel(name=f"🟥{match.full_game_name}🟥",
-                                               category=self.category, overwrites=overwrites_red),
-                ctx.guild.create_voice_channel(name=f"🟦{match.full_game_name}🟦",
-                                               category=self.category, overwrites=overwrites_blue)
-            )
+            try:
+                # Ensure the roles exist before creating channels
+                if not match.red_role or not match.blue_role:
+                    raise ValueError("Team roles are not properly set")
+
+                # Create the voice channels with proper error handling
+                match.red_channel, match.blue_channel = await asyncio.gather(
+                    ctx.guild.create_voice_channel(f"🟥{match.full_game_name}🟥", category=self.category, overwrites=overwrites_red),
+                    ctx.guild.create_voice_channel(f"🟦{match.full_game_name}🟦", category=self.category, overwrites=overwrites_blue)
+                )
+            except discord.errors.Forbidden:
+                print("I don't have permission to create voice channels.")
+                return
+            except ValueError as e:
+                print(f"Error: {str(e)}")
+                return
+            except Exception as e:
+                print(f"An unexpected error occurred: {str(e)}")
+                return
 
             if not match.game:
-                await channel.send("Error: No game found")
+                print("Error: No game found")
                 return
 
         tasks = []
@@ -852,7 +907,7 @@ class Ranked(commands.Cog):
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(name="queue", description="Add yourself to the queue")
-    async def q(self, interaction: discord.Interaction, game: str):
+    async def add_to_queue(self, interaction: discord.Interaction, game: str):
         await self.queue_player(interaction, game, False)
 
    
@@ -880,10 +935,47 @@ class Ranked(commands.Cog):
             await interaction.response.send_message(f"Successfully added{added_players} to the queue.",
                                                     ephemeral=True)
         else:
-            await interaction.response.send_message("Nerd.", ephemeral=True)
+            await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
             return
 
         await self.update_ranked_display()
+        await self.check_queue_status(qdata, interaction)
+
+    @app_commands.choices(game=games_choices)
+    @app_commands.command(description="Test queue with predefined user IDs")
+    async def testqueue(self, interaction: discord.Interaction, game: str):
+        logger.info(f"{interaction.user.name} called /testqueue")
+        qdata = game_queues[game]
+
+        # Predefined list of user IDs
+        user_ids = [
+            718991656988180490,
+            118000175816900615,
+            863469112482856981,
+            379349660764209152,
+            276900035512500224,
+            262011554403319809
+        ]
+
+        added_players = ""
+        
+        if isinstance(interaction.user, discord.Member) and any(role.id == EVENT_STAFF_ID for role in interaction.user.roles):
+            for user_id in user_ids:
+                member = interaction.guild.get_member(user_id)
+                if member:
+                    qdata._queue.put(member)
+                    added_players += f"\n{member.display_name}"
+                else:
+                    added_players += f"\nUser ID {user_id} not found"
+            
+            await interaction.response.send_message(f"Successfully added{added_players} to the queue for {game}.",
+                                                    ephemeral=True)
+        else:
+            await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+            return
+
+        await self.update_ranked_display()
+        await self.check_queue_status(qdata, interaction)
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Start a game")
@@ -929,33 +1021,27 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /leave")
         qdata = game_queues[game]
 
-        ephemeral = False
+        if not self.is_valid_queue_channel(interaction, False):
+            await interaction.response.send_message(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
+            return
 
-        if (isinstance(interaction.channel, discord.TextChannel) and
-                isinstance(interaction.user, discord.Member) and
-                interaction.channel.id == QUEUE_CHANNEL_ID):
-            player = interaction.user
-            if player in qdata._queue:
-                qdata._queue.remove(player)
-                await self.update_ranked_display()
-                cleaned_display_name = ''.join(
-                    char for char in player.display_name if char.isalnum())
-                message = (
-                    f"🔴 **{cleaned_display_name}** 🔴\n"
-                    f"removed from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). "
-                    f"*({qdata._queue.qsize()}/{qdata.alliance_size * 2})*"
-                )
-            else:
-                message = "You aren't in this queue."
-                ephemeral = True
+        player = interaction.user
+        if player in qdata._queue:
+            qdata._queue.remove(player)
+            await self.update_ranked_display()
+            cleaned_display_name = ''.join(char for char in player.display_name if char.isalnum())
+            message = (
+                f"🔴 **{cleaned_display_name}** 🔴\n"
+                f"removed from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). "
+                f"*({qdata._queue.qsize()}/{qdata.alliance_size * 2})*"
+            )
+            ephemeral = False
         else:
-            message = QUEUE_CHANNEL_ERROR_MSG
+            message = "You aren't in this queue."
             ephemeral = True
 
         await interaction.response.send_message(message, ephemeral=ephemeral)
-        await interaction.channel.send(
-            f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata._queue.qsize()}/{qdata.alliance_size * 2}]**",
-            delete_after=60)
+        await self.send_queue_status(qdata, interaction)
 
     
 
