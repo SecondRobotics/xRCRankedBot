@@ -669,10 +669,20 @@ class Ranked(commands.Cog):
 
         player = interaction.user
         
+        logger.info(f"Attempting to remove {player.name} from all queues")
+
         relevant_queues = [queue for queue in game_queues.values() if player in queue._queue]
-        relevant_vote_queues = [queue for queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1] if player in queue._queue]
-        
+        relevant_vote_queues = []
+
+        for vote_queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
+            if any(entry[0] == player for entry in vote_queue._queue.queue):
+                relevant_vote_queues.append(vote_queue)
+                logger.info(f"{player.name} found in {vote_queue.full_game_name}")
+            else:
+                logger.info(f"{player.name} not found in {vote_queue.full_game_name}")
+
         if not relevant_queues and not relevant_vote_queues:
+            logger.info(f"{player.name} not found in any queues")
             await interaction.response.send_message("You aren't in any queues.", ephemeral=True, delete_after=30)
             return
 
@@ -681,10 +691,12 @@ class Ranked(commands.Cog):
         for queue in relevant_queues:
             queue._queue.remove(player)
             message_parts.append(f"__{queue.full_game_name}__. *({queue._queue.qsize()}/{queue.alliance_size * 2})*")
+            logger.info(f"Removed {player.name} from {queue.full_game_name}")
 
         for queue in relevant_vote_queues:
-            queue._queue.remove(player)
-            message_parts.append(f"__{queue.full_game_name}__. *({queue._queue.qsize()}/{queue.alliance_size * 2})*")
+            queue._queue.queue = [entry for entry in queue._queue.queue if entry[0] != player]
+            message_parts.append(f"__{queue.full_game_name}__. *({len(queue._queue.queue)}/{queue.alliance_size * 2})*")
+            logger.info(f"Removed {player.name} from vote queue {queue.full_game_name}")
 
         message = ", ".join(message_parts)
         
@@ -693,11 +705,14 @@ class Ranked(commands.Cog):
         await queue_channel.send(message)
 
         for queue in relevant_queues + relevant_vote_queues:
+            queue_size = queue._queue.qsize() if hasattr(queue._queue, 'qsize') else len(queue._queue.queue)
             await queue_channel.send(
                 f"Queue for [{queue.full_game_name}](https://secondrobotics.org/ranked/{queue.api_short}) "
-                f"is now **[{queue._queue.qsize()}/{queue.alliance_size * 2}]**",
+                f"is now **[{queue_size}/{queue.alliance_size * 2}]**",
                 delete_after=60
             )
+        
+        logger.info(f"Finished removing {player.name} from all queues")
             
     async def random(self, qdata: Queue, interaction, game_type, from_button: bool = False):
         match = create_game(game_type)
@@ -1401,19 +1416,19 @@ class Ranked(commands.Cog):
         return embed
 
     async def handle_game_end(self, interaction, qdata, current_match, embed):
-        class RejoinQueueView(discord.ui.View):
-            def __init__(self, qdata: Queue, match: XrcGame, cog: Ranked):
-                super().__init__()
-                self.qdata = qdata
-                self.match = match
-                self.cog = cog
+        # class RejoinQueueView(discord.ui.View):
+        #     def __init__(self, qdata: Queue, match: XrcGame, cog: Ranked):
+        #         super().__init__()
+        #         self.qdata = qdata
+        #         self.match = match
+        #         self.cog = cog
 
-            @discord.ui.button(label="Rejoin Queue", style=discord.ButtonStyle.blurple, emoji="🔄")
-            async def rejoin_queue(self, button_interaction: discord.Interaction, button: discord.ui.Button):
-                await self.cog.queue_player(button_interaction, self.qdata.api_short)
+        #     @discord.ui.button(label="Rejoin Queue", style=discord.ButtonStyle.blurple, emoji="🔄")
+        #     async def rejoin_queue(self, button_interaction: discord.Interaction, button: discord.ui.Button):
+        #         await self.cog.queue_player(button_interaction, self.qdata.api_short)
 
-        view = RejoinQueueView(qdata, current_match, self)
-        await interaction.channel.send(embed=embed, view=view)
+        # view = RejoinQueueView(qdata, current_match, self)
+        # await interaction.channel.send(embed=embed, view=view)
 
         await asyncio.gather(
             current_match.red_role.delete(),
