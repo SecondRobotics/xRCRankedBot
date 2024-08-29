@@ -750,6 +750,19 @@ class Ranked(commands.Cog):
 
         logger.info(f"Blue: {blue}")
 
+        # Remove players from other queues
+        all_players = red + blue
+        for queue in game_queues.values():
+            if queue != qdata:
+                for player in all_players:
+                    if player in queue._queue:
+                        queue._queue.remove(player)
+                        logger.info(f"Removed {player.name} from {queue.full_game_name} queue")
+
+        # Also remove from vote queues
+        for vote_queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
+            vote_queue._queue.queue = [entry for entry in vote_queue._queue.queue if entry[0] not in all_players]
+
         # Code from start_match
         match.red_series = 0  # Reset series score to 0 when starting a match
         match.blue_series = 0  # Reset series score to 0 when starting a match
