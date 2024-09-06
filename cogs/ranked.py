@@ -670,7 +670,7 @@ class Ranked(commands.Cog):
         player = interaction.user
         
         relevant_queues = [queue for queue in game_queues.values() if player in queue._queue]
-        relevant_vote_queues = [queue for queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1] if player in queue._queue]
+        relevant_vote_queues = [queue for queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1] if any(p[0] == player for p in queue._queue)]
         
         if not relevant_queues and not relevant_vote_queues:
             await interaction.response.send_message("You aren't in any queues.", ephemeral=True, delete_after=30)
@@ -679,12 +679,18 @@ class Ranked(commands.Cog):
         message_parts = [f"🔴 **{escape_mentions(player.display_name)}** 🔴\nremoved from the queue for "]
         
         for queue in relevant_queues:
-            queue._queue.remove(player)
-            message_parts.append(f"__{queue.full_game_name}__. *({queue._queue.qsize()}/{queue.alliance_size * 2})*")
+            try:
+                queue._queue.remove(player)
+                message_parts.append(f"__{queue.full_game_name}__. *({queue._queue.qsize()}/{queue.alliance_size * 2})*")
+            except ValueError:
+                pass  # Player was not in this queue
 
-        for queue in relevant_vote_queues:
-            queue._queue.remove(player)
-            message_parts.append(f"__{queue.full_game_name}__. *({queue._queue.qsize()}/{queue.alliance_size * 2})*")
+        for vote_queue in relevant_vote_queues:
+            try:
+                vote_queue._queue = [item for item in vote_queue._queue if item[0] != player]
+                message_parts.append(f"__{vote_queue.full_game_name}__. *({vote_queue._queue.qsize()}/{vote_queue.alliance_size * 2})*")
+            except ValueError:
+                pass  # Player was not in this queue
 
         message = ", ".join(message_parts)
         
