@@ -23,6 +23,8 @@ class ServerActions(commands.Cog):
     servers_active: Dict[int, subprocess.Popen] = {}
     log_files: Dict[int, TextIOWrapper] = {}
     last_active: Dict[int, datetime] = {}
+    server_comments: Dict[int, str] = {}
+    server_games: Dict[int, str] = {}
 
     def __init__(self, bot):
         self.bot = bot
@@ -79,6 +81,8 @@ class ServerActions(commands.Cog):
         process = subprocess.Popen(command, stdout=f, stderr=f, shell=False)
         self.servers_active[port] = process
         self.last_active[port] = datetime.now()
+        self.server_comments[port] = comment
+        self.server_games[port] = game
 
         logger.info(f"Server launched on port {port}: '{comment}'")
         return f"✅ Launched server '{comment}' on port {port}", port
@@ -95,6 +99,8 @@ class ServerActions(commands.Cog):
         del self.servers_active[port]
         del self.last_active[port]
         del self.log_files[port]
+        del self.server_comments[port]
+        del self.server_games[port]
 
         logger.info(f"Server on port {port} shut down")
         return f"✅ Server on port {port} shut down"
