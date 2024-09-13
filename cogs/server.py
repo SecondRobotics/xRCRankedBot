@@ -8,7 +8,7 @@ from io import TextIOWrapper
 from discord import app_commands
 from discord.ext import commands
 from discord.app_commands import Choice
-from config import server_restart_modes, server_games_choices, PORTS, server_game_settings, default_game_players, GUILD_ID
+from config import server_restart_modes, server_games_choices, PORTS, server_game_settings, default_game_players, GUILD_ID, server_games
 
 logger = logging.getLogger('discord')
 
@@ -142,8 +142,9 @@ class ServerActions(commands.Cog):
         server_list = []
         for port, process in self.servers_active.items():
             comment = self.server_comments.get(port, "N/A")
-            game = self.server_games.get(port, "Unknown")
-            server_list.append(f"Port {port}: {game} - '{comment}'")
+            game_number = self.server_games.get(port, "Unknown")
+            game_name = next((name for name, number in server_games.items() if number == game_number), "Unknown")
+            server_list.append(f"Port {port}: {game_name} - '{comment}'")
 
         response = "Running servers:\n" + "\n".join(server_list)
         await interaction.response.send_message(response)
