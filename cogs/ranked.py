@@ -706,8 +706,11 @@ class Ranked(commands.Cog):
         red = random.sample(players_list, int(match.team_size))
         for player in red:
             match.game.add_to_red(player)
-            # Assign red role to the player
             await player.add_roles(match.red_role)
+            # Remove player from all queues
+            for queue in game_queues.values():
+                if player in queue._queue.queue:
+                    queue._queue.queue.remove(player)
 
         logger.info(f"Red: {red}")
 
@@ -715,8 +718,11 @@ class Ranked(commands.Cog):
         blue = [player for player in players_list if player not in red]
         for player in blue:
             match.game.add_to_blue(player)
-            # Assign blue role to the player
             await player.add_roles(match.blue_role)
+            # Remove player from all queues
+            for queue in game_queues.values():
+                if player in queue._queue.queue:
+                    queue._queue.queue.remove(player)
 
         logger.info(f"Blue: {blue}")
 
@@ -1263,7 +1269,10 @@ class Ranked(commands.Cog):
 
         if current_match.server_port:
             server_actions = self.bot.get_cog('ServerActions')
-            server_actions.stop_server_process(current_match.server_port)
+            if server_actions:
+                await server_actions.stop_server_process(current_match.server_port)
+            else:
+                logger.error("ServerActions cog not found. Unable to stop server.")
 
         qdata.remove_match(current_match)
 
