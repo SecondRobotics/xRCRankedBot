@@ -832,8 +832,8 @@ class Ranked(commands.Cog):
 
                 # Create the voice channels with proper error handling
                 match.red_channel, match.blue_channel = await asyncio.gather(
-                    ctx.guild.create_voice_channel(f"🟥{match.full_game_name}🟥", category=self.category, overwrites=overwrites_red),
-                    ctx.guild.create_voice_channel(f"🟦{match.full_game_name}🟦", category=self.category, overwrites=overwrites_blue)
+                    ctx.guild.create_voice_channel(f"🟥 0 - {match.full_game_name}🟥", category=self.category, overwrites=overwrites_red),
+                    ctx.guild.create_voice_channel(f"🟦 0 - {match.full_game_name}🟦", category=self.category, overwrites=overwrites_blue)
                 )
             except discord.errors.Forbidden:
                 print("I don't have permission to create voice channels.")
@@ -1170,6 +1170,9 @@ class Ranked(commands.Cog):
 
         self.update_series_score(current_match, red_score, blue_score)
         
+        # Update voice channel names with current series score
+        await self.update_voice_channel_names(current_match)
+
         gg, result_message = self.check_series_end(current_match)
         await interaction.followup.send(result_message)
 
@@ -1203,6 +1206,12 @@ class Ranked(commands.Cog):
         elif blue_score > red_score:
             current_match.blue_series += 1
         logger.info(f"Updated match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
+
+    async def update_voice_channel_names(self, current_match):
+        if current_match.red_channel:
+            await current_match.red_channel.edit(name=f"🟥 {current_match.red_series} - {current_match.full_game_name}🟥")
+        if current_match.blue_channel:
+            await current_match.blue_channel.edit(name=f"🟦 {current_match.blue_series} - {current_match.full_game_name}🟦")
 
     def check_series_end(self, current_match):
         if current_match.red_series == 2:

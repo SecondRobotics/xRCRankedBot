@@ -133,7 +133,14 @@ class ServerActions(commands.Cog):
             await interaction.response.send_message("⚠ No servers are running")
             return
 
-        await interaction.response.send_message("Servers running: " + ", ".join([str(port) for port in self.servers_active]))
+        server_list = []
+        for port, process in self.servers_active.items():
+            comment = self.server_comments.get(port, "N/A")
+            game = self.server_games.get(port, "Unknown")
+            server_list.append(f"Port {port}: {game} - '{comment}'")
+
+        response = "Running servers:\n" + "\n".join(server_list)
+        await interaction.response.send_message(response)
 
 
 async def setup(bot: commands.Bot) -> None:
