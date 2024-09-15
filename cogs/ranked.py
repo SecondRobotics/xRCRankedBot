@@ -540,7 +540,6 @@ class Ranked(commands.Cog):
         url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
         x = requests.get(url, headers=HEADER)
         res = x.json()
-        logger.info(res)
 
         if not res["exists"]:
             await interaction.followup.send(
@@ -712,8 +711,6 @@ class Ranked(commands.Cog):
                 if player in queue._queue.queue:
                     queue._queue.queue.remove(player)
 
-        logger.info(f"Red: {red}")
-
         # Assign remaining players to blue team and give them the blue role
         blue = [player for player in players_list if player not in red]
         for player in blue:
@@ -723,8 +720,6 @@ class Ranked(commands.Cog):
             for queue in game_queues.values():
                 if player in queue._queue.queue:
                     queue._queue.queue.remove(player)
-
-        logger.info(f"Blue: {blue}")
 
         # Code from start_match
         match.red_series = 0  # Reset series score to 0 when starting a match
@@ -750,7 +745,6 @@ class Ranked(commands.Cog):
 
 
     async def display_teams(self, ctx, match: XrcGame):
-
         async def fetch_player_elo(game, user_id):
             url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
             async with aiohttp.ClientSession() as session:
@@ -758,102 +752,104 @@ class Ranked(commands.Cog):
                     if response.status == 200:
                         data = await response.json()
                         return data.get('elo', 0)
-                    else:
-                        logger.error(
-                            f"Failed to fetch ELO for player {user_id}: {response.status}")
-                        return 0
+                    logger.error(f"Failed to fetch ELO for player {user_id}: {response.status}")
+                    return 1200
 
         async def move_player(player, channel):
             try:
                 await player.move_to(channel)
             except Exception as e:
-                logger.error(e)
+                logger.error(f"Failed to move player {player.display_name}: {e}")
 
         logger.info(f"Displaying teams for {match.game_type}")
 
-        self.category = self.category or get(
-            ctx.guild.categories, id=CATEGORY_ID)
+        self.category = self.category or get(ctx.guild.categories, id=CATEGORY_ID)
         self.staff = self.staff or get(ctx.guild.roles, id=EVENT_STAFF_ID)
         self.bots = self.bots or get(ctx.guild.roles, id=BOTS_ROLE_ID)
 
         logger.info(f"Getting IP for {match.game_type}")
 
-        red_field = "\n".join(
-            [f"🟥{player.mention}" for player in match.game.red])
-        blue_field = "\n".join(
-            [f"🟦{player.mention}" for player in match.game.blue])
+        red_mentions = [f"🟥{player.mention}" for player in match.game.red]
+        blue_mentions = [f"🟦{player.mention}" for player in match.game.blue]
+        red_field = "\n".join(red_mentions)
+        blue_field = "\n".join(blue_mentions)
 
-        # Construct the description with all relevant variables
         description = (
             f"Server 'Ranked{match.api_short}' started for you with password **{match.server_password}**\n"
             f"|| IP: {ip} Port: {match.server_port} ||\n"
-            f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})\n\n"
+            f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | "
+            f"[Leaderboard](https://secondrobotics.org/ranked/{match.api_short})\n\n"
         )
 
         embed = discord.Embed(
-            color=0x34dceb, title=f"Teams have been picked for {match.full_game_name}!", description=description
+            color=0x34dceb,
+            title=f"Teams have been picked for {match.full_game_name}!",
+            description=description
         )
         embed.set_thumbnail(url=match.game_icon)
 
-        # Fetch ELOs concurrently
-        red_elo_tasks = [fetch_player_elo(
-            match.api_short, player.id) for player in match.game.red]
-        blue_elo_tasks = [fetch_player_elo(
-            match.api_short, player.id) for player in match.game.blue]
+        red_elos, blue_elos = await asyncio.gather(
+            *(fetch_player_elo(match.api_short, player.id) for player in match.game.red),
+            *(fetch_player_elo(match.api_short, player.id) for player in match.game.blue),
+        )
 
-        red_elos = await asyncio.gather(*red_elo_tasks)
-        blue_elos = await asyncio.gather(*blue_elo_tasks)
+        avg_red_elo = (sum(red_elos) / len(match.game.red)) if match.game.red else 0
+        avg_blue_elo = (sum(blue_elos) / len(match.game.blue)) if match.game.blue else 0
 
-        # Calculate average ELO
-        avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
-        avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
-
-        embed.add_field(
-            name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
-        embed.add_field(
-            name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
+        embed.add_field(name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
+        embed.add_field(name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
 
         await queue_channel.send(embed=embed)
 
-        overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                          match.red_role: discord.PermissionOverwrite(connect=True),
-                          self.staff: discord.PermissionOverwrite(connect=True),
-                          self.bots: discord.PermissionOverwrite(connect=True)}
-        overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                           match.blue_role: discord.PermissionOverwrite(connect=True),
-                           self.staff: discord.PermissionOverwrite(connect=True),
-                           self.bots: discord.PermissionOverwrite(connect=True)}
+        overwrites = {
+            'red': {
+                ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
+                match.red_role: discord.PermissionOverwrite(connect=True),
+                self.staff: discord.PermissionOverwrite(connect=True),
+                self.bots: discord.PermissionOverwrite(connect=True),
+            },
+            'blue': {
+                ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
+                match.blue_role: discord.PermissionOverwrite(connect=True),
+                self.staff: discord.PermissionOverwrite(connect=True),
+                self.bots: discord.PermissionOverwrite(connect=True),
+            }
+        }
 
         if match.game_size != 2:
-            try:
-                # Ensure the roles exist before creating channels
-                if not match.red_role or not match.blue_role:
-                    raise ValueError("Team roles are not properly set")
+            if not (match.red_role and match.blue_role):
+                logger.error("Team roles are not properly set")
+                return
 
-                # Create the voice channels with proper error handling
+            try:
                 match.red_channel, match.blue_channel = await asyncio.gather(
-                    ctx.guild.create_voice_channel(f"🟥 0 - {match.full_game_name}🟥", category=self.category, overwrites=overwrites_red),
-                    ctx.guild.create_voice_channel(f"🟦 0 - {match.full_game_name}🟦", category=self.category, overwrites=overwrites_blue)
+                    ctx.guild.create_voice_channel(
+                        f"🟥 0 - {match.full_game_name}🟥",
+                        category=self.category,
+                        overwrites=overwrites['red']
+                    ),
+                    ctx.guild.create_voice_channel(
+                        f"🟦 0 - {match.full_game_name}🟦",
+                        category=self.category,
+                        overwrites=overwrites['blue']
+                    )
                 )
             except discord.errors.Forbidden:
-                print("I don't have permission to create voice channels.")
-                return
-            except ValueError as e:
-                print(f"Error: {str(e)}")
+                logger.error("Insufficient permissions to create voice channels.")
                 return
             except Exception as e:
-                print(f"An unexpected error occurred: {str(e)}")
+                logger.error(f"An unexpected error occurred while creating channels: {e}")
                 return
 
             if not match.game:
-                print("Error: No game found")
+                logger.error("No game found for the match.")
                 return
 
-        tasks = []
-        for player in match.game.red | match.game.blue:
-            if match.game_size != 2:
-                tasks.append(move_player(
-                    player, match.red_channel if player in match.game.red else match.blue_channel))
+        tasks = [
+            move_player(player, match.red_channel if player in match.game.red else match.blue_channel)
+            for player in match.game.red | match.game.blue
+            if match.game_size != 2
+        ]
 
         await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -1273,21 +1269,32 @@ class Ranked(commands.Cog):
         except Exception as e:
             logger.error(f"Error deleting roles: {e}")
 
-        # Move Members and Delete Channels
-        lobby = self.bot.get_channel(LOBBY_VC_ID)
-        move_tasks = []
-        for channel in [current_match.red_channel, current_match.blue_channel]:
-            if channel:
-                for member in channel.members:
-                    move_tasks.append(member.move_to(lobby))
-                    logger.info(f"Moving {member.display_name} to lobby.")
-                move_tasks.append(channel.delete())
-                logger.info(f"Deleting channel: {channel.name}")
-        try:
-            await asyncio.gather(*move_tasks)
-            logger.info("Moved all members and deleted channels successfully.")
-        except Exception as e:
-            logger.error(f"Error moving members or deleting channels: {e}")
+            # Start of Selection
+            # Move Members and Delete Channels
+            lobby = self.bot.get_channel(LOBBY_VC_ID)
+            move_tasks = []
+            for channel in [current_match.red_channel, current_match.blue_channel]:
+                if channel:
+                    for member in channel.members:
+                        move_tasks.append(member.move_to(lobby))
+                        logger.info(f"Moving {member.display_name} to lobby.")
+            try:
+                await asyncio.gather(*move_tasks)
+                logger.info("Moved all members successfully.")
+            except Exception as e:
+                logger.error(f"Error moving members: {e}")
+
+            # Delete Channels
+            delete_tasks = []
+            for channel in [current_match.red_channel, current_match.blue_channel]:
+                if channel:
+                    delete_tasks.append(channel.delete())
+                    logger.info(f"Deleting channel: {channel.name}")
+            try:
+                await asyncio.gather(*delete_tasks)
+                logger.info("Deleted channels successfully.")
+            except Exception as e:
+                logger.error(f"Error deleting channels: {e}")
 
         # Stop Server Process
         if current_match.server_port:
