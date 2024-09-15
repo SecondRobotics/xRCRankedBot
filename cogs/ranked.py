@@ -568,16 +568,29 @@ class Ranked(commands.Cog):
                 (interaction.channel.id == QUEUE_CHANNEL_ID or from_button) and
                 isinstance(interaction.user, discord.Member))
 
-    async def is_player_in_queue_or_match(self, player: discord.Member, qdata: Queue) -> bool:
+    async def is_player_in_queue_or_match(
+        self, player: discord.Member, qdata: Queue, interaction: discord.Interaction
+    ) -> bool:
         if player in qdata._queue:
-            await player.send("You are already in this queue.", ephemeral=True)
+            await interaction.response.send_message(
+                "You are already in this queue.", ephemeral=True
+            )
             return True
 
+        # Check if the player is already in a match
         roles = set(role.id for role in player.roles)
-        if any(match.red_role and match.blue_role and 
-               (match.red_role.id in roles or match.blue_role.id in roles)
-               for match in qdata.matches):
-            await player.send("You are already playing in a game!", ephemeral=True)
+        if any(
+            match.red_role
+            and match.blue_role
+            and (
+                match.red_role.id in roles
+                or match.blue_role.id in roles
+            )
+            for match in qdata.matches
+        ):
+            await interaction.response.send_message(
+                "You are already playing in a game!", ephemeral=True
+            )
             return True
 
         return False
@@ -788,9 +801,12 @@ class Ranked(commands.Cog):
         )
         embed.set_thumbnail(url=match.game_icon)
 
-        red_elos, blue_elos = await asyncio.gather(
-            *(fetch_player_elo(match.api_short, player.id) for player in match.game.red),
-            *(fetch_player_elo(match.api_short, player.id) for player in match.game.blue),
+        # Separate asyncio.gather calls for red and blue players
+        red_elos = await asyncio.gather(
+            *(fetch_player_elo(match.api_short, player.id) for player in match.game.red)
+        )
+        blue_elos = await asyncio.gather(
+            *(fetch_player_elo(match.api_short, player.id) for player in match.game.blue)
         )
 
         avg_red_elo = (sum(red_elos) / len(match.game.red)) if match.game.red else 0
