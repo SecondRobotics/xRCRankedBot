@@ -1263,27 +1263,51 @@ class Ranked(commands.Cog):
         view = RejoinQueueView(qdata, current_match, self)
         await interaction.channel.send(embed=embed, view=view)
 
-        await asyncio.gather(
-            current_match.red_role.delete(),
-            current_match.blue_role.delete()
-        )
+        # Delete Roles
+        try:
+            await asyncio.gather(
+                current_match.red_role.delete(),
+                current_match.blue_role.delete()
+            )
+            logger.info("Deleted red and blue roles successfully.")
+        except Exception as e:
+            logger.error(f"Error deleting roles: {e}")
 
+        # Move Members and Delete Channels
         lobby = self.bot.get_channel(LOBBY_VC_ID)
         move_tasks = []
         for channel in [current_match.red_channel, current_match.blue_channel]:
             if channel:
-                move_tasks.extend([member.move_to(lobby) for member in channel.members])
+                for member in channel.members:
+                    move_tasks.append(member.move_to(lobby))
+                    logger.info(f"Moving {member.display_name} to lobby.")
                 move_tasks.append(channel.delete())
-        await asyncio.gather(*move_tasks)
+                logger.info(f"Deleting channel: {channel.name}")
+        try:
+            await asyncio.gather(*move_tasks)
+            logger.info("Moved all members and deleted channels successfully.")
+        except Exception as e:
+            logger.error(f"Error moving members or deleting channels: {e}")
 
+        # Stop Server Process
         if current_match.server_port:
             server_actions = self.bot.get_cog('ServerActions')
             if server_actions:
-                await server_actions.stop_server_process(current_match.server_port)
+                logger.info(f"Attempting to stop server on port {current_match.server_port}.")
+                try:
+                    shutdown_result = server_actions.stop_server_process(current_match.server_port)
+                    logger.info(f"Server shutdown result: {shutdown_result}")
+                except Exception as e:
+                    logger.error(f"Failed to stop server on port {current_match.server_port}: {e}")
             else:
                 logger.error("ServerActions cog not found. Unable to stop server.")
 
-        qdata.remove_match(current_match)
+        # Remove Match from Queue
+        try:
+            qdata.remove_match(current_match)
+            logger.info(f"Removed match from queue: {current_match.full_game_name}.")
+        except Exception as e:
+            logger.error(f"Error removing match from queue: {e}")
 
    
     
