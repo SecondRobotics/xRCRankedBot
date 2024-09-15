@@ -1263,7 +1263,7 @@ class Ranked(commands.Cog):
         view = RejoinQueueView(qdata, current_match, self)
         await interaction.channel.send(embed=embed, view=view)
 
-        # Delete Roles
+        # 1. Delete Roles
         try:
             await asyncio.gather(
                 current_match.red_role.delete(),
@@ -1273,34 +1273,35 @@ class Ranked(commands.Cog):
         except Exception as e:
             logger.error(f"Error deleting roles: {e}")
 
-            # Start of Selection
-            # Move Members and Delete Channels
-            lobby = self.bot.get_channel(LOBBY_VC_ID)
-            move_tasks = []
-            for channel in [current_match.red_channel, current_match.blue_channel]:
-                if channel:
-                    for member in channel.members:
-                        move_tasks.append(member.move_to(lobby))
-                        logger.info(f"Moving {member.display_name} to lobby.")
-            try:
+        # 2. Move Members to Lobby
+        lobby = self.bot.get_channel(LOBBY_VC_ID)
+        move_tasks = []
+        for channel in [current_match.red_channel, current_match.blue_channel]:
+            if channel:
+                for member in channel.members:
+                    move_tasks.append(member.move_to(lobby))
+                    logger.info(f"Moving {member.display_name} to lobby.")
+        try:
+            if move_tasks:
                 await asyncio.gather(*move_tasks)
                 logger.info("Moved all members successfully.")
-            except Exception as e:
-                logger.error(f"Error moving members: {e}")
+        except Exception as e:
+            logger.error(f"Error moving members: {e}")
 
-            # Delete Channels
-            delete_tasks = []
-            for channel in [current_match.red_channel, current_match.blue_channel]:
-                if channel:
-                    delete_tasks.append(channel.delete())
-                    logger.info(f"Deleting channel: {channel.name}")
-            try:
+        # 3. Delete Channels
+        delete_tasks = []
+        for channel in [current_match.red_channel, current_match.blue_channel]:
+            if channel:
+                delete_tasks.append(channel.delete())
+                logger.info(f"Deleting channel: {channel.name}")
+        try:
+            if delete_tasks:
                 await asyncio.gather(*delete_tasks)
                 logger.info("Deleted channels successfully.")
-            except Exception as e:
-                logger.error(f"Error deleting channels: {e}")
+        except Exception as e:
+            logger.error(f"Error deleting channels: {e}")
 
-        # Stop Server Process
+        # 4. Stop Server Process
         if current_match.server_port:
             server_actions = self.bot.get_cog('ServerActions')
             if server_actions:
@@ -1313,7 +1314,7 @@ class Ranked(commands.Cog):
             else:
                 logger.error("ServerActions cog not found. Unable to stop server.")
 
-        # Remove Match from Queue
+        # 5. Remove Match from Queue
         try:
             qdata.remove_match(current_match)
             logger.info(f"Removed match from queue: {current_match.full_game_name}.")
