@@ -65,8 +65,11 @@ class ServerActions(commands.Cog):
                     try:
                         with open(log_path, "r") as f:
                             last_start_pos = 0
-                            for line in f:
-                                if "Server started at" in line:
+                            while True:
+                                line = f.readline()
+                                if not line:
+                                    break
+                                if "Done setting up TCP socket.." in line:  # Updated start signal
                                     last_start_pos = f.tell()
                             self.log_read_positions[port] = last_start_pos
                     except FileNotFoundError:
@@ -104,7 +107,7 @@ class ServerActions(commands.Cog):
             self.players_active[port] = []
 
         # Clear player list on server start
-        if "Server started at" in message:
+        if "Done setting up TCP socket.." in message:  # Updated condition
             self.players_active[port].clear()  # Clear existing players
             return
 
