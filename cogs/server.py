@@ -15,6 +15,7 @@ logger = logging.getLogger('discord')
 # Define other constants here
 SERVER_PATH = "./server/xRC Simulator.x86_64"
 SERVER_LOGS_DIR = "./server_logs/"
+SERVER_GAME_DATA_DIR = "./server_game_data/"  # New constant for score files
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
@@ -49,6 +50,10 @@ class ServerActions(commands.Cog):
         if port == -1:
             return "⚠ Could not find a port to run the server on", -1
 
+        # Set up output score files directory
+        output_dir = os.path.join(SERVER_GAME_DATA_DIR, str(port))
+        os.makedirs(output_dir, exist_ok=True)  # Create directories if they don't exist
+
         logger.info(f"Launching server on port {port}")
 
         game_settings = server_game_settings.get(game, "")
@@ -75,7 +80,8 @@ class ServerActions(commands.Cog):
             f"Admin={admin}", f"GameSettings={game_settings}",
             f"MinPlayers={min_players}",
             f"RestartAll={'On' if restart_all else 'Off'}",
-            "NetStats=On", "Profiling=On"
+            "NetStats=On", "Profiling=On",
+            f"OUTPUT_SCORE_FILES={output_dir}"  # Added parameter
         ]
 
         process = subprocess.Popen(command, stdout=f, stderr=f, shell=False)
@@ -117,7 +123,7 @@ class ServerActions(commands.Cog):
         logger.info(f"{interaction.user.name} called /launchserver")
 
         result, _ = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
-                                              tournament_mode, start_when_ready, register, spectators, min_players, restart_all)
+                                             tournament_mode, start_when_ready, register, spectators, min_players, restart_all)
 
         await interaction.response.send_message(result)
 
