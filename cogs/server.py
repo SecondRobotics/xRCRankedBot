@@ -260,26 +260,35 @@ class ServerActions(commands.Cog):
                 if not updated_data:
                     new_embed = discord.Embed(
                         title=f"Watching Server Status for Port {port}",
-                        description="⚠ Unable to retrieve updated data.",
+                        description="⚠ Unable to retrieve updated data. Stopping watch.",
                         color=discord.Color.red(),
                         timestamp=datetime.now(timezone.utc)
                     )
-                else:
-                    new_embed = discord.Embed(
-                        title=f"Watching Server Status for Port {port}",
-                        color=discord.Color.green(),
-                        timestamp=datetime.now(timezone.utc)
-                    )
-                    new_embed.add_field(name="Timer", value=updated_data.get("timer", "N/A"), inline=True)
-                    new_embed.add_field(name="Score_R", value=updated_data.get("Score_R", "N/A"), inline=True)
-                    new_embed.add_field(name="Score_B", value=updated_data.get("Score_B", "N/A"), inline=True)
-                    new_embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+                    try:
+                        await interaction.edit_original_response(embed=new_embed)
+                    except discord.HTTPException as e:
+                        logger.error(f"Failed to update embed for port {port}: {e}")
+                    break  # Stop watching if unable to get data
+
+                new_embed = discord.Embed(
+                    title=f"Watching Server Status for Port {port}",
+                    color=discord.Color.green(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                new_embed.add_field(name="Timer", value=updated_data.get("timer", "N/A"), inline=True)
+                new_embed.add_field(name="Score_R", value=updated_data.get("Score_R", "N/A"), inline=True)
+                new_embed.add_field(name="Score_B", value=updated_data.get("Score_B", "N/A"), inline=True)
+                new_embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
                 try:
                     await interaction.edit_original_response(embed=new_embed)
                 except discord.HTTPException as e:
                     logger.error(f"Failed to update embed for port {port}: {e}")
                     break  # Exit the loop if unable to update
+
+            # Remove the task from watch_tasks when it's done
+            if port in self.watch_tasks:
+                del self.watch_tasks[port]
 
         # Start the background task
         task = self.bot.loop.create_task(update_embed())
