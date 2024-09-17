@@ -77,17 +77,35 @@ class ServerActions(commands.Cog):
             await asyncio.sleep(1)  # Adjusted sleep interval if needed
 
     def parse_log_line(self, port: int, line: str):
-        join_pattern = r"\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M: Player (\w+) joined on position (.+) from IP=(\d+\.\d+\.\d+\.\d+)."
-        leave_pattern = r"\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M: Removing (\w+)"
+        # Extract timestamp from the beginning of the log line
+        try:
+            timestamp_str, message = line.split(': ', 1)  # Split timestamp and message
+            timestamp = datetime.strptime(timestamp_str, "%m/%d/%Y %I:%M:%S %p")  # Parse timestamp
+        except ValueError:
+            logger.error(f"Failed to parse timestamp in line: {line}")
+            return
 
-        join_match = re.match(join_pattern, line)
+        # Clear player list on server start
+        if "Server started at" in message:
+            self.players_active[port].clear()  # Clear existing players
+            return
+
+        # Clear player list on server shutdown
+        if "Server shut down at" in message:
+            self.players_active[port].clear()  # Clear existing players
+            return
+
+        join_pattern = r"Player (\w+) joined on position (.+) from IP=(\d+\.\d+\.\d+\.\d+)."
+        leave_pattern = r"Removing (\w+)"
+
+        join_match = re.search(join_pattern, message)
         if join_match:
             name, position, ip = join_match.groups()
-            player = Player(name=name, join_time=datetime.now(), position=position, ip=ip)
+            player = Player(name=name, join_time=timestamp, position=position, ip=ip)  # Use log timestamp
             self.players_active.setdefault(port, []).append(player)
             return
 
-        leave_match = re.match(leave_pattern, line)
+        leave_match = re.match(leave_pattern, message)
         if leave_match:
             name = leave_match.group(1)
             players = self.players_active.get(port, [])
