@@ -60,7 +60,7 @@ class ServerActions(commands.Cog):
         while True:
             for port, process in self.servers_active.items():
                 log_path = f"{SERVER_LOGS_DIR}{port}.log"
-                
+
                 if port not in self.log_read_positions:
                     try:
                         with open(log_path, "r") as f:
@@ -71,9 +71,11 @@ class ServerActions(commands.Cog):
                             self.log_read_positions[port] = last_start_pos
                     except FileNotFoundError:
                         logger.error(f"Log file for port {port} not found.")
+                        continue
                     except Exception as e:
                         logger.error(f"Error initializing log file for port {port}: {e}")
-                
+                        continue
+
                 try:
                     with open(log_path, "r") as f:
                         f.seek(self.log_read_positions[port])  # Move to the last read position
@@ -96,6 +98,10 @@ class ServerActions(commands.Cog):
             timestamp = datetime.strptime(timestamp_str, "%m/%d/%Y %I:%M:%S %p")  # Parse timestamp
         except ValueError:
             return
+
+        # Initialize player list if not present
+        if port not in self.players_active:
+            self.players_active[port] = []
 
         # Clear player list on server start
         if "Server started at" in message:
