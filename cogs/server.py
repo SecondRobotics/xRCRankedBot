@@ -189,7 +189,7 @@ class ServerActions(commands.Cog):
             logger.error(f"Status file not found for port {port}")
         return None
 
-    @app_commands.command(description="Retrieve server data once", name="SeverPeep")
+    @app_commands.command(description="Retrieve server data once", name="sever_peep")
     @app_commands.choices(port=ports_choices)
     async def server_peep(self, interaction: discord.Interaction, port: int):
         logger.info(f"{interaction.user.name} called /server_peep for port {port}")
@@ -211,7 +211,7 @@ class ServerActions(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(description="Watch server data and update every 5 seconds", name="ServerWatch")
+    @app_commands.command(description="Watch server data and update every 5 seconds", name="sever_watch")
     @app_commands.choices(port=ports_choices)
     async def server_watch(self, interaction: discord.Interaction, port: int):
         logger.info(f"{interaction.user.name} called /server_watch for port {port}")
