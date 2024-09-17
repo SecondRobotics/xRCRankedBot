@@ -108,6 +108,17 @@ class ServerActions(commands.Cog):
         del self.server_comments[port]
         del self.server_games[port]
 
+        # Delete server data directory for the port being shut down
+        output_dir = os.path.join(SERVER_GAME_DATA_DIR, str(port))
+        if os.path.exists(output_dir):
+            for root, dirs, files in os.walk(output_dir, topdown=False):
+                for name in files:
+                    os.remove(os.path.join(root, name))
+                for name in dirs:
+                    os.rmdir(os.path.join(root, name))
+            os.rmdir(output_dir)
+            logger.info(f"Deleted server data directory for port {port}")
+
         logger.info(f"Server on port {port} shut down")
         return f"✅ Server on port {port} shut down"
 
