@@ -48,31 +48,33 @@ class ServerActions(commands.Cog):
     server_games: Dict[int, str] = {}
     watch_tasks: Dict[int, asyncio.Task] = {}  # Keep track of watch tasks
     players_active: Dict[int, List[Player]] = {}  # New attribute to track players
+    log_read_positions: Dict[int, int] = {}  # Added to track last read positions
 
     def __init__(self, bot):
         self.bot = bot
         self.players_active = {}  # Initialize the players_active dictionary
+        self.log_read_positions = {}  # Initialize log read positions
         self.bot.loop.create_task(self.monitor_logs())  # Start log monitoring
 
     async def monitor_logs(self):
         while True:
             for port, process in self.servers_active.items():
-                log_file = self.log_files.get(port)
-                if log_file:
-                    try:
-                        # Open the log file in read mode to ensure it's readable
-                        with open(f"{SERVER_LOGS_DIR}{port}.log", "r") as f:
-                            f.seek(0, os.SEEK_END)  # Move to the end of the file
-                            while True:
-                                line = f.readline()
-                                if not line:
-                                    break
-                                self.parse_log_line(port, line)
-                    except FileNotFoundError:
-                        logger.error(f"Log file for port {port} not found.")
-                    except Exception as e:
-                        logger.error(f"Error reading log file for port {port}: {e}")
-            await asyncio.sleep(5)
+                log_path = f"{SERVER_LOGS_DIR}{port}.log"  # Define log file path
+                try:
+                    with open(log_path, "r") as f:
+                        last_pos = self.log_read_positions.get(port, 0)  # Get last read position
+                        f.seek(last_pos)  # Move to the last read position
+                        while True:
+                            line = f.readline()
+                            if not line:
+                                break
+                            self.parse_log_line(port, line)
+                        self.log_read_positions[port] = f.tell()  # Update last read position
+                except FileNotFoundError:
+                    logger.error(f"Log file for port {port} not found.")
+                except Exception as e:
+                    logger.error(f"Error reading log file for port {port}: {e}")
+            await asyncio.sleep(1)  # Adjusted sleep interval if needed
 
     def parse_log_line(self, port: int, line: str):
         join_pattern = r"\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M: Player (\w+) joined on position (.+) from IP=(\d+\.\d+\.\d+\.\d+)."
