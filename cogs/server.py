@@ -1,21 +1,33 @@
 import os
+import shutil  # Ensure shutil is imported for directory operations
 import subprocess
 import logging
-from datetime import datetime
-from typing import Dict
+from datetime import datetime, timezone
+from typing import Dict, Optional
 import discord
 from io import TextIOWrapper
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.app_commands import Choice
-from config import server_restart_modes, server_games_choices, PORTS, server_game_settings, default_game_players, GUILD_ID, server_games
+import asyncio
+import json  # For reading status.json
+
+from config import (
+    server_restart_modes,
+    server_games_choices,
+    PORTS,
+    server_game_settings,
+    default_game_players,
+    GUILD_ID,
+    server_games,
+)
 
 logger = logging.getLogger('discord')
 
 # Define other constants here
 SERVER_PATH = "./server/xRC Simulator.x86_64"
 SERVER_LOGS_DIR = "./server_logs/"
-SERVER_GAME_DATA_DIR = "./server_game_data/"  # New constant for score files
+SERVER_GAME_DATA_DIR = "./server_game_data/"  # Existing constant for score files
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
@@ -26,6 +38,7 @@ class ServerActions(commands.Cog):
     last_active: Dict[int, datetime] = {}
     server_comments: Dict[int, str] = {}
     server_games: Dict[int, str] = {}
+    watch_tasks: Dict[int, asyncio.Task] = {}  # Keep track of watch tasks
 
     def __init__(self, bot):
         self.bot = bot
@@ -165,6 +178,112 @@ class ServerActions(commands.Cog):
 
         response = "Running servers:\n" + "\n".join(server_list)
         await interaction.response.send_message(response)
+
+    def get_server_data(self, port: int) -> Optional[Dict[str, any]]:
+        """
+        Retrieves server data for the specified port.
+        Assumes there is a 'status.json' file in the server data directory.
+        """
+        server_data_path = os.path.join(SERVER_GAME_DATA_DIR, str(port), 'status.json')
+        if not os.path.exists(server_data_path):
+            logger.error(f"Status file not found for port {port}")
+        return None
+
+    @app_commands.command(description="Retrieve server data once", name="Sever Peep")
+    @app_commands.choices(port=ports_choices)
+    async def server_peep(self, interaction: discord.Interaction, port: int):
+        logger.info(f"{interaction.user.name} called /server_peep for port {port}")
+
+        data = self.get_server_data(port)
+        if not data:
+            await interaction.response.send_message(f"⚠ Unable to retrieve data for port {port}.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=f"Server Status for Port {port}",
+            color=discord.Color.blue(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
+        embed.add_field(name="Score_R", value=data.get("Score_R", "N/A"), inline=True)
+        embed.add_field(name="Score_B", value=data.get("Score_B", "N/A"), inline=True)
+        embed.set_footer(text=f"Requested by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(description="Watch server data and update every 5 seconds", name="Server Watch")
+    @app_commands.choices(port=ports_choices)
+    async def server_watch(self, interaction: discord.Interaction, port: int):
+        logger.info(f"{interaction.user.name} called /server_watch for port {port}")
+
+        if port not in self.servers_active:
+            await interaction.response.send_message(f"⚠ No active server on port {port}.", ephemeral=True)
+            return
+
+        data = self.get_server_data(port)
+        if not data:
+            await interaction.response.send_message(f"⚠ Unable to retrieve data for port {port}.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=f"Watching Server Status for Port {port}",
+            color=discord.Color.green(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
+        embed.add_field(name="Score_R", value=data.get("Score_R", "N/A"), inline=True)
+        embed.add_field(name="Score_B", value=data.get("Score_B", "N/A"), inline=True)
+        embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+
+        await interaction.response.send_message(embed=embed)
+
+        # Define the update task
+        async def update_embed():
+            while True:
+                await asyncio.sleep(5)  # Wait for 5 seconds
+                updated_data = self.get_server_data(port)
+                if not updated_data:
+                    new_embed = discord.Embed(
+                        title=f"Watching Server Status for Port {port}",
+                        description="⚠ Unable to retrieve updated data.",
+                        color=discord.Color.red(),
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                else:
+                    new_embed = discord.Embed(
+                        title=f"Watching Server Status for Port {port}",
+                        color=discord.Color.green(),
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    new_embed.add_field(name="Timer", value=updated_data.get("timer", "N/A"), inline=True)
+                    new_embed.add_field(name="Score_R", value=updated_data.get("Score_R", "N/A"), inline=True)
+                    new_embed.add_field(name="Score_B", value=updated_data.get("Score_B", "N/A"), inline=True)
+                    new_embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+
+                try:
+                    await interaction.edit_original_response(embed=new_embed)
+                except discord.HTTPException as e:
+                    logger.error(f"Failed to update embed for port {port}: {e}")
+                    break  # Exit the loop if unable to update
+
+        # Start the background task
+        task = self.bot.loop.create_task(update_embed())
+        self.watch_tasks[port] = task
+
+    @app_commands.command(description="Stops watching server data", name="stop_server_watch")
+    @app_commands.choices(port=ports_choices)
+    @app_commands.checks.has_any_role("Event Staff")
+    async def stop_server_watch(self, interaction: discord.Interaction, port: int):
+        logger.info(f"{interaction.user.name} called /stop_server_watch for port {port}")
+
+        if port not in self.watch_tasks:
+            await interaction.response.send_message(f"⚠ No watch task running for port {port}.", ephemeral=True)
+            return
+
+        task = self.watch_tasks[port]
+        task.cancel()
+        del self.watch_tasks[port]
+        await interaction.response.send_message(f"✅ Stopped watching server on port {port}.")
 
 
 async def setup(bot: commands.Bot) -> None:
