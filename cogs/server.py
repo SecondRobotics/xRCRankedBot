@@ -182,12 +182,27 @@ class ServerActions(commands.Cog):
     def get_server_data(self, port: int) -> Optional[Dict[str, any]]:
         """
         Retrieves server data for the specified port.
-        Assumes there is a 'status.json' file in the server data directory.
+        Reads Timer.txt, Score_R.txt, and Score_B.txt from the server data directory.
         """
-        server_data_path = os.path.join(SERVER_GAME_DATA_DIR, str(port), 'status.json')
-        if not os.path.exists(server_data_path):
-            logger.error(f"Status file not found for port {port}")
-        return None
+        server_data_dir = os.path.join(SERVER_GAME_DATA_DIR, str(port))
+        timer_path = os.path.join(server_data_dir, 'Timer.txt')
+        score_r_path = os.path.join(server_data_dir, 'Score_R.txt')
+        score_b_path = os.path.join(server_data_dir, 'Score_B.txt')
+        
+        server_data = {}
+        
+        try:
+            with open(timer_path, 'r') as f:
+                server_data['timer'] = f.read().strip()
+            with open(score_r_path, 'r') as f:
+                server_data['Score_R'] = f.read().strip()
+            with open(score_b_path, 'r') as f:
+                server_data['Score_B'] = f.read().strip()
+        except FileNotFoundError as e:
+            logger.error(f"Required file not found for port {port}: {e}")
+            return None
+        
+        return server_data
 
     @app_commands.command(description="Retrieve server data once", name="sever_peep")
     @app_commands.choices(port=ports_choices)
