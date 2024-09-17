@@ -59,17 +59,30 @@ class ServerActions(commands.Cog):
     async def monitor_logs(self):
         while True:
             for port, process in self.servers_active.items():
-                log_path = f"{SERVER_LOGS_DIR}{port}.log"  # Define log file path
+                log_path = f"{SERVER_LOGS_DIR}{port}.log"
+                
+                if port not in self.log_read_positions:
+                    try:
+                        with open(log_path, "r") as f:
+                            last_start_pos = 0
+                            for line in f:
+                                if "Server started at" in line:
+                                    last_start_pos = f.tell()
+                            self.log_read_positions[port] = last_start_pos
+                    except FileNotFoundError:
+                        logger.error(f"Log file for port {port} not found.")
+                    except Exception as e:
+                        logger.error(f"Error initializing log file for port {port}: {e}")
+                
                 try:
                     with open(log_path, "r") as f:
-                        last_pos = self.log_read_positions.get(port, 0)  # Get last read position
-                        f.seek(last_pos)  # Move to the last read position
+                        f.seek(self.log_read_positions[port])  # Move to the last read position
                         while True:
                             line = f.readline()
                             if not line:
                                 break
                             self.parse_log_line(port, line)
-                        self.log_read_positions[port] = f.tell()  # Update last read position
+                        self.log_read_positions[port] = f.tell()  # Update read position
                 except FileNotFoundError:
                     logger.error(f"Log file for port {port} not found.")
                 except Exception as e:
@@ -82,7 +95,6 @@ class ServerActions(commands.Cog):
             timestamp_str, message = line.split(': ', 1)  # Split timestamp and message
             timestamp = datetime.strptime(timestamp_str, "%m/%d/%Y %I:%M:%S %p")  # Parse timestamp
         except ValueError:
-            logger.error(f"Failed to parse timestamp in line: {line}")
             return
 
         # Clear player list on server start
