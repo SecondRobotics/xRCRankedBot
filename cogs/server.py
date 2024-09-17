@@ -59,18 +59,25 @@ class ServerActions(commands.Cog):
             for port, process in self.servers_active.items():
                 log_file = self.log_files.get(port)
                 if log_file:
-                    log_file.seek(0, os.SEEK_END)
-                    while True:
-                        line = log_file.readline()
-                        if not line:
-                            break
-                        self.parse_log_line(port, line)
-            await asyncio.sleep(1)
+                    try:
+                        # Open the log file in read mode to ensure it's readable
+                        with open(f"{SERVER_LOGS_DIR}{port}.log", "r") as f:
+                            f.seek(0, os.SEEK_END)  # Move to the end of the file
+                            while True:
+                                line = f.readline()
+                                if not line:
+                                    break
+                                self.parse_log_line(port, line)
+                    except FileNotFoundError:
+                        logger.error(f"Log file for port {port} not found.")
+                    except Exception as e:
+                        logger.error(f"Error reading log file for port {port}: {e}")
+            await asyncio.sleep(5)
 
     def parse_log_line(self, port: int, line: str):
         join_pattern = r"\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M: Player (\w+) joined on position (.+) from IP=(\d+\.\d+\.\d+\.\d+)."
         leave_pattern = r"\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M: Removing (\w+)"
-        
+
         join_match = re.match(join_pattern, line)
         if join_match:
             name, position, ip = join_match.groups()
@@ -83,7 +90,7 @@ class ServerActions(commands.Cog):
             name = leave_match.group(1)
             players = self.players_active.get(port, [])
             self.players_active[port] = [p for p in players if p.name != name]
-            return
+    
 
     def start_server_process(self, game: str, comment: str, password: str = "", admin: str = "Admin",
                              restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
@@ -354,7 +361,7 @@ class ServerActions(commands.Cog):
     @app_commands.command(description="Investigate server players", name="investigate")
     @app_commands.checks.has_any_role("Admin")
     @app_commands.choices(port=ports_choices)
-    async def investigate(self, interaction: discord.Interaction, port: int):
+    async def investigate(self, interaction: discord.Interaction, port: int, public: bool = False):  # Added 'public' parameter
         logger.info(f"{interaction.user.name} called /investigate for port {port}")
         players = self.players_active.get(port, [])
         if not players:
@@ -366,12 +373,15 @@ class ServerActions(commands.Cog):
             timestamp=datetime.now(timezone.utc)
         )
         for player in players:
+            value = f"Joined at {player.join_time.strftime('%m/%d/%Y %I:%M:%S %p')}\nPosition: {player.position}"
+            if not public:
+                value += f"\nIP: {player.ip}"  # Conditionally add IP
             embed.add_field(
                 name=player.name,
-                value=f"Joined at {player.join_time.strftime('%m/%d/%Y %I:%M:%S %p')}\nPosition: {player.position}\nIP: {player.ip}",
+                value=value,
                 inline=False
             )
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=not public)  # Set ephemeral based on 'public'
 
 async def setup(bot: commands.Bot) -> None:
     cog = ServerActions(bot)
