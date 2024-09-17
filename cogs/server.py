@@ -3,7 +3,7 @@ import shutil  # Ensure shutil is imported for directory operations
 import subprocess
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 import discord
 from io import TextIOWrapper
 from discord import app_commands
@@ -11,6 +11,8 @@ from discord.ext import commands, tasks
 from discord.app_commands import Choice
 import asyncio
 import json  # For reading status.json
+import re  # Add import for regex
+from dataclasses import dataclass  # Add import for Player dataclass
 
 from config import (
     server_restart_modes,
@@ -31,6 +33,12 @@ SERVER_GAME_DATA_DIR = "./server_game_data/"  # Existing constant for score file
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
+@dataclass
+class Player:
+    name: str
+    join_time: datetime
+    position: str
+    ip: str
 
 class ServerActions(commands.Cog):
     servers_active: Dict[int, subprocess.Popen] = {}
@@ -39,9 +47,43 @@ class ServerActions(commands.Cog):
     server_comments: Dict[int, str] = {}
     server_games: Dict[int, str] = {}
     watch_tasks: Dict[int, asyncio.Task] = {}  # Keep track of watch tasks
+    players_active: Dict[int, List[Player]] = {}  # New attribute to track players
 
     def __init__(self, bot):
         self.bot = bot
+        self.players_active = {}  # Initialize the players_active dictionary
+        self.bot.loop.create_task(self.monitor_logs())  # Start log monitoring
+
+    async def monitor_logs(self):
+        while True:
+            for port, process in self.servers_active.items():
+                log_file = self.log_files.get(port)
+                if log_file:
+                    log_file.seek(0, os.SEEK_END)
+                    while True:
+                        line = log_file.readline()
+                        if not line:
+                            break
+                        self.parse_log_line(port, line)
+            await asyncio.sleep(1)
+
+    def parse_log_line(self, port: int, line: str):
+        join_pattern = r"\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M: Player (\w+) joined on position (.+) from IP=(\d+\.\d+\.\d+\.\d+)."
+        leave_pattern = r"\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M: Removing (\w+)"
+        
+        join_match = re.match(join_pattern, line)
+        if join_match:
+            name, position, ip = join_match.groups()
+            player = Player(name=name, join_time=datetime.now(), position=position, ip=ip)
+            self.players_active.setdefault(port, []).append(player)
+            return
+
+        leave_match = re.match(leave_pattern, line)
+        if leave_match:
+            name = leave_match.group(1)
+            players = self.players_active.get(port, [])
+            self.players_active[port] = [p for p in players if p.name != name]
+            return
 
     def start_server_process(self, game: str, comment: str, password: str = "", admin: str = "Admin",
                              restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
@@ -204,7 +246,7 @@ class ServerActions(commands.Cog):
         
         return server_data
 
-    @app_commands.command(description="Retrieve server data once", name="sever_peep")
+    @app_commands.command(description="Retrieve server data once", name="server_peep")
     @app_commands.choices(port=ports_choices)
     async def server_peep(self, interaction: discord.Interaction, port: int):
         logger.info(f"{interaction.user.name} called /server_peep for port {port}")
@@ -226,7 +268,7 @@ class ServerActions(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(description="Watch server data and update every 5 seconds", name="sever_watch")
+    @app_commands.command(description="Watch server data and update every 5 seconds", name="server_watch")
     @app_commands.choices(port=ports_choices)
     async def server_watch(self, interaction: discord.Interaction, port: int):
         logger.info(f"{interaction.user.name} called /server_watch for port {port}")
@@ -309,6 +351,27 @@ class ServerActions(commands.Cog):
         del self.watch_tasks[port]
         await interaction.response.send_message(f"✅ Stopped watching server on port {port}.")
 
+    @app_commands.command(description="Investigate server players", name="investigate")
+    @app_commands.checks.has_any_role("Admin")
+    @app_commands.choices(port=ports_choices)
+    async def investigate(self, interaction: discord.Interaction, port: int):
+        logger.info(f"{interaction.user.name} called /investigate for port {port}")
+        players = self.players_active.get(port, [])
+        if not players:
+            await interaction.response.send_message("No active players on this server.", ephemeral=True)
+            return
+        embed = discord.Embed(
+            title=f"Players on Server Port {port}",
+            color=discord.Color.purple(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        for player in players:
+            embed.add_field(
+                name=player.name,
+                value=f"Joined at {player.join_time.strftime('%m/%d/%Y %I:%M:%S %p')}\nPosition: {player.position}\nIP: {player.ip}",
+                inline=False
+            )
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot: commands.Bot) -> None:
     cog = ServerActions(bot)
