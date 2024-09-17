@@ -304,14 +304,21 @@ class ServerActions(commands.Cog):
             await interaction.response.send_message(f"⚠ Unable to retrieve data for port {port}.", ephemeral=True)
             return
 
+        players = self.players_active.get(port, [])
+        red_alliance = [player.name for player in players if player.position.lower().startswith("red")]
+        blue_alliance = [player.name for player in players if player.position.lower().startswith("blue")]
+
+        red_players = "\n".join(red_alliance) if red_alliance else "No players in Red Alliance."
+        blue_players = "\n".join(blue_alliance) if blue_alliance else "No players in Blue Alliance."
+
         embed = discord.Embed(
             title=f"Server Status for Port {port}",
             color=discord.Color.blue(),
             timestamp=datetime.now(timezone.utc)
         )
         embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
-        embed.add_field(name="Score_R", value=data.get("Score_R", "N/A"), inline=True)
-        embed.add_field(name="Score_B", value=data.get("Score_B", "N/A"), inline=True)
+        embed.add_field(name="Red Alliance", value=red_players, inline=True)
+        embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
         embed.set_footer(text=f"Requested by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
         await interaction.response.send_message(embed=embed)
@@ -330,14 +337,21 @@ class ServerActions(commands.Cog):
             await interaction.response.send_message(f"⚠ Unable to retrieve data for port {port}.", ephemeral=True)
             return
 
+        players = self.players_active.get(port, [])
+        red_alliance = [player.name for player in players if player.position.lower().startswith("red")]
+        blue_alliance = [player.name for player in players if player.position.lower().startswith("blue")]
+
+        red_players = "\n".join(red_alliance) if red_alliance else "No players in Red Alliance."
+        blue_players = "\n".join(blue_alliance) if blue_alliance else "No players in Blue Alliance."
+
         embed = discord.Embed(
             title=f"Watching Server Status for Port {port}",
             color=discord.Color.green(),
             timestamp=datetime.now(timezone.utc)
         )
         embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
-        embed.add_field(name="Score_R", value=data.get("Score_R", "N/A"), inline=True)
-        embed.add_field(name="Score_B", value=data.get("Score_B", "N/A"), inline=True)
+        embed.add_field(name="Red Alliance", value=red_players, inline=True)
+        embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
         embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
         await interaction.response.send_message(embed=embed)
@@ -360,14 +374,21 @@ class ServerActions(commands.Cog):
                         logger.error(f"Failed to update embed for port {port}: {e}")
                     break  # Stop watching if unable to get data
 
+                players = self.players_active.get(port, [])
+                red_alliance = [player.name for player in players if player.position.lower().startswith("red")]
+                blue_alliance = [player.name for player in players if player.position.lower().startswith("blue")]
+
+                red_players = "\n".join(red_alliance) if red_alliance else "No players in Red Alliance."
+                blue_players = "\n".join(blue_alliance) if blue_alliance else "No players in Blue Alliance."
+
                 new_embed = discord.Embed(
                     title=f"Watching Server Status for Port {port}",
                     color=discord.Color.green(),
                     timestamp=datetime.now(timezone.utc)
                 )
                 new_embed.add_field(name="Timer", value=updated_data.get("timer", "N/A"), inline=True)
-                new_embed.add_field(name="Score_R", value=updated_data.get("Score_R", "N/A"), inline=True)
-                new_embed.add_field(name="Score_B", value=updated_data.get("Score_B", "N/A"), inline=True)
+                new_embed.add_field(name="Red Alliance", value=red_players, inline=True)
+                new_embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
                 new_embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
                 try:
@@ -408,20 +429,46 @@ class ServerActions(commands.Cog):
         if not players:
             await interaction.response.send_message("No active players on this server.", ephemeral=True)
             return
+        
+        # Sort players into alliances and spectators
+        red_alliance = [p for p in players if p.position.lower().startswith("red")]
+        blue_alliance = [p for p in players if p.position.lower().startswith("blue")]
+        spectators = [p for p in players if not p.position.lower().startswith(("red", "blue"))]
+        
         embed = discord.Embed(
             title=f"Players on Server Port {port}",
             color=discord.Color.purple(),
             timestamp=datetime.now(timezone.utc)
         )
-        for player in players:
-            value = f"Joined at {player.join_time.strftime('%m/%d/%Y %I:%M:%S %p')}\nPosition: {player.position}"
-            if not public:
-                value += f"\nIP: {player.ip}"  # Conditionally add IP
-            embed.add_field(
-                name=player.name,
-                value=value,
-                inline=False
+        
+        # Add Red Alliance section
+        if red_alliance:
+            red_players = "\n".join(
+                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if public else "") for p in red_alliance]
             )
+        else:
+            red_players = "None"
+        embed.add_field(name="🔴 Red Alliance", value=red_players, inline=False)
+        
+        # Add Blue Alliance section
+        if blue_alliance:
+            blue_players = "\n".join(
+                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if public else "") for p in blue_alliance]
+            )
+        else:
+            blue_players = "None"
+        embed.add_field(name="🔵 Blue Alliance", value=blue_players, inline=False)
+        
+        # Add Spectators section
+        if spectators:
+            spectator_list = "\n".join(
+                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if public else "") for p in spectators]
+            )
+        else:
+            spectator_list = "None"
+        embed.add_field(name="👁️ Spectators", value=spectator_list, inline=False)
+        
+        embed.set_footer(text=f"Requested by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
         await interaction.response.send_message(embed=embed, ephemeral=not public)  # Set ephemeral based on 'public'
 
 async def setup(bot: commands.Bot) -> None:
