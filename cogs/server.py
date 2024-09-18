@@ -311,6 +311,9 @@ class ServerActions(commands.Cog):
         red_players = "\n".join(red_alliance) if red_alliance else "No players in Red Alliance."
         blue_players = "\n".join(blue_alliance) if blue_alliance else "No players in Blue Alliance."
 
+        red_score = data.get("Score_R", "0")
+        blue_score = data.get("Score_B", "0")
+
         embed = discord.Embed(
             title=f"Server Status for Port {port}",
             color=discord.Color.blue(),
@@ -319,6 +322,8 @@ class ServerActions(commands.Cog):
         embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
         embed.add_field(name="Red Alliance", value=red_players, inline=True)
         embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
+        embed.add_field(name="Red Score", value=red_score, inline=True)
+        embed.add_field(name="Blue Score", value=blue_score, inline=True)
         embed.set_footer(text=f"Requested by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
         await interaction.response.send_message(embed=embed)
@@ -344,6 +349,9 @@ class ServerActions(commands.Cog):
         red_players = "\n".join(red_alliance) if red_alliance else "No players in Red Alliance."
         blue_players = "\n".join(blue_alliance) if blue_alliance else "No players in Blue Alliance."
 
+        red_score = data.get("Score_R", "0")
+        blue_score = data.get("Score_B", "0")
+
         embed = discord.Embed(
             title=f"Watching Server Status for Port {port}",
             color=discord.Color.green(),
@@ -352,6 +360,8 @@ class ServerActions(commands.Cog):
         embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
         embed.add_field(name="Red Alliance", value=red_players, inline=True)
         embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
+        embed.add_field(name="Red Score", value=red_score, inline=True)
+        embed.add_field(name="Blue Score", value=blue_score, inline=True)
         embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
         await interaction.response.send_message(embed=embed)
@@ -381,15 +391,20 @@ class ServerActions(commands.Cog):
                 red_players = "\n".join(red_alliance) if red_alliance else "No players in Red Alliance."
                 blue_players = "\n".join(blue_alliance) if blue_alliance else "No players in Blue Alliance."
 
+                red_score = updated_data.get("Score_R", "0")
+                blue_score = updated_data.get("Score_B", "0")
+
                 new_embed = discord.Embed(
                     title=f"Watching Server Status for Port {port}",
                     color=discord.Color.green(),
                     timestamp=datetime.now(timezone.utc)
                 )
-                new_embed.add_field(name="Timer", value=updated_data.get("timer", "N/A"), inline=True)
-                new_embed.add_field(name="Red Alliance", value=red_players, inline=True)
-                new_embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
-                new_embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+                embed.add_field(name="Timer", value=updated_data.get("timer", "N/A"), inline=True)
+                embed.add_field(name="Red Alliance", value=red_players, inline=True)
+                embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
+                embed.add_field(name="Red Score", value=red_score, inline=True)
+                embed.add_field(name="Blue Score", value=blue_score, inline=True)
+                embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
                 try:
                     await interaction.edit_original_response(embed=new_embed)
@@ -444,7 +459,7 @@ class ServerActions(commands.Cog):
         # Add Red Alliance section
         if red_alliance:
             red_players = "\n".join(
-                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if public else "") for p in red_alliance]
+                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if not public else "") for p in red_alliance]
             )
         else:
             red_players = "None"
@@ -453,7 +468,7 @@ class ServerActions(commands.Cog):
         # Add Blue Alliance section
         if blue_alliance:
             blue_players = "\n".join(
-                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if public else "") for p in blue_alliance]
+                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if not public else "") for p in blue_alliance]
             )
         else:
             blue_players = "None"
@@ -462,7 +477,7 @@ class ServerActions(commands.Cog):
         # Add Spectators section
         if spectators:
             spectator_list = "\n".join(
-                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if public else "") for p in spectators]
+                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if not public else "") for p in spectators]
             )
         else:
             spectator_list = "None"
