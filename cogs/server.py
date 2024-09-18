@@ -367,6 +367,7 @@ class ServerActions(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
         # Define the update task
+            # Start of Selection
         async def update_embed():
             while True:
                 await asyncio.sleep(5)  # Wait for 5 seconds
@@ -399,12 +400,12 @@ class ServerActions(commands.Cog):
                     color=discord.Color.green(),
                     timestamp=datetime.now(timezone.utc)
                 )
-                embed.add_field(name="Timer", value=updated_data.get("timer", "N/A"), inline=True)
-                embed.add_field(name="Red Alliance", value=red_players, inline=True)
-                embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
-                embed.add_field(name="Red Score", value=red_score, inline=True)
-                embed.add_field(name="Blue Score", value=blue_score, inline=True)
-                embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+                new_embed.add_field(name="Timer", value=updated_data.get("timer", "N/A"), inline=True)
+                new_embed.add_field(name="Red Alliance", value=red_players, inline=True)
+                new_embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
+                new_embed.add_field(name="Red Score", value=red_score, inline=True)
+                new_embed.add_field(name="Blue Score", value=blue_score, inline=True)
+                new_embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
                 try:
                     await interaction.edit_original_response(embed=new_embed)
