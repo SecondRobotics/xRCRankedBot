@@ -22,6 +22,7 @@ from config import (
     default_game_players,
     GUILD_ID,
     server_games,
+    QUEUE_STATUS_CHANNEL_ID,
 )
 
 logger = logging.getLogger('discord')
@@ -49,11 +50,13 @@ class ServerActions(commands.Cog):
     watch_tasks: Dict[int, asyncio.Task] = {}  # Keep track of watch tasks
     players_active: Dict[int, List[Player]] = {}  # New attribute to track players
     log_read_positions: Dict[int, int] = {}  # Added to track last read positions
+    watch_messages: Dict[int, discord.Message] = {}
 
     def __init__(self, bot):
         self.bot = bot
         self.players_active = {}  # Initialize the players_active dictionary
         self.log_read_positions = {}  # Initialize log read positions
+        self.watch_messages = {}  # Initialize watch_messages dictionary
         self.bot.loop.create_task(self.monitor_logs())  # Start log monitoring
 
     async def monitor_logs(self):
@@ -194,6 +197,11 @@ class ServerActions(commands.Cog):
         self.server_games[port] = game
 
         logger.info(f"Server launched on port {port}: '{comment}'")
+
+        # After starting the server, create watch message
+        game_type = server_games.get(game, "Unknown")
+        asyncio.create_task(self.send_watch_message(port, game_type))
+        
         return f"✅ Launched server '{comment}' on port {port}", port
 
     def stop_server_process(self, port: int):
@@ -223,7 +231,28 @@ class ServerActions(commands.Cog):
             logger.info(f"Deleted server data directory for port {port}")
 
         logger.info(f"Server on port {port} shut down")
+
+        # Delete watch message
+        asyncio.create_task(self.delete_watch_message(port))
+        
         return f"✅ Server on port {port} shut down"
+
+    async def send_watch_message(self, port: int, game_type: str):
+        channel = self.bot.get_channel(QUEUE_STATUS_CHANNEL_ID)
+        if channel:
+            watch_message = await channel.send(f"🔔 **Server Started** on port `{port}`\n**Game Type:** {game_type}")
+            self.watch_messages[port] = watch_message
+
+    async def delete_watch_message(self, port: int):
+        watch_message = self.watch_messages.get(port)
+        if watch_message:
+            try:
+                await watch_message.delete()
+                del self.watch_messages[port]
+            except discord.NotFound:
+                logger.warning(f"Watch message for port {port} not found.")
+            except Exception as e:
+                logger.error(f"Error deleting watch message for port {port}: {e}")
 
     @app_commands.choices(game=server_games_choices)
     @app_commands.command(description="Launches a new instance of xRC Sim server", name="launchserver")
@@ -314,6 +343,8 @@ class ServerActions(commands.Cog):
         red_score = data.get("Score_R", "0")
         blue_score = data.get("Score_B", "0")
 
+        game_type = self.server_games.get(port, "Unknown")
+
         embed = discord.Embed(
             title=f"Server Status for Port {port}",
             color=discord.Color.blue(),
@@ -324,6 +355,7 @@ class ServerActions(commands.Cog):
         embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
         embed.add_field(name="Red Score", value=red_score, inline=True)
         embed.add_field(name="Blue Score", value=blue_score, inline=True)
+        embed.add_field(name="Game Type", value=game_type, inline=True)
         embed.set_footer(text=f"Requested by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
         await interaction.response.send_message(embed=embed)
@@ -352,6 +384,8 @@ class ServerActions(commands.Cog):
         red_score = data.get("Score_R", "0")
         blue_score = data.get("Score_B", "0")
 
+        game_type = self.server_games.get(port, "Unknown")
+
         embed = discord.Embed(
             title=f"Watching Server Status for Port {port}",
             color=discord.Color.green(),
@@ -362,6 +396,7 @@ class ServerActions(commands.Cog):
         embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
         embed.add_field(name="Red Score", value=red_score, inline=True)
         embed.add_field(name="Blue Score", value=blue_score, inline=True)
+        embed.add_field(name="Game Type", value=game_type, inline=True)
         embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
         await interaction.response.send_message(embed=embed)
@@ -395,6 +430,8 @@ class ServerActions(commands.Cog):
                 red_score = updated_data.get("Score_R", "0")
                 blue_score = updated_data.get("Score_B", "0")
 
+                game_type = self.server_games.get(port, "Unknown")
+
                 new_embed = discord.Embed(
                     title=f"Watching Server Status for Port {port}",
                     color=discord.Color.green(),
@@ -405,6 +442,7 @@ class ServerActions(commands.Cog):
                 new_embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
                 new_embed.add_field(name="Red Score", value=red_score, inline=True)
                 new_embed.add_field(name="Blue Score", value=blue_score, inline=True)
+                new_embed.add_field(name="Game Type", value=game_type, inline=True)
                 new_embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
                 try:
