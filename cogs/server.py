@@ -200,7 +200,7 @@ class ServerActions(commands.Cog):
 
         # After starting the server, create watch message
         game_type = server_games.get(game, "Unknown")
-        asyncio.create_task(self.send_watch_message(port, game_type))
+        asyncio.create_task(self.run_server_watch(port, game_type))  # Start watch in QUEUE_STATUS_CHANNEL_ID
         
         return f"✅ Launched server '{comment}' on port {port}", port
 
@@ -233,17 +233,20 @@ class ServerActions(commands.Cog):
         logger.info(f"Server on port {port} shut down")
 
         # Delete watch message
-        asyncio.create_task(self.delete_watch_message(port))
+        asyncio.create_task(self.stop_server_watch(port))  # Stop watch in QUEUE_STATUS_CHANNEL_ID
         
         return f"✅ Server on port {port} shut down"
 
-    async def send_watch_message(self, port: int, game_type: str):
+    async def run_server_watch(self, port: int, game_type: str):
         channel = self.bot.get_channel(QUEUE_STATUS_CHANNEL_ID)
         if channel:
             watch_message = await channel.send(f"🔔 **Server Started** on port `{port}`\n**Game Type:** {game_type}")
             self.watch_messages[port] = watch_message
-
-    async def delete_watch_message(self, port: int):
+            # Start the watch task for this server
+            task = self.bot.loop.create_task(self.server_watch_task(port, watch_message))
+            self.watch_tasks[port] = task
+    
+    async def stop_server_watch(self, port: int):
         watch_message = self.watch_messages.get(port)
         if watch_message:
             try:
@@ -253,6 +256,31 @@ class ServerActions(commands.Cog):
                 logger.warning(f"Watch message for port {port} not found.")
             except Exception as e:
                 logger.error(f"Error deleting watch message for port {port}: {e}")
+            # Cancel the associated watch task
+            task = self.watch_tasks.get(port)
+            if task:
+                task.cancel()
+                del self.watch_tasks[port]
+    
+    async def server_watch_task(self, port: int, message: discord.Message):
+        while port in self.servers_active:
+            data = self.get_server_data(port)
+            if data:
+                embed = discord.Embed(
+                    title=f"🖥️ Server Watch for Port {port}",
+                    color=discord.Color.blue(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                embed.add_field(name="Game Type", value=self.server_games.get(port, "Unknown"), inline=True)
+                embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
+                embed.add_field(name="Red Score", value=data.get("Score_R", "0"), inline=True)
+                embed.add_field(name="Blue Score", value=data.get("Score_B", "0"), inline=True)
+                try:
+                    await message.edit(embed=embed)
+                except discord.HTTPException as e:
+                    logger.error(f"Failed to update watch embed for port {port}: {e}")
+                    break
+            await asyncio.sleep(5)  # Update every 5 seconds
 
     @app_commands.choices(game=server_games_choices)
     @app_commands.command(description="Launches a new instance of xRC Sim server", name="launchserver")
