@@ -200,7 +200,7 @@ class ServerActions(commands.Cog):
 
         # After starting the server, create watch message
         game_type = server_games.get(game, "Unknown")
-        asyncio.create_task(self.run_server_watch(port, game_type))  # Start watch in QUEUE_STATUS_CHANNEL_ID
+        asyncio.create_task(self._create_watch_message(port, game_type))  # Use helper method
         
         return f"✅ Launched server '{comment}' on port {port}", port
 
@@ -232,12 +232,12 @@ class ServerActions(commands.Cog):
 
         logger.info(f"Server on port {port} shut down")
 
-        # Delete watch message
-        asyncio.create_task(self.stop_server_watch(port))  # Stop watch in QUEUE_STATUS_CHANNEL_ID
+        # Delete watch message using helper method
+        asyncio.create_task(self._delete_watch_message(port))  # Use helper method
         
         return f"✅ Server on port {port} shut down"
 
-    async def run_server_watch(self, port: int, game_type: str):
+    async def _create_watch_message(self, port: int, game_type: str):
         channel = self.bot.get_channel(QUEUE_STATUS_CHANNEL_ID)
         if channel:
             watch_message = await channel.send(f"🔔 **Server Started** on port `{port}`\n**Game Type:** {game_type}")
@@ -246,7 +246,7 @@ class ServerActions(commands.Cog):
             task = self.bot.loop.create_task(self.server_watch_task(port, watch_message))
             self.watch_tasks[port] = task
     
-    async def stop_server_watch(self, port: int):
+    async def _delete_watch_message(self, port: int):
         watch_message = self.watch_messages.get(port)
         if watch_message:
             try:
@@ -275,6 +275,31 @@ class ServerActions(commands.Cog):
                 embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
                 embed.add_field(name="Red Score", value=data.get("Score_R", "0"), inline=True)
                 embed.add_field(name="Blue Score", value=data.get("Score_B", "0"), inline=True)
+                
+                # Display players by alliance
+                players = self.players_active.get(port, [])
+                red_alliance = [p for p in players if p.position.lower().startswith("red")]
+                blue_alliance = [p for p in players if p.position.lower().startswith("blue")]
+                spectators = [p for p in players if not p.position.lower().startswith(("red", "blue"))]
+
+                if red_alliance:
+                    red_players = "\n".join(f"{p.name} - {p.position}" for p in red_alliance)
+                else:
+                    red_players = "None"
+                embed.add_field(name="🔴 Red Alliance", value=red_players, inline=False)
+
+                if blue_alliance:
+                    blue_players = "\n".join(f"{p.name} - {p.position}" for p in blue_alliance)
+                else:
+                    blue_players = "None"
+                embed.add_field(name="🔵 Blue Alliance", value=blue_players, inline=False)
+
+                if spectators:
+                    spectator_list = "\n".join(f"{p.name} - {p.position}" for p in spectators)
+                else:
+                    spectator_list = "None"
+                embed.add_field(name="👁️ Spectators", value=spectator_list, inline=False)
+                
                 try:
                     await message.edit(embed=embed)
                 except discord.HTTPException as e:
@@ -429,63 +454,8 @@ class ServerActions(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-        # Define the update task
-            # Start of Selection
-        async def update_embed():
-            while True:
-                await asyncio.sleep(5)  # Wait for 5 seconds
-                updated_data = self.get_server_data(port)
-                if not updated_data:
-                    new_embed = discord.Embed(
-                        title=f"Watching Server Status for Port {port}",
-                        description="⚠ Unable to retrieve updated data. Stopping watch.",
-                        color=discord.Color.red(),
-                        timestamp=datetime.now(timezone.utc)
-                    )
-                    try:
-                        await interaction.edit_original_response(embed=new_embed)
-                    except discord.HTTPException as e:
-                        logger.error(f"Failed to update embed for port {port}: {e}")
-                    break  # Stop watching if unable to get data
-
-                players = self.players_active.get(port, [])
-                red_alliance = [player.name for player in players if player.position.lower().startswith("red")]
-                blue_alliance = [player.name for player in players if player.position.lower().startswith("blue")]
-
-                red_players = "\n".join(red_alliance) if red_alliance else "No players in Red Alliance."
-                blue_players = "\n".join(blue_alliance) if blue_alliance else "No players in Blue Alliance."
-
-                red_score = updated_data.get("Score_R", "0")
-                blue_score = updated_data.get("Score_B", "0")
-
-                game_type = self.server_games.get(port, "Unknown")
-
-                new_embed = discord.Embed(
-                    title=f"Watching Server Status for Port {port}",
-                    color=discord.Color.green(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                new_embed.add_field(name="Timer", value=updated_data.get("timer", "N/A"), inline=True)
-                new_embed.add_field(name="Red Alliance", value=red_players, inline=True)
-                new_embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
-                new_embed.add_field(name="Red Score", value=red_score, inline=True)
-                new_embed.add_field(name="Blue Score", value=blue_score, inline=True)
-                new_embed.add_field(name="Game Type", value=game_type, inline=True)
-                new_embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
-
-                try:
-                    await interaction.edit_original_response(embed=new_embed)
-                except discord.HTTPException as e:
-                    logger.error(f"Failed to update embed for port {port}: {e}")
-                    break  # Exit the loop if unable to update
-
-            # Remove the task from watch_tasks when it's done
-            if port in self.watch_tasks:
-                del self.watch_tasks[port]
-
-        # Start the background task
-        task = self.bot.loop.create_task(update_embed())
-        self.watch_tasks[port] = task
+        # Start the server_watch_task instead of defining update_embed
+        self.watch_tasks[port] = self.bot.loop.create_task(self.server_watch_task(port, await interaction.original_response()))
 
     @app_commands.command(description="Stops watching server data", name="stop_server_watch")
     @app_commands.choices(port=ports_choices)
