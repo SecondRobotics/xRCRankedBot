@@ -126,12 +126,14 @@ class ServerActions(commands.Cog):
         if join_match:
             name, position, ip = join_match.groups()
             player = Player(name=name, join_time=timestamp, position=position, ip=ip)  # Use log timestamp
+            logger.info(f"Player {player.name} joined on {player.position} with ip {player.ip}")
             self.players_active.setdefault(port, []).append(player)
             return
 
         leave_match = re.match(leave_pattern, message)
         if leave_match:
             name = leave_match.group(1)
+            logger.info(f"Player {name} left server")
             players = self.players_active.get(port, [])
             self.players_active[port] = [p for p in players if p.name != name]
     
