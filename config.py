@@ -83,6 +83,7 @@ server_games = {
     "Centerstage": "15",
     "Crescendo": "16",
     "High Stakes": "17",
+    "Into The Deep": "18",
 }
 
 server_games_choices = [
@@ -120,6 +121,7 @@ short_codes = {
     "Centerstage": "CS",
     "Crescendo": "CR",
     "High Stakes": "HS",
+    "Into The Deep": "ITD",
 }
 
 default_game_players = {
@@ -142,6 +144,7 @@ default_game_players = {
     "15": 4,
     "16": 6,
     "17": 4,
+    "18": 4,
 }
 
 server_restart_modes = {
@@ -160,4 +163,5 @@ game_logos = {
     "Crescendo": "https://i.imgur.com/St3EoqP.png",
     "High Stakes": "https://i.imgur.com/jWu3NHB.png",
     "Power Play": "https://i.imgur.com/tuC6s0P.png",
+    "Into The Deep": "https://i.imgur.com/YqT31M8.png",
 }
