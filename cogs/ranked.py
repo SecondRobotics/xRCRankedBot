@@ -32,6 +32,9 @@ RULES_CHANNEL_LINK = f"The rules can be found here: <#{RULES_CHANNEL_ID}>"
 QUEUE_CHANNEL_ERROR_MSG = f"<#{QUEUE_CHANNEL_ID}> >:("
 REGISTRATION_URL = "https://www.secondrobotics.org/login"
 
+# Add this line
+EXCLUDED_GAMES = {"Test", "Relic Recovery", "Bot Royale"}
+
 logger = logging.getLogger('discord')
 
 queue_channel = 0
@@ -505,33 +508,13 @@ class Ranked(commands.Cog):
         )
         embed.set_thumbnail(url=XRC_SIM_LOGO_URL)
 
-        # Regular Queues Section
-        active_queues = [qdata for qdata in game_queues.values() if qdata._queue.qsize() > 0]
-        if active_queues:
-            regular_queues = []
-            for qdata in active_queues:
-                queue_size = qdata._queue.qsize()
-                needed = qdata.alliance_size * 2
-                progress = "█" * queue_size + "░" * (needed - queue_size)
-                regular_queues.append(
-                    f"**{qdata.full_game_name}** ({queue_size}/{needed})\n"
-                    f"`{progress}`"
-                )
-            
-            if regular_queues:
-                embed.add_field(
-                    name="🎮 Regular Queues",
-                    value="\n".join(regular_queues),
-                    inline=False
-                )
-
         # Vote Queues Section
         vote_queues = []
         for queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
             queue_size = len(queue._queue.vote_queue) if hasattr(queue._queue, 'vote_queue') else 0
             needed = queue.alliance_size * 2
             if queue_size > 0:
-                progress = "█" * queue_size + "░" * (needed - queue_size)
+                progress = "██" * queue_size + "░░" * (needed - queue_size)
                 vote_queues.append(
                     f"**{queue.full_game_name}** ({queue_size}/{needed})\n"
                     f"`{progress}`"
@@ -541,13 +524,6 @@ class Ranked(commands.Cog):
             embed.add_field(
                 name="🎲 Vote Queues",
                 value="\n".join(vote_queues),
-                inline=False
-            )
-
-        if not active_queues and not vote_queues:
-            embed.add_field(
-                name="No Active Queues",
-                value="Queue to get a match started!",
                 inline=False
             )
 
@@ -989,10 +965,45 @@ class Ranked(commands.Cog):
         Choice(name="2v2", value="2v2"),
         Choice(name="1v1", value="1v1")
     ])
-    @app_commands.choices(game=[Choice(name=game, value=game) for game in server_games.keys()])
+    @app_commands.choices(game=[
+        Choice(name=game, value=game) 
+        for game in server_games.keys() 
+        if game not in EXCLUDED_GAMES
+    ])
     async def queue(self, interaction: discord.Interaction, mode: str, game: str):
         logger.info(f"{interaction.user.name} called /queue with mode {mode} and game {game}")
         
+        # Get fresh game data
+        try:
+            games_data = requests.get("https://secondrobotics.org/api/ranked/").json()
+        except Exception as e:
+            logger.error(f"Failed to fetch games data: {e}")
+            await interaction.response.send_message("Error: Could not validate game selection. Please try again.", ephemeral=True)
+            return
+
+        # Validate game exists and supports the selected mode
+        game_short_code = short_codes.get(game, '')
+        if not game_short_code:
+            await interaction.response.send_message(f"Error: {game} is not available for ranked play.", ephemeral=True)
+            return
+
+        # Find all variants of this game in the API data
+        game_variants = [g for g in games_data if g['game'] == game]
+        if not game_variants:
+            await interaction.response.send_message(f"Error: {game} is not currently available for ranked play.", ephemeral=True)
+            return
+
+        # Get all unique alliance sizes for this game
+        supported_sizes = sorted(set(g['players_per_alliance'] for g in game_variants))
+        mode_size = int(mode[0])  # Extract number from "3v3", "2v2", "1v1"
+        
+        if mode_size not in supported_sizes:
+            await interaction.response.send_message(
+                f"Error: {game} does not support {mode} mode.",
+                ephemeral=True
+            )
+            return
+
         queue = self.get_vote_queue(mode)
         if not queue:
             await interaction.response.send_message(f"Error: Invalid mode {mode}.", ephemeral=True)
