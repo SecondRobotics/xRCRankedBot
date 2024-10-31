@@ -502,17 +502,13 @@ class Ranked(commands.Cog):
         embed = discord.Embed(title="xRC Sim Ranked Queues",
                               description="Ranked queues are open!", color=0x00ff00)
         embed.set_thumbnail(url=XRC_SIM_LOGO_URL)
-        active_queues = 0
-        embed.add_field(name="Game of the Day",
-                        value=f"Today's extra game is **{daily_game}**!", inline=False)
+        
+        # Display active regular queues
         for qdata in game_queues.values():
             if qdata._queue.qsize() > 0:
-                active_queues += 1
-                embed.add_field(name=qdata.full_game_name, value=f"*{qdata._queue.qsize()}/{qdata.alliance_size * 2}*"
-                                                                 f" players in queue", inline=False)
-        if active_queues == 0:
-            embed.add_field(name="No current queues",
-                            value="Queue to get a match started!", inline=False)
+                embed.add_field(name=qdata.full_game_name, 
+                              value=f"*{qdata._queue.qsize()}/{qdata.alliance_size * 2}*"
+                              f" players in queue", inline=False)
 
         # Add Vote queue status display
         vote_queues_status = ""
@@ -958,7 +954,7 @@ class Ranked(commands.Cog):
         Choice(name="1v1", value="1v1")
     ])
     @app_commands.choices(game=[Choice(name=game, value=game) for game in server_games.keys()])
-    async def votequeue(self, interaction: discord.Interaction, mode: str, game: str):
+    async def queue(self, interaction: discord.Interaction, mode: str, game: str):
         logger.info(f"{interaction.user.name} called /votequeue with mode {mode} and game {game}")
         
         queue = self.get_vote_queue(mode)
