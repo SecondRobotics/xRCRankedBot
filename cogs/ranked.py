@@ -1613,24 +1613,26 @@ class Ranked(commands.Cog):
 
    
     
-    @app_commands.choices(game=games_choices)
-    @app_commands.command(name="clearmatch", description="Clears current running match")
-    async def clearmatch(self, interaction: discord.Interaction, game: str):
-        logger.info(f"{interaction.user.name} called /clearmatch")
-        qdata = game_queues[game]
-        current_match = qdata.matches[-1] if qdata.matches else None
+    @app_commands.command(name="clearmatch", description="Clears current running match for a player")
+    async def clearmatch(self, interaction: discord.Interaction, player: discord.Member):
+        logger.info(f"{interaction.user.name} called /clearmatch for player {player.name}")
+        
+        if EVENT_STAFF_ID not in [role.id for role in interaction.user.roles]:
+            await interaction.response.send_message("You don't have permission to do that!", ephemeral=True)
+            return
 
-        ephemeral = False
-        if isinstance(interaction.user, discord.Member) and EVENT_STAFF_ID in [y.id for y in
-                                                                               interaction.user.roles]:
-            await interaction.response.defer()
-            await self.do_clear_match(interaction.user.guild, current_match)
-            message = "Cleared successfully!"
+        await interaction.response.defer()
+        
+        current_match = self.find_match_by_player(player)
+        if current_match:
+            try:
+                await self.do_clear_match(interaction.guild, current_match)
+                await interaction.followup.send(f"Cleared match containing {player.name} successfully!")
+            except Exception as e:
+                logger.error(f"Error clearing match: {str(e)}")
+                await interaction.followup.send(f"An error occurred while clearing the match: {str(e)}", ephemeral=True)
         else:
-            message = "You don't have permission to do that!"
-            ephemeral = True
-
-        await interaction.followup.send(message, ephemeral=ephemeral)
+            await interaction.followup.send(f"No active match found for {player.name}.", ephemeral=True)
 
     
 
