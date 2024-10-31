@@ -947,7 +947,7 @@ class Ranked(commands.Cog):
 
   
 
-    @app_commands.command(name="votequeue", description="Queue vote style")
+    @app_commands.command(name="queue", description="Queue vote style")
     @app_commands.choices(mode=[
         Choice(name="3v3", value="3v3"),
         Choice(name="2v2", value="2v2"),
@@ -955,7 +955,7 @@ class Ranked(commands.Cog):
     ])
     @app_commands.choices(game=[Choice(name=game, value=game) for game in server_games.keys()])
     async def queue(self, interaction: discord.Interaction, mode: str, game: str):
-        logger.info(f"{interaction.user.name} called /votequeue with mode {mode} and game {game}")
+        logger.info(f"{interaction.user.name} called /queue with mode {mode} and game {game}")
         
         queue = self.get_vote_queue(mode)
         if not queue:
