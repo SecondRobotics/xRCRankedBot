@@ -488,8 +488,7 @@ class Ranked(commands.Cog):
         if self.ranked_display is None:
             logger.info("Finding Ranked Queue Display")
 
-            qstatus_channel = get(
-                self.bot.get_all_channels(), id=QUEUE_STATUS_CHANNEL_ID)
+            qstatus_channel = get(self.bot.get_all_channels(), id=QUEUE_STATUS_CHANNEL_ID)
             async for msg in qstatus_channel.history(limit=None):
                 if msg.author.id == self.bot.user.id:
                     self.ranked_display = msg
@@ -499,26 +498,63 @@ class Ranked(commands.Cog):
         if self.ranked_display is None:
             return
 
-        embed = discord.Embed(title="xRC Sim Ranked Queues",
-                              description="Ranked queues are open!", color=0x00ff00)
+        embed = discord.Embed(
+            title="xRC Sim Ranked Queues",
+            description="Join a queue to start playing! Use `/queue` to join a vote queue.",
+            color=0x00ff00
+        )
         embed.set_thumbnail(url=XRC_SIM_LOGO_URL)
-        
-        # Display active regular queues
-        for qdata in game_queues.values():
-            if qdata._queue.qsize() > 0:
-                embed.add_field(name=qdata.full_game_name, 
-                              value=f"*{qdata._queue.qsize()}/{qdata.alliance_size * 2}*"
-                              f" players in queue", inline=False)
 
-        # Add Vote queue status display
-        vote_queues_status = ""
+        # Regular Queues Section
+        active_queues = [qdata for qdata in game_queues.values() if qdata._queue.qsize() > 0]
+        if active_queues:
+            regular_queues = []
+            for qdata in active_queues:
+                queue_size = qdata._queue.qsize()
+                needed = qdata.alliance_size * 2
+                progress = "█" * queue_size + "░" * (needed - queue_size)
+                regular_queues.append(
+                    f"**{qdata.full_game_name}** ({queue_size}/{needed})\n"
+                    f"`{progress}`"
+                )
+            
+            if regular_queues:
+                embed.add_field(
+                    name="🎮 Regular Queues",
+                    value="\n".join(regular_queues),
+                    inline=False
+                )
+
+        # Vote Queues Section
+        vote_queues = []
         for queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
-            vote_queues_status += f"{queue.full_game_name}: {queue._queue.qsize()}/{queue.alliance_size * 2} players\n"
+            queue_size = len(queue._queue.vote_queue) if hasattr(queue._queue, 'vote_queue') else 0
+            needed = queue.alliance_size * 2
+            if queue_size > 0:
+                progress = "█" * queue_size + "░" * (needed - queue_size)
+                vote_queues.append(
+                    f"**{queue.full_game_name}** ({queue_size}/{needed})\n"
+                    f"`{progress}`"
+                )
+        
+        if vote_queues:
+            embed.add_field(
+                name="🎲 Vote Queues",
+                value="\n".join(vote_queues),
+                inline=False
+            )
 
-        embed.add_field(name="Vote Queues", value=vote_queues_status, inline=False)
+        if not active_queues and not vote_queues:
+            embed.add_field(
+                name="No Active Queues",
+                value="Queue to get a match started!",
+                inline=False
+            )
 
-        leave_all = discord.ui.Button(
-            label="Leave All Queues", style=ButtonStyle.red, row=2)
+        # Add footer with helpful information
+        embed.set_footer(text="Use /queue to join a vote queue • Use /leave to leave a queue")
+
+        leave_all = discord.ui.Button(label="Leave All Queues", style=ButtonStyle.red, row=2)
         leave_all.callback = self.leave_all_queues
 
         view = discord.ui.View(timeout=None)
@@ -1571,37 +1607,40 @@ class Ranked(commands.Cog):
         return embed
 
     async def handle_game_end(self, interaction, qdata, current_match, embed):
-        # class RejoinQueueView(discord.ui.View):
-        #     def __init__(self, qdata: Queue, match: XrcGame, cog: Ranked):
-        #         super().__init__()
-        #         self.qdata = qdata
-        #         self.match = match
-        #         self.cog = cog
+        # Delete roles first
+        try:
+            await current_match.red_role.delete()
+            await current_match.blue_role.delete()
+        except Exception as e:
+            logger.error(f"Error deleting roles: {e}")
 
-        #     @discord.ui.button(label="Rejoin Queue", style=discord.ButtonStyle.blurple, emoji="🔄")
-        #     async def rejoin_queue(self, button_interaction: discord.Interaction, button: discord.ui.Button):
-        #         await self.cog.queue_player(button_interaction, self.qdata.api_short)
-
-        # view = RejoinQueueView(qdata, current_match, self)
-        # await interaction.channel.send(embed=embed, view=view)
-
-        await asyncio.gather(
-            current_match.red_role.delete(),
-            current_match.blue_role.delete()
-        )
-
+        # Get lobby channel
         lobby = self.bot.get_channel(LOBBY_VC_ID)
-        move_tasks = []
+        
+        # Handle each channel sequentially
         for channel in [current_match.red_channel, current_match.blue_channel]:
             if channel:
-                move_tasks.extend([member.move_to(lobby) for member in channel.members])
-                move_tasks.append(channel.delete())
-        await asyncio.gather(*move_tasks)
+                try:
+                    # Move members one at a time
+                    for member in channel.members:
+                        try:
+                            await member.move_to(lobby)
+                        except Exception as e:
+                            logger.error(f"Error moving member {member.name}: {e}")
+                    
+                    # Delete the channel after members are moved
+                    await channel.delete()
+                except discord.NotFound:
+                    logger.warning(f"Channel {channel.name} was already deleted")
+                except Exception as e:
+                    logger.error(f"Error handling channel {channel.name}: {e}")
 
+        # Stop the server if it exists
         if current_match.server_port:
             server_actions = self.bot.get_cog('ServerActions')
             server_actions.stop_server_process(current_match.server_port)
 
+        # Remove the match from queue
         qdata.remove_match(current_match)
 
    
