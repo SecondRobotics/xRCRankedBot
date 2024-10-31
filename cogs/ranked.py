@@ -1259,17 +1259,17 @@ class Ranked(commands.Cog):
         await self.update_ranked_display()
         await self.check_queue_status(qdata, interaction)
 
-    @app_commands.choices(game=games_choices)
-    @app_commands.command(description="Start a game")
-    @app_commands.describe(game="The game to start")
-    @app_commands.choices(game=[
-        Choice(name=game['name'], value=game['short_code'])
-        for game in games if game['game'] in active_games or game['game'] == daily_game
-    ])
-    async def startmatch(self, interaction: discord.Interaction, game: str):
-        logger.info(f"{interaction.user.name} called /startmatch")
-        await interaction.response.defer()
-        await self.start_match(game_queues[game], interaction, False)
+    # @app_commands.choices(game=games_choices)
+    # @app_commands.command(description="Start a game")
+    # @app_commands.describe(game="The game to start")
+    # @app_commands.choices(game=[
+    #     Choice(name=game['name'], value=game['short_code'])
+    #     for game in games if game['game'] in active_games or game['game'] == daily_game
+    # ])
+    # async def startmatch(self, interaction: discord.Interaction, game: str):
+    #     logger.info(f"{interaction.user.name} called /startmatch")
+    #     await interaction.response.defer()
+    #     await self.start_match(game_queues[game], interaction, False)
 
     
 
