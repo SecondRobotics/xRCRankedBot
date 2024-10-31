@@ -126,21 +126,59 @@ class OrderedSet(MutableSet):
 class PlayerQueue(BaseQueue):
     def _init(self, maxsize):
         self.queue = OrderedSet()
+        self.vote_queue = []  # Add this for vote queues
 
-    def _put(self, item: discord.Member):
-        self.queue.add(item)
-        queue_joins[(self, item)] = datetime.now()
+    def _put(self, item):
+        if isinstance(item, tuple):  # Check if this is a vote queue entry
+            self.vote_queue.append(item)
+            queue_joins[(self, item[0])] = datetime.now()  # Store join time for the player
+        else:
+            self.queue.add(item)
+            queue_joins[(self, item)] = datetime.now()
 
     def _get(self):
+        if self.vote_queue:  # If this is a vote queue
+            return self.vote_queue.pop(0)
         return self.queue.pop()
 
-    def remove(self, value: discord.Member):
-        self.queue.remove(value)
-        queue_joins.pop((self, value), None)
-
-    def __contains__(self, item: discord.Member):
+    def get_nowait(self):
+        """Custom get_nowait implementation for vote queues"""
         with self.mutex:
+            if self.vote_queue:
+                if not self.vote_queue:
+                    raise Empty
+                return self.vote_queue.pop(0)
+            else:
+                if not self.queue:
+                    raise Empty
+                return self.queue.pop()
+
+    def remove(self, value):
+        if self.vote_queue:  # If this is a vote queue
+            self.vote_queue = [x for x in self.vote_queue if x[0] != value]
+            queue_joins.pop((self, value), None)
+        else:
+            self.queue.remove(value)
+            queue_joins.pop((self, value), None)
+
+    def __contains__(self, item):
+        with self.mutex:
+            if self.vote_queue:  # If this is a vote queue
+                return any(item == x[0] for x in self.vote_queue)
             return item in self.queue
+
+    def qsize(self):
+        with self.mutex:
+            if self.vote_queue:  # If this is a vote queue
+                return len(self.vote_queue)
+            return len(self.queue)
+
+    def empty(self):
+        """Custom empty check"""
+        with self.mutex:
+            if self.vote_queue is not None:
+                return len(self.vote_queue) == 0
+            return len(self.queue) == 0
 
 
 class Game:
@@ -523,7 +561,7 @@ class Ranked(commands.Cog):
         if ping_role in member.roles:
             await member.remove_roles(ping_role)
             await interaction.response.send_message(f"You have been removed from the {ping_role_name} role.",
-                                                    ephemeral=True, delete_after=30)
+                                                    ephemeral=True)
         else:
             await member.add_roles(ping_role)
             await interaction.response.send_message(f"You have been added to the {ping_role_name} role!",
@@ -736,8 +774,9 @@ class Ranked(commands.Cog):
         red = random.sample(players_list, int(match.team_size))
         for player in red:
             match.game.add_to_red(player)
-            # Assign red role to the player
-            await player.add_roles(match.red_role)
+            # Only add roles to real members
+            if not is_mock_member(player):
+                await player.add_roles(match.red_role)
 
         logger.info(f"Red: {red}")
 
@@ -745,8 +784,9 @@ class Ranked(commands.Cog):
         blue = [player for player in players_list if player not in red]
         for player in blue:
             match.game.add_to_blue(player)
-            # Assign blue role to the player
-            await player.add_roles(match.blue_role)
+            # Only add roles to real members
+            if not is_mock_member(player):
+                await player.add_roles(match.blue_role)
 
         logger.info(f"Blue: {blue}")
 
@@ -764,10 +804,9 @@ class Ranked(commands.Cog):
             vote_queue._queue.queue = [entry for entry in vote_queue._queue.queue if entry[0] not in all_players]
 
         # Code from start_match
-        match.red_series = 0  # Reset series score to 0 when starting a match
-        match.blue_series = 0  # Reset series score to 0 when starting a match
+        match.red_series = 0
+        match.blue_series = 0
 
-        # Check from_button and channel conditions
         if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
             await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
             return
@@ -995,38 +1034,74 @@ class Ranked(commands.Cog):
             await self.send_queue_status(queue, interaction)
 
     async def start_vote_match(self, queue: Queue, interaction: discord.Interaction):
-        players = []
-        preferred_games = []
-        for _ in range(queue.alliance_size * 2):
-            player, game = queue._queue.get()
-            players.append(player)
-            preferred_games.append(game)
-
-        chosen_game = random.choice(preferred_games)
-
-        # Convert full game name to short code
-        chosen_game_short = config.short_codes.get(chosen_game, chosen_game)
-
-        # Append the alliance size to the game short code
-        chosen_game_short += f"{queue.alliance_size}v{queue.alliance_size}"
-
-        # Use the short code to access game_queues
-        if chosen_game_short in game_queues:
-            qdata = game_queues[chosen_game_short]
-        else:
-            await interaction.followup.send(f"Error: '{chosen_game_short}' is not a valid game.")
-            return
+        logger.info("Starting vote match...")
+        players_and_games = []
+        queue_size = queue._queue.qsize()
         
-        # Add players to the chosen game's queue
-        for player in players:
-            qdata._queue.put(player)
-
-        # Use the existing start_match method
-        await self.start_match(qdata, interaction, False)
-
-        # Inform players about the chosen game
-        player_mentions = " ".join([player.mention for player in players])
-        await interaction.followup.send(f"{player_mentions}\nThe randomly selected game is: **{chosen_game}** ({queue.alliance_size}v{queue.alliance_size})")
+        logger.info(f"Queue size: {queue_size}, Required size: {queue.alliance_size * 2}")
+        
+        if queue_size < queue.alliance_size * 2:
+            await interaction.followup.send(f"Not enough players in queue ({queue_size}/{queue.alliance_size * 2})", ephemeral=True)
+            return
+            
+        try:
+            with queue._queue.mutex:  # Lock the queue while we process it
+                # Get all players at once from the vote queue
+                players_and_games = [(player, game) for player, game in queue._queue.vote_queue[:queue.alliance_size * 2]]
+                # Remove the players we just got
+                queue._queue.vote_queue = queue._queue.vote_queue[queue.alliance_size * 2:]
+                
+            if len(players_and_games) < queue.alliance_size * 2:
+                logger.error(f"Not enough players in queue: got {len(players_and_games)}, needed {queue.alliance_size * 2}")
+                return
+                
+            # Extract players and their preferred games
+            players, preferred_games = zip(*players_and_games)
+            
+            # Choose random game from preferred games
+            chosen_game = random.choice(preferred_games)
+            logger.info(f"Chosen game: {chosen_game}")
+            
+            # Convert full game name to short code
+            chosen_game_short = config.short_codes.get(chosen_game, chosen_game)
+            logger.info(f"Game short code: {chosen_game_short}")
+            
+            # Append the alliance size to the game short code
+            game_code = f"{chosen_game_short}{queue.alliance_size}v{queue.alliance_size}"
+            logger.info(f"Final game code: {game_code}")
+            
+            if game_code not in game_queues:
+                logger.error(f"Invalid game code: {game_code}")
+                await interaction.followup.send(f"Error: '{game_code}' is not a valid game code. Available games: {list(game_queues.keys())}")
+                # Put players back in queue
+                for player, game in players_and_games:
+                    queue._queue.put((player, game))
+                return
+                
+            qdata = game_queues[game_code]
+            
+            # Add players to the chosen game's queue
+            logger.info("Adding players to game queue...")
+            for player in players:
+                qdata._queue.put(player)
+                logger.info(f"Added {player.display_name} to {game_code} queue")
+            
+            # Start the match
+            logger.info("Starting match...")
+            await self.start_match(qdata, interaction, False)
+            
+            # Inform players about the chosen game
+            player_mentions = " ".join([player.mention for player in players])
+            await interaction.followup.send(
+                f"{player_mentions}\nThe randomly selected game is: **{chosen_game}** ({queue.alliance_size}v{queue.alliance_size})"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in start_vote_match: {str(e)}")
+            # Return players to queue if there's an error
+            for player, game in players_and_games:
+                queue._queue.put((player, game))
+            await interaction.followup.send(f"Error starting match: {str(e)}", ephemeral=True)
 
     @app_commands.choices(game=server_game_names)
     @app_commands.command(name="rankedping", description="Toggle ranked pings for a game")
@@ -1094,7 +1169,7 @@ class Ranked(commands.Cog):
     async def add_to_queue(self, interaction: discord.Interaction, game: str):
         await self.queue_player(interaction, game, False)
 
-   
+    
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Force queue players")
     async def forcequeue(self, interaction: discord.Interaction,
@@ -1125,18 +1200,20 @@ class Ranked(commands.Cog):
         await self.update_ranked_display()
         await self.check_queue_status(qdata, interaction)
 
-    @app_commands.command(description="Test vote 2v2 queue with predefined user IDs")
+    @app_commands.command(description="Test vote 2v2 queue with dummy data")
     async def testvotequeue2v2(self, interaction: discord.Interaction):
         logger.info(f"{interaction.user.name} called /testvotequeue2v2")
 
         queue = self.vote_queue_2v2
 
-        # Predefined list of user IDs (same as testqueue)
-        user_ids = [
-            718991656988180490,
-            118000175816900615,
-            863469112482856981,
-            379349660764209152
+        # Create dummy user data
+        dummy_users = [
+            {
+                'name': f'TestUser{i}',
+                'display_name': f'TestUser{i}',
+                'id': 1000 + i,
+                'mention': f'<@{1000 + i}>'
+            } for i in range(1, 5)  # Creates 4 dummy users for 2v2
         ]
 
         # List of valid games for vote queue
@@ -1145,16 +1222,27 @@ class Ranked(commands.Cog):
         added_players = ""
         
         if isinstance(interaction.user, discord.Member) and any(role.id == EVENT_STAFF_ID for role in interaction.user.roles):
-            for user_id in user_ids[:queue.alliance_size * 2]:  # Limit to 4 players for 2v2
-                member = interaction.guild.get_member(user_id)
-                if member:
-                    chosen_game = random.choice(valid_games)
-                    queue._queue.put((member, chosen_game))
-                    added_players += f"\n{member.display_name} (Game: {chosen_game})"
-                else:
-                    added_players += f"\nUser ID {user_id} not found"
+            for dummy_user in dummy_users:
+                # Create a mock Member object with _is_mock flag
+                mock_member = type('MockMember', (), {
+                    'name': dummy_user['name'],
+                    'display_name': dummy_user['display_name'],
+                    'id': dummy_user['id'],
+                    'mention': dummy_user['mention'],
+                    'roles': [],
+                    'add_roles': lambda x: None,
+                    'remove_roles': lambda x: None,
+                    'send': lambda x: None,
+                    'move_to': lambda x: None,
+                    '_is_mock': True,  # Add this flag
+                    'guild': interaction.guild
+                })
+
+                chosen_game = random.choice(valid_games)
+                queue._queue.put((mock_member, chosen_game))
+                added_players += f"\n{mock_member.display_name} (Game: {chosen_game})"
             
-            await interaction.response.send_message(f"Successfully added{added_players} to the 2v2 vote queue.", ephemeral=True)
+            await interaction.response.send_message(f"Successfully added dummy players to the 2v2 vote queue:{added_players}", ephemeral=True)
         else:
             await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
             return
@@ -1663,3 +1751,7 @@ class QueueButton(discord.ui.Button['queue']):
         logger.info('{} button pressed!'.format(self.game))
 
         await self.cog.queue_player(interaction, self.short_code, True)
+
+def is_mock_member(member):
+    """Check if a member is a mock/test member"""
+    return hasattr(member, '_is_mock') and member._is_mock
