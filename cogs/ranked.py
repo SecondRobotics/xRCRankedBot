@@ -816,115 +816,71 @@ class Ranked(commands.Cog):
         return None
 
     async def display_teams(self, ctx, match: XrcGame):
-
-        async def fetch_player_elo(game, user_id):
-            url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data.get('elo', 0)
-                    else:
-                        logger.error(
-                            f"Failed to fetch ELO for player {user_id}: {response.status}")
-                        return 0
-
-        async def move_player(player, channel):
-            try:
-                await player.move_to(channel)
-            except Exception as e:
-                logger.error(e)
-
-        logger.info(f"Displaying teams for {match.game_type}")
-
-        self.category = self.category or get(
-            ctx.guild.categories, id=CATEGORY_ID)
-        self.staff = self.staff or get(ctx.guild.roles, id=EVENT_STAFF_ID)
-        self.bots = self.bots or get(ctx.guild.roles, id=BOTS_ROLE_ID)
-
-        logger.info(f"Getting IP for {match.game_type}")
-
-        red_field = "\n".join(
-            [f"🟥{player.mention}" for player in match.game.red])
-        blue_field = "\n".join(
-            [f"🟦{player.mention}" for player in match.game.blue])
-
-        # Construct the description with all relevant variables
-        description = (
-            f"Server 'Ranked{match.api_short}' started for you with password **{match.server_password}**\n"
-            f"|| IP: {ip} Port: {match.server_port} ||\n"
-            f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})\n\n"
-        )
-
+        # Create a rich embed for new match announcement
         embed = discord.Embed(
-            color=0x34dceb, title=f"Teams have been picked for {match.full_game_name}!", description=description
+            color=0x34dceb,
+            title=f"New {match.full_game_name} Match Starting!",
+            description=(
+                f"**Server Information**\n"
+                f"```\nName: Ranked{match.api_short}\nPassword: {match.server_password}\n"
+                f"IP: {ip}\nPort: {match.server_port}```\n"
+                f"[View Leaderboard](https://secondrobotics.org/ranked/{match.api_short}) | "
+                f"[Update Display Name](https://secondrobotics.org/user/settings/)"
+            )
         )
+        
+        # Set thumbnail
         embed.set_thumbnail(url=match.game_icon)
-
+        
         # Fetch ELOs concurrently
-        red_elo_tasks = [fetch_player_elo(
-            match.api_short, player.id) for player in match.game.red]
-        blue_elo_tasks = [fetch_player_elo(
-            match.api_short, player.id) for player in match.game.blue]
-
+        red_elo_tasks = [self.fetch_player_elo(match.api_short, player.id) for player in match.game.red]
+        blue_elo_tasks = [self.fetch_player_elo(match.api_short, player.id) for player in match.game.blue]
+        
         red_elos = await asyncio.gather(*red_elo_tasks)
         blue_elos = await asyncio.gather(*blue_elo_tasks)
-
-        # Calculate average ELO
+        
+        # Calculate average ELOs
         avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
         avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
-
+        
+        # Format alliance fields with player ELOs
+        for color, players, elos, avg_elo in [
+            ('RED', match.game.red, red_elos, avg_red_elo),
+            ('BLUE', match.game.blue, blue_elos, avg_blue_elo)
+        ]:
+            emoji = "🟥" if color == "RED" else "🟦"
+            players_text = []
+            
+            for player, elo in zip(players, elos):
+                players_text.append(f"{player.mention}\nELO: `{elo:.2f}`")
+            
+            field_name = f"{color} ALLIANCE {emoji} (Avg ELO: {avg_elo:.2f})"
+            field_value = "\n─────────────\n".join(players_text)
+            
+            embed.add_field(
+                name=field_name,
+                value=field_value,
+                inline=True
+            )
+        
+        # Add match format information
         embed.add_field(
-            name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
-        embed.add_field(
-            name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
-
+            name="Match Format",
+            value="First to win 2 games wins the series",
+            inline=False
+        )
+        
         await queue_channel.send(embed=embed)
 
-        overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                          match.red_role: discord.PermissionOverwrite(connect=True),
-                          self.staff: discord.PermissionOverwrite(connect=True),
-                          self.bots: discord.PermissionOverwrite(connect=True)}
-        overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                           match.blue_role: discord.PermissionOverwrite(connect=True),
-                           self.staff: discord.PermissionOverwrite(connect=True),
-                           self.bots: discord.PermissionOverwrite(connect=True)}
-
-        if match.game_size != 2:
-            try:
-                # Ensure the roles exist before creating channels
-                if not match.red_role or not match.blue_role:
-                    raise ValueError("Team roles are not properly set")
-
-                # Create the voice channels with proper error handling
-                match.red_channel, match.blue_channel = await asyncio.gather(
-                    ctx.guild.create_voice_channel(f"🟥{match.full_game_name}🟥", category=self.category, overwrites=overwrites_red),
-                    ctx.guild.create_voice_channel(f"🟦{match.full_game_name}🟦", category=self.category, overwrites=overwrites_blue)
-                )
-            except discord.errors.Forbidden:
-                print("I don't have permission to create voice channels.")
-                return
-            except ValueError as e:
-                print(f"Error: {str(e)}")
-                return
-            except Exception as e:
-                print(f"An unexpected error occurred: {str(e)}")
-                return
-
-            if not match.game:
-                print("Error: No game found")
-                return
-
-        tasks = []
-        for player in match.game.red | match.game.blue:
-            if match.game_size != 2:
-                tasks.append(move_player(
-                    player, match.red_channel if player in match.game.red else match.blue_channel))
-
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-        await queue_channel.send(f"{match.red_role.mention} {match.blue_role.mention}", delete_after=30)
-        await self.update_ranked_display()
+    async def fetch_player_elo(self, game_short_code, player_id):
+        """Helper method to fetch a player's ELO"""
+        url = f'https://secondrobotics.org/api/ranked/{game_short_code}/player/{player_id}'
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('elo', 0)
+                return 0
 
     async def do_clear_match(self, guild: discord.Guild, match: XrcGame):
         if match.server_port:
@@ -1389,7 +1345,6 @@ class Ranked(commands.Cog):
             # Access the vote_queue directly
             vote_players = vote_queue._queue.vote_queue
             player_entry = next((entry for entry in vote_players if entry[0].id == player.id), None)
-
             if player_entry:
                 preferred_game = player_entry[1]
                 # Remove the player from the queue
@@ -1602,19 +1557,54 @@ class Ranked(commands.Cog):
                 return await resp.json()
 
     def create_score_embed(self, current_match, red_score, blue_score, response):
-        embed = discord.Embed(color=0x34eb3d,
-                              title=f"[{current_match.full_game_name}] Score submitted | 🟥 {current_match.red_series}-{current_match.blue_series}  🟦 |")
+        # Create a richer embed with more match details
+        embed = discord.Embed(
+            color=0x34eb3d,
+            title=f"{current_match.full_game_name} Match Results",
+            description=f"**Series Score:** 🟥 {current_match.red_series} - {current_match.blue_series} 🟦"
+        )
+        
+        # Set thumbnail to game icon
         embed.set_thumbnail(url=current_match.game_icon)
+        
+        # Add match score as a separate field
+        embed.add_field(
+            name="Match Score",
+            value=f"🟥 **{red_score}** - **{blue_score}** 🟦",
+            inline=False
+        )
 
+        # Add player details for each alliance
         for color, score in [('red', red_score), ('blue', blue_score)]:
-            players = "\n".join(
-                f"[{response[f'{color}_display_names'][i]}](https://secondrobotics.org/ranked/{current_match.api_short}/{player['player']}) "
-                f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response[f'{color}_elo_changes'][i], 3))}\n```"
-                for i, player in enumerate(response[f'{color}_player_elos'])
+            emoji = "🟥" if color == "red" else "🟦"
+            alliance_name = f"{color.upper()} ALLIANCE {emoji}"
+            
+            # Format player information with more details
+            players = []
+            for i, player in enumerate(response[f'{color}_player_elos']):
+                display_name = response[f'{color}_display_names'][i]
+                elo = round(player['elo'], 2)
+                elo_change = round(response[f'{color}_elo_changes'][i], 2)
+                
+                # Create a formatted string for each player
+                player_str = (
+                    f"[{display_name}](https://secondrobotics.org/ranked/{current_match.api_short}/{player['player']})\n"
+                    f"ELO: `{elo}` ({'+' if elo_change >= 0 else ''}{elo_change})"
+                )
+                players.append(player_str)
+            
+            # Join all player information with separators
+            players_text = "\n─────────────\n".join(players)
+            
+            embed.add_field(
+                name=alliance_name,
+                value=players_text,
+                inline=True
             )
-            embed.add_field(name=f'{color.upper()} {"🟥" if color == "red" else "🟦"} ({score})',
-                            value=players,
-                            inline=True)
+
+        # Add footer with match ID or timestamp
+        embed.set_footer(text=f"Match completed at {discord.utils.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        
         return embed
 
     async def handle_game_end(self, interaction, qdata, current_match, embed):
