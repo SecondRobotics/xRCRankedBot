@@ -20,6 +20,7 @@ import zipfile
 import shutil
 from config import *
 import aiohttp
+import config
 
 # Constants
 SERVER_PATH = "./server/xRC Simulator.x86_64"
@@ -58,8 +59,7 @@ games = requests.get("https://secondrobotics.org/api/ranked/").json()
 games_choices = [Choice(name=game['name'], value=game['short_code'])
                  for game in games if game['game'] in active_games or game['game'] == daily_game]
 
-games_players = {game['short_code']: game['players_per_alliance'] * 2
-                 for game in games if game['game'] in active_games or game['game'] == daily_game}
+games_players = {game['short_code']: game['players_per_alliance'] * 2 for game in games}
 
 games_categories = active_games.copy()
 games_categories.append(daily_game)
@@ -224,6 +224,7 @@ class XrcGame:
         self.red_channel = None  # type: discord.VoiceChannel | None
         self.blue_channel = None  # type: discord.VoiceChannel | None
         self.last_ping_time = None  # type: datetime | None
+        self.players = []
 
         try:
             self.game_icon = game_logos[game]
@@ -332,10 +333,10 @@ def create_game(game_type):
     qdata = game_queues[game_type]
     offset = qdata._queue.qsize() - qdata.alliance_size * 2
     qsize = qdata._queue.qsize()
-    players = [qdata._queue.get()
-               for _ in range(qsize)]  # type: list[discord.Member]
+    players = [qdata._queue.get() for _ in range(qsize)]  # type: list[discord.Member]
     match = qdata.create_match()
     match.game = Game(players[0 + offset:match.game_size + offset])
+    match.players = match.game.players  # Set the players attribute of XrcGame
     for player in players[0:offset]:
         qdata._queue.put(player)
     players = [qdata._queue.get() for _ in range(qdata._queue.qsize())]
@@ -344,7 +345,7 @@ def create_game(game_type):
 
     for queue in game_queues.values():
         if queue.game_type != game_type:
-            for player in match.game.players:
+            for player in match.players:
                 if player in queue._queue:
                     queue._queue.remove(player)
 
@@ -368,12 +369,6 @@ class Ranked(commands.Cog):
         self.bots = None  # type: discord.Role | None
         self.bot = bot
         self.ranked_display = None
-        
-        # Initialize vote queues
-        self.vote_queue_3v3 = Queue("3v3", 3, "3v3", "3v3 Queue")
-        self.vote_queue_2v2 = Queue("2v2", 2, "2v2", "2v2 Queue")
-        self.vote_queue_1v1 = Queue("1v1", 1, "1v1", "1v1 Queue")
-        
         self.check_queue_joins.start()
         self.has_daily_pinged = False
         self.check_daily_ping.start()
@@ -383,6 +378,10 @@ class Ranked(commands.Cog):
 
         # self.check_empty_servers.start() # FIXME: Disabled for now
         self.bot.loop.create_task(self.cleanup_old_data())
+
+        self.vote_queue_3v3 = Queue("Vote3v3", 3, "vote3v3", "Vote 3v3")
+        self.vote_queue_2v2 = Queue("Vote2v2", 2, "vote2v2", "Vote 2v2")
+        self.vote_queue_1v1 = Queue("Vote1v1", 1, "vote1v1", "Vote 1v1")
 
     async def cleanup_old_data(self):
         await self.bot.wait_until_ready()
@@ -555,6 +554,7 @@ class Ranked(commands.Cog):
         url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
         x = requests.get(url, headers=HEADER)
         res = x.json()
+        logger.info(res)
 
         if not res["exists"]:
             await interaction.followup.send(
@@ -588,11 +588,10 @@ class Ranked(commands.Cog):
             await player.send("You are already in this queue.", ephemeral=True)
             return True
 
-        # Check if the player is already in a match
         roles = set(role.id for role in player.roles)
         if any(match.red_role and match.blue_role and 
-            (match.red_role.id in roles or match.blue_role.id in roles)
-            for match in qdata.matches):
+               (match.red_role.id in roles or match.blue_role.id in roles)
+               for match in qdata.matches):
             await player.send("You are already playing in a game!", ephemeral=True)
             return True
 
@@ -671,20 +670,34 @@ class Ranked(commands.Cog):
 
         player = interaction.user
         
+        logger.info(f"Attempting to remove {player.name} from all queues")
+
         relevant_queues = [queue for queue in game_queues.values() if player in queue._queue]
-        
-        if not relevant_queues:
+        relevant_vote_queues = []
+
+        for vote_queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
+            if any(entry[0] == player for entry in vote_queue._queue.queue):
+                relevant_vote_queues.append(vote_queue)
+                logger.info(f"{player.name} found in {vote_queue.full_game_name}")
+            else:
+                logger.info(f"{player.name} not found in {vote_queue.full_game_name}")
+
+        if not relevant_queues and not relevant_vote_queues:
+            logger.info(f"{player.name} not found in any queues")
             await interaction.response.send_message("You aren't in any queues.", ephemeral=True, delete_after=30)
             return
 
         message_parts = [f"🔴 **{escape_mentions(player.display_name)}** 🔴\nremoved from the queue for "]
         
         for queue in relevant_queues:
-            try:
-                queue._queue.remove(player)
-                message_parts.append(f"__{queue.full_game_name}__. *({queue._queue.qsize()}/{queue.alliance_size * 2})*")
-            except ValueError:
-                pass  # Player was not in this queue
+            queue._queue.remove(player)
+            message_parts.append(f"__{queue.full_game_name}__. *({queue._queue.qsize()}/{queue.alliance_size * 2})*")
+            logger.info(f"Removed {player.name} from {queue.full_game_name}")
+
+        for queue in relevant_vote_queues:
+            queue._queue.queue = [entry for entry in queue._queue.queue if entry[0] != player]
+            message_parts.append(f"__{queue.full_game_name}__. *({len(queue._queue.queue)}/{queue.alliance_size * 2})*")
+            logger.info(f"Removed {player.name} from vote queue {queue.full_game_name}")
 
         message = ", ".join(message_parts)
         
@@ -692,12 +705,15 @@ class Ranked(commands.Cog):
         await interaction.response.send_message(message, ephemeral=True, delete_after=30)
         await queue_channel.send(message)
 
-        for queue in relevant_queues:
+        for queue in relevant_queues + relevant_vote_queues:
+            queue_size = queue._queue.qsize() if hasattr(queue._queue, 'qsize') else len(queue._queue.queue)
             await queue_channel.send(
                 f"Queue for [{queue.full_game_name}](https://secondrobotics.org/ranked/{queue.api_short}) "
-                f"is now **[{queue._queue.qsize()}/{queue.alliance_size * 2}]**",
+                f"is now **[{queue_size}/{queue.alliance_size * 2}]**",
                 delete_after=60
             )
+        
+        logger.info(f"Finished removing {player.name} from all queues")
             
     async def random(self, qdata: Queue, interaction, game_type, from_button: bool = False):
         match = create_game(game_type)
@@ -771,8 +787,24 @@ class Ranked(commands.Cog):
 
         await self.display_teams(interaction, match)
 
+    def find_match_by_player(self, player: discord.Member):
+        logger.info(f"Searching for match containing player: {player.name}")
+        for queue in game_queues.values():
+            logger.info(f"Checking queue: {queue.game_type}")
+            for match in queue.matches:
+                logger.info(f"Checking match: {match}")
+                if match.game:
+                    logger.info(f"Match game: {match.game}")
+                    logger.info(f"Red team: {match.game.red}")
+                    logger.info(f"Blue team: {match.game.blue}")
+                if isinstance(match, XrcGame) and match.game and (player in match.game.red or player in match.game.blue):
+                    logger.info(f"Found match for player {player.name}")
+                    return match
+        logger.info(f"No match found for player {player.name}")
+        return None
 
     async def display_teams(self, ctx, match: XrcGame):
+
         async def fetch_player_elo(game, user_id):
             url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
             async with aiohttp.ClientSession() as session:
@@ -780,107 +812,102 @@ class Ranked(commands.Cog):
                     if response.status == 200:
                         data = await response.json()
                         return data.get('elo', 0)
-                    logger.error(f"Failed to fetch ELO for player {user_id}: {response.status}")
-                    return 1200
+                    else:
+                        logger.error(
+                            f"Failed to fetch ELO for player {user_id}: {response.status}")
+                        return 0
 
         async def move_player(player, channel):
             try:
                 await player.move_to(channel)
             except Exception as e:
-                logger.error(f"Failed to move player {player.display_name}: {e}")
+                logger.error(e)
 
         logger.info(f"Displaying teams for {match.game_type}")
 
-        self.category = self.category or get(ctx.guild.categories, id=CATEGORY_ID)
+        self.category = self.category or get(
+            ctx.guild.categories, id=CATEGORY_ID)
         self.staff = self.staff or get(ctx.guild.roles, id=EVENT_STAFF_ID)
         self.bots = self.bots or get(ctx.guild.roles, id=BOTS_ROLE_ID)
 
         logger.info(f"Getting IP for {match.game_type}")
 
-        red_mentions = [f"🟥{player.mention}" for player in match.game.red]
-        blue_mentions = [f"🟦{player.mention}" for player in match.game.blue]
-        red_field = "\n".join(red_mentions)
-        blue_field = "\n".join(blue_mentions)
+        red_field = "\n".join(
+            [f"🟥{player.mention}" for player in match.game.red])
+        blue_field = "\n".join(
+            [f"🟦{player.mention}" for player in match.game.blue])
 
+        # Construct the description with all relevant variables
         description = (
             f"Server 'Ranked{match.api_short}' started for you with password **{match.server_password}**\n"
             f"|| IP: {ip} Port: {match.server_port} ||\n"
-            f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | "
-            f"[Leaderboard](https://secondrobotics.org/ranked/{match.api_short})\n\n"
+            f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})\n\n"
         )
 
         embed = discord.Embed(
-            color=0x34dceb,
-            title=f"Teams have been picked for {match.full_game_name}!",
-            description=description
+            color=0x34dceb, title=f"Teams have been picked for {match.full_game_name}!", description=description
         )
         embed.set_thumbnail(url=match.game_icon)
 
-        # Separate asyncio.gather calls for red and blue players
-        red_elos = await asyncio.gather(
-            *(fetch_player_elo(match.api_short, player.id) for player in match.game.red)
-        )
-        blue_elos = await asyncio.gather(
-            *(fetch_player_elo(match.api_short, player.id) for player in match.game.blue)
-        )
+        # Fetch ELOs concurrently
+        red_elo_tasks = [fetch_player_elo(
+            match.api_short, player.id) for player in match.game.red]
+        blue_elo_tasks = [fetch_player_elo(
+            match.api_short, player.id) for player in match.game.blue]
 
-        avg_red_elo = (sum(red_elos) / len(match.game.red)) if match.game.red else 0
-        avg_blue_elo = (sum(blue_elos) / len(match.game.blue)) if match.game.blue else 0
+        red_elos = await asyncio.gather(*red_elo_tasks)
+        blue_elos = await asyncio.gather(*blue_elo_tasks)
 
-        embed.add_field(name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
-        embed.add_field(name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
+        # Calculate average ELO
+        avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
+        avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
+
+        embed.add_field(
+            name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
+        embed.add_field(
+            name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
 
         await queue_channel.send(embed=embed)
 
-        overwrites = {
-            'red': {
-                ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                match.red_role: discord.PermissionOverwrite(connect=True),
-                self.staff: discord.PermissionOverwrite(connect=True),
-                self.bots: discord.PermissionOverwrite(connect=True),
-            },
-            'blue': {
-                ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
-                match.blue_role: discord.PermissionOverwrite(connect=True),
-                self.staff: discord.PermissionOverwrite(connect=True),
-                self.bots: discord.PermissionOverwrite(connect=True),
-            }
-        }
+        overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
+                          match.red_role: discord.PermissionOverwrite(connect=True),
+                          self.staff: discord.PermissionOverwrite(connect=True),
+                          self.bots: discord.PermissionOverwrite(connect=True)}
+        overwrites_blue = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
+                           match.blue_role: discord.PermissionOverwrite(connect=True),
+                           self.staff: discord.PermissionOverwrite(connect=True),
+                           self.bots: discord.PermissionOverwrite(connect=True)}
 
         if match.game_size != 2:
-            if not (match.red_role and match.blue_role):
-                logger.error("Team roles are not properly set")
-                return
-
             try:
+                # Ensure the roles exist before creating channels
+                if not match.red_role or not match.blue_role:
+                    raise ValueError("Team roles are not properly set")
+
+                # Create the voice channels with proper error handling
                 match.red_channel, match.blue_channel = await asyncio.gather(
-                    ctx.guild.create_voice_channel(
-                        f"🟥 0 - {match.full_game_name}🟥",
-                        category=self.category,
-                        overwrites=overwrites['red']
-                    ),
-                    ctx.guild.create_voice_channel(
-                        f"🟦 0 - {match.full_game_name}🟦",
-                        category=self.category,
-                        overwrites=overwrites['blue']
-                    )
+                    ctx.guild.create_voice_channel(f"🟥{match.full_game_name}🟥", category=self.category, overwrites=overwrites_red),
+                    ctx.guild.create_voice_channel(f"🟦{match.full_game_name}🟦", category=self.category, overwrites=overwrites_blue)
                 )
             except discord.errors.Forbidden:
-                logger.error("Insufficient permissions to create voice channels.")
+                print("I don't have permission to create voice channels.")
+                return
+            except ValueError as e:
+                print(f"Error: {str(e)}")
                 return
             except Exception as e:
-                logger.error(f"An unexpected error occurred while creating channels: {e}")
+                print(f"An unexpected error occurred: {str(e)}")
                 return
 
             if not match.game:
-                logger.error("No game found for the match.")
+                print("Error: No game found")
                 return
 
-        tasks = [
-            move_player(player, match.red_channel if player in match.game.red else match.blue_channel)
-            for player in match.game.red | match.game.blue
-            if match.game_size != 2
-        ]
+        tasks = []
+        for player in match.game.red | match.game.blue:
+            if match.game_size != 2:
+                tasks.append(move_player(
+                    player, match.red_channel if player in match.game.red else match.blue_channel))
 
         await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -894,14 +921,22 @@ class Ranked(commands.Cog):
 
         match.red_series = match.blue_series = 2
 
-        await remove_roles(guild, match)
+        try:
+            await remove_roles(guild, match)
+        except Exception as e:
+            logger.error(f"Error removing roles: {str(e)}")
 
         lobby = self.bot.get_channel(LOBBY_VC_ID)
         for channel in [match.red_channel, match.blue_channel]:
             if channel:
-                for member in channel.members:
-                    await member.move_to(lobby)
-                await channel.delete()
+                try:
+                    for member in channel.members:
+                        await member.move_to(lobby)
+                    await channel.delete()
+                except discord.errors.NotFound:
+                    logger.warning(f"Channel {channel.name} not found, it may have already been deleted.")
+                except Exception as e:
+                    logger.error(f"Error handling channel {channel.name}: {str(e)}")
 
         # Remove the match from the queue
         for queue in game_queues.values():
@@ -919,7 +954,7 @@ class Ranked(commands.Cog):
         Choice(name="1v1", value="1v1")
     ])
     @app_commands.choices(game=[Choice(name=game, value=game) for game in server_games.keys()])
-    async def votequeue(self, interaction: discord.Interaction, mode: str, game: str):
+    async def queue(self, interaction: discord.Interaction, mode: str, game: str):
         logger.info(f"{interaction.user.name} called /queue with mode {mode} and game {game}")
         
         queue = self.get_vote_queue(mode)
@@ -988,50 +1023,51 @@ class Ranked(commands.Cog):
         
         logger.info(f"Queue size: {queue_size}, Required size: {queue.alliance_size * 2}")
         
-        try:
-            with queue._queue.mutex:
-                players_and_games = queue._queue.vote_queue[:queue.alliance_size * 2]
-                queue._queue.vote_queue = queue._queue.vote_queue[queue.alliance_size * 2:]
+        if queue_size < queue.alliance_size * 2:
+            await interaction.followup.send(f"Not enough players in queue ({queue_size}/{queue.alliance_size * 2})", ephemeral=True)
+            return
             
+        try:
+            with queue._queue.mutex:  # Lock the queue while we process it
+                # Get all players at once from the vote queue
+                players_and_games = [(player, game) for player, game in queue._queue.vote_queue[:queue.alliance_size * 2]]
+                # Remove the players we just got
+                queue._queue.vote_queue = queue._queue.vote_queue[queue.alliance_size * 2:]
+                
             if len(players_and_games) < queue.alliance_size * 2:
                 logger.error(f"Not enough players in queue: got {len(players_and_games)}, needed {queue.alliance_size * 2}")
                 return
-            
+                
+            # Extract players and their preferred games
             players, preferred_games = zip(*players_and_games)
             
             # Choose random game from preferred games
             chosen_game = random.choice(preferred_games)
             logger.info(f"Chosen game: {chosen_game}")
             
-            # Get the short code and check if it exists
-            game_short_code = short_codes[chosen_game]
-            if not game_short_code:  # If short code is empty string
-                logger.error(f"Game {chosen_game} has no short code defined")
-                await interaction.followup.send(f"Error: {chosen_game} is not available for ranked play")
+            # Convert full game name to short code
+            chosen_game_short = config.short_codes.get(chosen_game, chosen_game)
+            logger.info(f"Game short code: {chosen_game_short}")
+            
+            # Append the alliance size to the game short code
+            game_code = f"{chosen_game_short}{queue.alliance_size}v{queue.alliance_size}"
+            logger.info(f"Final game code: {game_code}")
+            
+            if game_code not in game_queues:
+                logger.error(f"Invalid game code: {game_code}")
+                await interaction.followup.send(f"Error: '{game_code}' is not a valid game code. Available games: {list(game_queues.keys())}")
                 # Put players back in queue
                 for player, game in players_and_games:
                     queue._queue.put((player, game))
                 return
                 
-            queue_key = f"{game_short_code}{queue.alliance_size}v{queue.alliance_size}"
-            logger.info(f"Using queue key: {queue_key}")
-            
-            if queue_key not in game_queues:
-                logger.error(f"Invalid queue key: {queue_key}")
-                logger.error(f"Available keys are: {list(game_queues.keys())}")
-                await interaction.followup.send(f"Error: Game mode not available for {chosen_game}")
-                # Put players back in queue
-                for player, game in players_and_games:
-                    queue._queue.put((player, game))
-                return
-            
-            qdata = game_queues[queue_key]
+            qdata = game_queues[game_code]
             
             # Add players to the chosen game's queue
             logger.info("Adding players to game queue...")
             for player in players:
                 qdata._queue.put(player)
-                logger.info(f"Added {player.display_name} to {queue_key} queue")
+                logger.info(f"Added {player.display_name} to {game_code} queue")
             
             # Start the match
             logger.info("Starting match...")
@@ -1083,7 +1119,6 @@ class Ranked(commands.Cog):
     async def test(self, interaction: discord.Interaction):
         logger.info(f"{interaction.user.name} called /test")
         await interaction.response.defer(ephemeral=True)
-        print(game_queues)
         for queue in game_queues.values():
             print(queue)
             red = [match.red_role for match in queue.matches]
@@ -1092,6 +1127,11 @@ class Ranked(commands.Cog):
             if any(role in interaction.user.roles for role in red + blue):
                 await interaction.followup.send(queue.full_game_name)
                 return
+
+    # @app_commands.choices(game=games_choices)
+    # @app_commands.command(name="queue", description="Add yourself to the queue")
+    # async def add_to_queue(self, interaction: discord.Interaction, game: str):
+    #     await self.queue_player(interaction, game, False)
 
     
     @app_commands.choices(game=games_choices)
@@ -1194,6 +1234,7 @@ class Ranked(commands.Cog):
             276900035512500224,
             262011554403319809
         ]
+
 
         added_players = ""
         
@@ -1460,9 +1501,6 @@ class Ranked(commands.Cog):
 
         self.update_series_score(current_match, red_score, blue_score)
         
-        # Update voice channel names with current series score
-        await self.update_voice_channel_names(current_match)
-
         gg, result_message = self.check_series_end(current_match)
         await interaction.followup.send(result_message)
 
@@ -1496,12 +1534,6 @@ class Ranked(commands.Cog):
         elif blue_score > red_score:
             current_match.blue_series += 1
         logger.info(f"Updated match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
-
-    async def update_voice_channel_names(self, current_match):
-        if current_match.red_channel:
-            await current_match.red_channel.edit(name=f"🟥 {current_match.red_series} - {current_match.full_game_name}🟥")
-        if current_match.blue_channel:
-            await current_match.blue_channel.edit(name=f"🟦 {current_match.blue_series} - {current_match.full_game_name}🟦")
 
     def check_series_end(self, current_match):
         if current_match.red_series == 2:
@@ -1539,77 +1571,38 @@ class Ranked(commands.Cog):
         return embed
 
     async def handle_game_end(self, interaction, qdata, current_match, embed):
-        class RejoinQueueView(discord.ui.View):
-            def __init__(self, qdata: Queue, match: XrcGame, cog: Ranked):
-                super().__init__()
-                self.qdata = qdata
-                self.match = match
-                self.cog = cog
+        # class RejoinQueueView(discord.ui.View):
+        #     def __init__(self, qdata: Queue, match: XrcGame, cog: Ranked):
+        #         super().__init__()
+        #         self.qdata = qdata
+        #         self.match = match
+        #         self.cog = cog
 
-            @discord.ui.button(label="Rejoin Queue", style=discord.ButtonStyle.blurple, emoji="🔄")
-            async def rejoin_queue(self, button_interaction: discord.Interaction, button: discord.ui.Button):
-                await self.cog.queue_player(button_interaction, self.qdata.api_short)
+        #     @discord.ui.button(label="Rejoin Queue", style=discord.ButtonStyle.blurple, emoji="🔄")
+        #     async def rejoin_queue(self, button_interaction: discord.Interaction, button: discord.ui.Button):
+        #         await self.cog.queue_player(button_interaction, self.qdata.api_short)
 
-        view = RejoinQueueView(qdata, current_match, self)
-        await interaction.channel.send(embed=embed, view=view)
+        # view = RejoinQueueView(qdata, current_match, self)
+        # await interaction.channel.send(embed=embed, view=view)
 
-        # 1. Delete Roles
-        try:
-            await asyncio.gather(
-                current_match.red_role.delete(),
-                current_match.blue_role.delete()
-            )
-            logger.info("Deleted red and blue roles successfully.")
-        except Exception as e:
-            logger.error(f"Error deleting roles: {e}")
+        await asyncio.gather(
+            current_match.red_role.delete(),
+            current_match.blue_role.delete()
+        )
 
-        # 2. Move Members to Lobby
         lobby = self.bot.get_channel(LOBBY_VC_ID)
         move_tasks = []
         for channel in [current_match.red_channel, current_match.blue_channel]:
             if channel:
-                for member in channel.members:
-                    move_tasks.append(member.move_to(lobby))
-                    logger.info(f"Moving {member.display_name} to lobby.")
-        try:
-            if move_tasks:
-                await asyncio.gather(*move_tasks)
-                logger.info("Moved all members successfully.")
-        except Exception as e:
-            logger.error(f"Error moving members: {e}")
+                move_tasks.extend([member.move_to(lobby) for member in channel.members])
+                move_tasks.append(channel.delete())
+        await asyncio.gather(*move_tasks)
 
-        # 3. Delete Channels
-        delete_tasks = []
-        for channel in [current_match.red_channel, current_match.blue_channel]:
-            if channel:
-                delete_tasks.append(channel.delete())
-                logger.info(f"Deleting channel: {channel.name}")
-        try:
-            if delete_tasks:
-                await asyncio.gather(*delete_tasks)
-                logger.info("Deleted channels successfully.")
-        except Exception as e:
-            logger.error(f"Error deleting channels: {e}")
-
-        # 4. Stop Server Process
         if current_match.server_port:
             server_actions = self.bot.get_cog('ServerActions')
-            if server_actions:
-                logger.info(f"Attempting to stop server on port {current_match.server_port}.")
-                try:
-                    shutdown_result = server_actions.stop_server_process(current_match.server_port)
-                    logger.info(f"Server shutdown result: {shutdown_result}")
-                except Exception as e:
-                    logger.error(f"Failed to stop server on port {current_match.server_port}: {e}")
-            else:
-                logger.error("ServerActions cog not found. Unable to stop server.")
+            server_actions.stop_server_process(current_match.server_port)
 
-        # 5. Remove Match from Queue
-        try:
-            qdata.remove_match(current_match)
-            logger.info(f"Removed match from queue: {current_match.full_game_name}.")
-        except Exception as e:
-            logger.error(f"Error removing match from queue: {e}")
+        qdata.remove_match(current_match)
 
    
     
