@@ -368,6 +368,12 @@ class Ranked(commands.Cog):
         self.bots = None  # type: discord.Role | None
         self.bot = bot
         self.ranked_display = None
+        
+        # Initialize vote queues
+        self.vote_queue_3v3 = Queue("3v3", 3, "3v3", "3v3 Queue")
+        self.vote_queue_2v2 = Queue("2v2", 2, "2v2", "2v2 Queue")
+        self.vote_queue_1v1 = Queue("1v1", 1, "1v1", "1v1 Queue")
+        
         self.check_queue_joins.start()
         self.has_daily_pinged = False
         self.check_daily_ping.start()
@@ -913,7 +919,7 @@ class Ranked(commands.Cog):
         Choice(name="1v1", value="1v1")
     ])
     @app_commands.choices(game=[Choice(name=game, value=game) for game in server_games.keys()])
-    async def queue(self, interaction: discord.Interaction, mode: str, game: str):
+    async def votequeue(self, interaction: discord.Interaction, mode: str, game: str):
         logger.info(f"{interaction.user.name} called /queue with mode {mode} and game {game}")
         
         queue = self.get_vote_queue(mode)
@@ -982,51 +988,50 @@ class Ranked(commands.Cog):
         
         logger.info(f"Queue size: {queue_size}, Required size: {queue.alliance_size * 2}")
         
-        if queue_size < queue.alliance_size * 2:
-            await interaction.followup.send(f"Not enough players in queue ({queue_size}/{queue.alliance_size * 2})", ephemeral=True)
-            return
-            
         try:
-            with queue._queue.mutex:  # Lock the queue while we process it
-                # Get all players at once from the vote queue
-                players_and_games = [(player, game) for player, game in queue._queue.vote_queue[:queue.alliance_size * 2]]
-                # Remove the players we just got
+            with queue._queue.mutex:
+                players_and_games = queue._queue.vote_queue[:queue.alliance_size * 2]
                 queue._queue.vote_queue = queue._queue.vote_queue[queue.alliance_size * 2:]
-                
+            
             if len(players_and_games) < queue.alliance_size * 2:
                 logger.error(f"Not enough players in queue: got {len(players_and_games)}, needed {queue.alliance_size * 2}")
                 return
-                
-            # Extract players and their preferred games
+            
             players, preferred_games = zip(*players_and_games)
             
             # Choose random game from preferred games
             chosen_game = random.choice(preferred_games)
             logger.info(f"Chosen game: {chosen_game}")
             
-            # Convert full game name to short code
-            chosen_game_short = config.short_codes.get(chosen_game, chosen_game)
-            logger.info(f"Game short code: {chosen_game_short}")
-            
-            # Append the alliance size to the game short code
-            game_code = f"{chosen_game_short}{queue.alliance_size}v{queue.alliance_size}"
-            logger.info(f"Final game code: {game_code}")
-            
-            if game_code not in game_queues:
-                logger.error(f"Invalid game code: {game_code}")
-                await interaction.followup.send(f"Error: '{game_code}' is not a valid game code. Available games: {list(game_queues.keys())}")
+            # Get the short code and check if it exists
+            game_short_code = short_codes[chosen_game]
+            if not game_short_code:  # If short code is empty string
+                logger.error(f"Game {chosen_game} has no short code defined")
+                await interaction.followup.send(f"Error: {chosen_game} is not available for ranked play")
                 # Put players back in queue
                 for player, game in players_and_games:
                     queue._queue.put((player, game))
                 return
                 
-            qdata = game_queues[game_code]
+            queue_key = f"{game_short_code}{queue.alliance_size}v{queue.alliance_size}"
+            logger.info(f"Using queue key: {queue_key}")
+            
+            if queue_key not in game_queues:
+                logger.error(f"Invalid queue key: {queue_key}")
+                logger.error(f"Available keys are: {list(game_queues.keys())}")
+                await interaction.followup.send(f"Error: Game mode not available for {chosen_game}")
+                # Put players back in queue
+                for player, game in players_and_games:
+                    queue._queue.put((player, game))
+                return
+            
+            qdata = game_queues[queue_key]
             
             # Add players to the chosen game's queue
             logger.info("Adding players to game queue...")
             for player in players:
                 qdata._queue.put(player)
-                logger.info(f"Added {player.display_name} to {game_code} queue")
+                logger.info(f"Added {player.display_name} to {queue_key} queue")
             
             # Start the match
             logger.info("Starting match...")
@@ -1087,11 +1092,6 @@ class Ranked(commands.Cog):
             if any(role in interaction.user.roles for role in red + blue):
                 await interaction.followup.send(queue.full_game_name)
                 return
-
-    @app_commands.choices(game=games_choices)
-    @app_commands.command(name="queue", description="Add yourself to the queue")
-    async def add_to_queue(self, interaction: discord.Interaction, game: str):
-        await self.queue_player(interaction, game, False)
 
     
     @app_commands.choices(game=games_choices)
