@@ -126,21 +126,59 @@ class OrderedSet(MutableSet):
 class PlayerQueue(BaseQueue):
     def _init(self, maxsize):
         self.queue = OrderedSet()
+        self.vote_queue = []  # Add this for vote queues
 
-    def _put(self, item: discord.Member):
-        self.queue.add(item)
-        queue_joins[(self, item)] = datetime.now()
+    def _put(self, item):
+        if isinstance(item, tuple):  # Check if this is a vote queue entry
+            self.vote_queue.append(item)
+            queue_joins[(self, item[0])] = datetime.now()  # Store join time for the player
+        else:
+            self.queue.add(item)
+            queue_joins[(self, item)] = datetime.now()
 
     def _get(self):
+        if self.vote_queue:  # If this is a vote queue
+            return self.vote_queue.pop(0)
         return self.queue.pop()
 
-    def remove(self, value: discord.Member):
-        self.queue.remove(value)
-        queue_joins.pop((self, value), None)
-
-    def __contains__(self, item: discord.Member):
+    def get_nowait(self):
+        """Custom get_nowait implementation for vote queues"""
         with self.mutex:
+            if self.vote_queue:
+                if not self.vote_queue:
+                    raise Empty
+                return self.vote_queue.pop(0)
+            else:
+                if not self.queue:
+                    raise Empty
+                return self.queue.pop()
+
+    def remove(self, value):
+        if self.vote_queue:  # If this is a vote queue
+            self.vote_queue = [x for x in self.vote_queue if x[0] != value]
+            queue_joins.pop((self, value), None)
+        else:
+            self.queue.remove(value)
+            queue_joins.pop((self, value), None)
+
+    def __contains__(self, item):
+        with self.mutex:
+            if self.vote_queue:  # If this is a vote queue
+                return any(item == x[0] for x in self.vote_queue)
             return item in self.queue
+
+    def qsize(self):
+        with self.mutex:
+            if self.vote_queue:  # If this is a vote queue
+                return len(self.vote_queue)
+            return len(self.queue)
+
+    def empty(self):
+        """Custom empty check"""
+        with self.mutex:
+            if self.vote_queue is not None:
+                return len(self.vote_queue) == 0
+            return len(self.queue) == 0
 
 
 class Game:
@@ -459,35 +497,26 @@ class Ranked(commands.Cog):
         embed = discord.Embed(title="xRC Sim Ranked Queues",
                               description="Ranked queues are open!", color=0x00ff00)
         embed.set_thumbnail(url=XRC_SIM_LOGO_URL)
-        active_queues = 0
-        embed.add_field(name="Game of the Day",
-                        value=f"Today's extra game is **{daily_game}**!", inline=False)
+        
+        # Display active regular queues
         for qdata in game_queues.values():
             if qdata._queue.qsize() > 0:
-                active_queues += 1
-                embed.add_field(name=qdata.full_game_name, value=f"*{qdata._queue.qsize()}/{qdata.alliance_size * 2}*"
-                                                                 f" players in queue", inline=False)
-        if active_queues == 0:
-            embed.add_field(name="No current queues",
-                            value="Queue to get a match started!", inline=False)
+                embed.add_field(name=qdata.full_game_name, 
+                              value=f"*{qdata._queue.qsize()}/{qdata.alliance_size * 2}*"
+                              f" players in queue", inline=False)
 
-        options = [discord.SelectOption(label=game, value=game)
-                   for game in server_games.keys()]
-        select = discord.ui.Select(
-            placeholder="Choose a game to toggle ping", options=options)
-        select.callback = self.dropdown_callback
+        # Add Vote queue status display
+        vote_queues_status = ""
+        for queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
+            vote_queues_status += f"{queue.full_game_name}: {queue._queue.qsize()}/{queue.alliance_size * 2} players\n"
+
+        embed.add_field(name="Vote Queues", value=vote_queues_status, inline=False)
 
         leave_all = discord.ui.Button(
             label="Leave All Queues", style=ButtonStyle.red, row=2)
         leave_all.callback = self.leave_all_queues
 
         view = discord.ui.View(timeout=None)
-        view.add_item(select)
-
-        for i, game in enumerate(games_categories):
-            view.add_item(GameButton(
-                game, short_code=short_codes[game], cog=self))
-
         view.add_item(leave_all)
 
         try:
@@ -495,26 +524,6 @@ class Ranked(commands.Cog):
         except Exception as e:
             logger.error(e)
             self.ranked_display = None
-
-    async def dropdown_callback(self, interaction: discord.Interaction):
-
-    
-        game = interaction.data['values'][0]
-        logger.info(f"{interaction.user.name} selected {game} from dropdown")
-        guild = interaction.guild
-
-        ping_role_name = f"{game} Ping"
-        ping_role = discord.utils.get(guild.roles, name=ping_role_name)
-
-        member = interaction.user
-        if ping_role in member.roles:
-            await member.remove_roles(ping_role)
-            await interaction.response.send_message(f"You have been removed from the {ping_role_name} role.",
-                                                    ephemeral=True, delete_after=30)
-        else:
-            await member.add_roles(ping_role)
-            await interaction.response.send_message(f"You have been added to the {ping_role_name} role!",
-                                                    ephemeral=True)
 
     async def queue_player(self, interaction: discord.Interaction, game: str, from_button: bool = False):
         logger.info(f"{interaction.user.name} called /q")
@@ -706,27 +715,39 @@ class Ranked(commands.Cog):
         red = random.sample(players_list, int(match.team_size))
         for player in red:
             match.game.add_to_red(player)
-            await player.add_roles(match.red_role)
-            # Remove player from all queues
-            for queue in game_queues.values():
-                if player in queue._queue.queue:
-                    queue._queue.queue.remove(player)
+            # Only add roles to real members
+            if not is_mock_member(player):
+                await player.add_roles(match.red_role)
+
+        logger.info(f"Red: {red}")
 
         # Assign remaining players to blue team and give them the blue role
         blue = [player for player in players_list if player not in red]
         for player in blue:
             match.game.add_to_blue(player)
-            await player.add_roles(match.blue_role)
-            # Remove player from all queues
-            for queue in game_queues.values():
-                if player in queue._queue.queue:
-                    queue._queue.queue.remove(player)
+            # Only add roles to real members
+            if not is_mock_member(player):
+                await player.add_roles(match.blue_role)
+
+        logger.info(f"Blue: {blue}")
+
+        # Remove players from other queues
+        all_players = red + blue
+        for queue in game_queues.values():
+            if queue != qdata:
+                for player in all_players:
+                    if player in queue._queue:
+                        queue._queue.remove(player)
+                        logger.info(f"Removed {player.name} from {queue.full_game_name} queue")
+
+        # Also remove from vote queues
+        for vote_queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
+            vote_queue._queue.queue = [entry for entry in vote_queue._queue.queue if entry[0] not in all_players]
 
         # Code from start_match
-        match.red_series = 0  # Reset series score to 0 when starting a match
-        match.blue_series = 0  # Reset series score to 0 when starting a match
+        match.red_series = 0
+        match.blue_series = 0
 
-        # Check from_button and channel conditions
         if (interaction.channel is None or interaction.channel.id != QUEUE_CHANNEL_ID) and not from_button:
             await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
             return
@@ -876,24 +897,153 @@ class Ranked(commands.Cog):
                     await member.move_to(lobby)
                 await channel.delete()
 
-    @app_commands.choices(game=server_game_names)
-    @app_commands.command(name="rankedping", description="Toggle ranked pings for a game")
-    async def rankedping(self, interaction: discord.Interaction, game: str):
-        logger.info(f"{interaction.user.name} called /rankedping {game}")
-        guild = interaction.guild
+        # Remove the match from the queue
+        for queue in game_queues.values():
+            if match in queue.matches:
+                queue.matches.remove(match)
+                break
 
-        ping_role_name = f"{game} Ping"
-        ping_role = discord.utils.get(guild.roles, name=ping_role_name)
 
-        member = interaction.user
-        if ping_role in member.roles:
-            await member.remove_roles(ping_role)
-            await interaction.response.send_message(f"You have been removed from the {ping_role_name} role.",
-                                                    ephemeral=True)
+  
+
+    @app_commands.command(name="queue", description="Queue vote style")
+    @app_commands.choices(mode=[
+        Choice(name="3v3", value="3v3"),
+        Choice(name="2v2", value="2v2"),
+        Choice(name="1v1", value="1v1")
+    ])
+    @app_commands.choices(game=[Choice(name=game, value=game) for game in server_games.keys()])
+    async def queue(self, interaction: discord.Interaction, mode: str, game: str):
+        logger.info(f"{interaction.user.name} called /queue with mode {mode} and game {game}")
+        
+        queue = self.get_vote_queue(mode)
+        if not queue:
+            await interaction.response.send_message(f"Error: Invalid mode {mode}.", ephemeral=True)
+            return
+
+        # Check if player is already in a match
+        if await self.is_player_in_match(interaction.user):
+            await interaction.response.send_message(
+                "You are already in a match. Please finish your current match before queuing.",
+                ephemeral=True)
+            return
+
+        # Check if player is already in any vote queue
+        for vq in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
+            if any(entry[0].id == interaction.user.id for entry in vq._queue.vote_queue):
+                await interaction.response.send_message(
+                    "You are already in a vote queue. Please leave that queue first.",
+                    ephemeral=True)
+                return
+
+        # Check if player is in any regular queue
+        for qdata in game_queues.values():
+            if interaction.user in qdata._queue:
+                await interaction.response.send_message(
+                    "You are already in a regular queue. Please leave that queue first.",
+                    ephemeral=True)
+                return
+
+        if not await self.validate_player(interaction, game):
+            return
+
+        await self.add_player_to_vote_queue(interaction.user, queue, game, interaction)
+        await self.check_vote_queue_status(queue, interaction)
+
+    def get_vote_queue(self, mode):
+        if mode == "3v3":
+            return self.vote_queue_3v3
+        elif mode == "2v2":
+            return self.vote_queue_2v2
+        elif mode == "1v1":
+            return self.vote_queue_1v1
+        return None
+
+    async def add_player_to_vote_queue(self, player: discord.Member, queue: Queue, preferred_game: str, interaction: discord.Interaction):
+        queue._queue.put((player, preferred_game))
+        await self.update_ranked_display()
+        res = await self.get_player_info(player.id)
+        await interaction.response.send_message(
+            f"🟢 **{res['display_name']}** 🟢\nadded to {queue.full_game_name} queue with preferred game: {preferred_game}. "
+            f"({queue._queue.qsize()}/{queue.alliance_size * 2})",
+            ephemeral=True
+        )
+
+    async def check_vote_queue_status(self, queue: Queue, interaction: discord.Interaction):
+        if queue._queue.qsize() >= queue.alliance_size * 2:
+            await self.start_vote_match(queue, interaction)
         else:
-            await member.add_roles(ping_role)
-            await interaction.response.send_message(f"You have been added to the {ping_role_name} role!",
-                                                    ephemeral=True)
+            await self.send_queue_status(queue, interaction)
+
+    async def start_vote_match(self, queue: Queue, interaction: discord.Interaction):
+        logger.info("Starting vote match...")
+        players_and_games = []
+        queue_size = queue._queue.qsize()
+        
+        logger.info(f"Queue size: {queue_size}, Required size: {queue.alliance_size * 2}")
+        
+        if queue_size < queue.alliance_size * 2:
+            await interaction.followup.send(f"Not enough players in queue ({queue_size}/{queue.alliance_size * 2})", ephemeral=True)
+            return
+            
+        try:
+            with queue._queue.mutex:  # Lock the queue while we process it
+                # Get all players at once from the vote queue
+                players_and_games = [(player, game) for player, game in queue._queue.vote_queue[:queue.alliance_size * 2]]
+                # Remove the players we just got
+                queue._queue.vote_queue = queue._queue.vote_queue[queue.alliance_size * 2:]
+                
+            if len(players_and_games) < queue.alliance_size * 2:
+                logger.error(f"Not enough players in queue: got {len(players_and_games)}, needed {queue.alliance_size * 2}")
+                return
+                
+            # Extract players and their preferred games
+            players, preferred_games = zip(*players_and_games)
+            
+            # Choose random game from preferred games
+            chosen_game = random.choice(preferred_games)
+            logger.info(f"Chosen game: {chosen_game}")
+            
+            # Convert full game name to short code
+            chosen_game_short = config.short_codes.get(chosen_game, chosen_game)
+            logger.info(f"Game short code: {chosen_game_short}")
+            
+            # Append the alliance size to the game short code
+            game_code = f"{chosen_game_short}{queue.alliance_size}v{queue.alliance_size}"
+            logger.info(f"Final game code: {game_code}")
+            
+            if game_code not in game_queues:
+                logger.error(f"Invalid game code: {game_code}")
+                await interaction.followup.send(f"Error: '{game_code}' is not a valid game code. Available games: {list(game_queues.keys())}")
+                # Put players back in queue
+                for player, game in players_and_games:
+                    queue._queue.put((player, game))
+                return
+                
+            qdata = game_queues[game_code]
+            
+            # Add players to the chosen game's queue
+            logger.info("Adding players to game queue...")
+            for player in players:
+                qdata._queue.put(player)
+                logger.info(f"Added {player.display_name} to {game_code} queue")
+            
+            # Start the match
+            logger.info("Starting match...")
+            await self.start_match(qdata, interaction, False)
+            
+            # Inform players about the chosen game
+            player_mentions = " ".join([player.mention for player in players])
+            await interaction.followup.send(
+                f"{player_mentions}\nThe randomly selected game is: **{chosen_game}** ({queue.alliance_size}v{queue.alliance_size})"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in start_vote_match: {str(e)}")
+            # Return players to queue if there's an error
+            for player, game in players_and_games:
+                queue._queue.put((player, game))
+            await interaction.followup.send(f"Error starting match: {str(e)}", ephemeral=True)
 
     @app_commands.command(description="Updates to the latest release version of xRC Sim")
     @app_commands.checks.has_any_role("Event Staff")
@@ -943,7 +1093,7 @@ class Ranked(commands.Cog):
     async def add_to_queue(self, interaction: discord.Interaction, game: str):
         await self.queue_player(interaction, game, False)
 
-   
+    
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Force queue players")
     async def forcequeue(self, interaction: discord.Interaction,
@@ -974,8 +1124,63 @@ class Ranked(commands.Cog):
         await self.update_ranked_display()
         await self.check_queue_status(qdata, interaction)
 
+    @app_commands.command(description="Test vote 2v2 queue with dummy data")
+    async def testvotequeue2v2(self, interaction: discord.Interaction):
+        logger.info(f"{interaction.user.name} called /testvotequeue2v2")
+
+        queue = self.vote_queue_2v2
+
+        # Create dummy user data
+        dummy_users = [
+            {
+                'name': f'TestUser{i}',
+                'display_name': f'TestUser{i}',
+                'id': 1000 + i,
+                'mention': f'<@{1000 + i}>'
+            } for i in range(1, 5)  # Creates 4 dummy users for 2v2
+        ]
+
+        # List of valid games for vote queue
+        valid_games = list(server_games.keys())
+
+        added_players = ""
+        
+        if isinstance(interaction.user, discord.Member) and any(role.id == EVENT_STAFF_ID for role in interaction.user.roles):
+            for dummy_user in dummy_users:
+                # Create a mock Member object with _is_mock flag
+                mock_member = type('MockMember', (), {
+                    'name': dummy_user['name'],
+                    'display_name': dummy_user['display_name'],
+                    'id': dummy_user['id'],
+                    'mention': dummy_user['mention'],
+                    'roles': [],
+                    'add_roles': lambda x: None,
+                    'remove_roles': lambda x: None,
+                    'send': lambda x: None,
+                    'move_to': lambda x: None,
+                    '_is_mock': True,  # Add this flag
+                    'guild': interaction.guild
+                })
+
+                chosen_game = random.choice(valid_games)
+                queue._queue.put((mock_member, chosen_game))
+                added_players += f"\n{mock_member.display_name} (Game: {chosen_game})"
+            
+            await interaction.response.send_message(f"Successfully added dummy players to the 2v2 vote queue:{added_players}", ephemeral=True)
+        else:
+            await interaction.response.send_message("You don't have permission to use this command.", ephemeral=True)
+            return
+
+        await self.update_ranked_display()
+        await self.check_vote_queue_status(queue, interaction)
+
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Test queue with predefined user IDs")
+    @app_commands.describe(game="The game to test")
+    @app_commands.choices(game=[
+        Choice(name=game['name'], value=game['short_code'])
+        for game in games if game['game'] in active_games or game['game'] == daily_game
+    ])
     async def testqueue(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /testqueue")
         qdata = game_queues[game]
@@ -1012,6 +1217,11 @@ class Ranked(commands.Cog):
 
     @app_commands.choices(game=games_choices)
     @app_commands.command(description="Start a game")
+    @app_commands.describe(game="The game to start")
+    @app_commands.choices(game=[
+        Choice(name=game['name'], value=game['short_code'])
+        for game in games if game['game'] in active_games or game['game'] == daily_game
+    ])
     async def startmatch(self, interaction: discord.Interaction, game: str):
         logger.info(f"{interaction.user.name} called /startmatch")
         await interaction.response.defer()
@@ -1019,87 +1229,167 @@ class Ranked(commands.Cog):
 
     
 
-    @app_commands.choices(game=games_choices)
-    @app_commands.command(name="queuestatus", description="View who is currently in the queue")
+    @app_commands.command(name="queuestatus", description="View who is currently in vote queues")
     @app_commands.checks.has_any_role("Event Staff")
-    async def queuestatus(self, interaction: discord.Interaction, game: str):
-        logger.info(f"{interaction.user.name} called /queuestatus")
-        qdata = game_queues[game]
+    @app_commands.choices(size=[
+        Choice(name="3v3", value=3),
+        Choice(name="2v2", value=2),
+        Choice(name="1v1", value=1)
+    ])
+    async def queuestatus(self, interaction: discord.Interaction, size: int):
+        logger.info(f"{interaction.user.name} called /queuestatus for {size}v{size}")
+        
+        # Get corresponding vote queue
+        vote_queue = self.get_vote_queue(f"{size}v{size}")
+        if not vote_queue:
+            await interaction.response.send_message(f"Invalid queue size: {size}v{size}", ephemeral=True)
+            return
+        
+        embed = discord.Embed(color=0xcda03f, title=f"Vote Queue Status - {size}v{size}")
+        
         try:
-            players = []
-            for _ in range(0, 2):
-                players = [qdata._queue.get()
-                           for _ in range(qdata._queue.qsize())]
-                for player in players:
-                    qdata._queue.put(player)
-            embed = discord.Embed(
-                color=0xcda03f, title=f"Signed up players for {game}")
+            # Debug logging
+            logger.info(f"Vote queue object: {vote_queue}")
+            logger.info(f"Vote queue _queue: {vote_queue._queue}")
+            logger.info(f"Vote queue vote_queue: {vote_queue._queue.vote_queue}")
+            
+            # Access the vote_queue directly
+            vote_players = vote_queue._queue.vote_queue
+            
+            if vote_players:
+                players_info = []
+                for player, game in vote_players:
+                    # Format each player's info
+                    player_info = f"{player.mention} (Preferred: {game})"
+                    players_info.append(player_info)
+                
+                embed.add_field(
+                    name=f'Players in Queue ({len(vote_players)}/{vote_queue.alliance_size * 2})',
+                    value="\n".join(players_info),
+                    inline=False
+                )
+            else:
+                embed.add_field(name="No Players", value="Queue is empty", inline=False)
 
-            embed.set_thumbnail(
-                url=qdata.matches[-1].game_icon if qdata.matches else None)
-            embed.add_field(name='Players',
-                            value="{}".format(
-                                "\n".join([player.mention for player in players])),
-                            inline=False)
             await interaction.response.send_message(embed=embed, ephemeral=True)
-        except Empty:
-            await interaction.response.send_message(f"Nobody is in queue for {game}!", ephemeral=True)
-        except Exception as e:
-            logger.error(f"Unexpected error occurred: {e}")
-            await interaction.response.send_message(f"An error occurred while fetching the queue for {game}.", ephemeral=True)
 
-    @app_commands.choices(game=games_choices)
-    @app_commands.command(name="leave", description="Remove yourself from the queue")
-    async def leave(self, interaction: discord.Interaction, game: str):
-        logger.info(f"{interaction.user.name} called /leave")
-        qdata = game_queues[game]
+        except Exception as e:
+            logger.error(f"Error in queuestatus: {e}")
+            logger.error(f"Queue state: {vote_queue._queue.__dict__}")
+            await interaction.response.send_message(f"An error occurred while fetching the queue status: {str(e)}", ephemeral=True)
+
+    @app_commands.command(name="leave", description="Remove yourself from a vote queue")
+    @app_commands.choices(size=[
+        Choice(name="3v3", value=3),
+        Choice(name="2v2", value=2),
+        Choice(name="1v1", value=1)
+    ])
+    async def leave(self, interaction: discord.Interaction, size: int):
+        logger.info(f"{interaction.user.name} called /leave for {size}v{size}")
 
         if not self.is_valid_queue_channel(interaction, False):
             await interaction.response.send_message(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
             return
 
+        vote_queue = self.get_vote_queue(f"{size}v{size}")
+        if not vote_queue:
+            await interaction.response.send_message(f"Invalid queue size: {size}v{size}", ephemeral=True)
+            return
+
         player = interaction.user
-        if player in qdata._queue:
-            qdata._queue.remove(player)
-            await self.update_ranked_display()
-            message = (
-                f"🔴 **{escape_mentions(player.display_name)}** 🔴\n"
-                f"removed from the queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}). "
-                f"*({qdata._queue.qsize()}/{qdata.alliance_size * 2})*"
-            )
-            ephemeral = False
-        else:
-            message = "You aren't in this queue."
-            ephemeral = True
+        try:
+            # Access the vote_queue directly
+            vote_players = vote_queue._queue.vote_queue
+            player_entry = next((entry for entry in vote_players if entry[0].id == player.id), None)
 
-        await interaction.response.send_message(message, ephemeral=ephemeral)
-        await self.send_queue_status(qdata, interaction)
-
-    
-
-    @app_commands.command(name="leaveall", description="Remove yourself from all queues")
-    async def leaveall(self, interaction: discord.Interaction):
-        logger.info(f"{interaction.user.name} called /leaveall")
-        await self.leave_all_queues(interaction, True)
-
-    @app_commands.choices(game=games_choices)
-    @app_commands.command(description="Remove someone else from the queue")
-    @app_commands.checks.has_any_role("Event Staff")
-    async def kick(self, interaction: discord.Interaction, player: discord.Member, game: str):
-        logger.info(f"{interaction.user.name} called /kick")
-        qdata = game_queues[game]
-        if isinstance(interaction.channel, discord.TextChannel) and interaction.channel.id == QUEUE_CHANNEL_ID:
-            if player in qdata._queue:
-                qdata._queue.remove(player)
+            if player_entry:
+                preferred_game = player_entry[1]
+                # Remove the player from the queue
+                vote_queue._queue.vote_queue = [entry for entry in vote_players if entry[0].id != player.id]
+                message = (
+                    f"🔴 **{escape_mentions(player.display_name)}** 🔴\n"
+                    f"removed from {vote_queue.full_game_name} vote queue "
+                    f"(Preferred game was: {preferred_game}). "
+                    f"*({len(vote_queue._queue.vote_queue)}/{vote_queue.alliance_size * 2})*"
+                )
+                await interaction.response.send_message(message, ephemeral=False)
                 await self.update_ranked_display()
-                await interaction.response.send_message(
-                    f"**{player.display_name}**\nremoved to queue for [{game}](https://secondrobotics.org/ranked/{qdata.api_short}). *({qdata._queue.qsize()}/{qdata.alliance_size * 2})*")
             else:
-                await interaction.response.send_message("{} is not in queue.".format(player.display_name),
-                                                        ephemeral=True)
+                await interaction.response.send_message("You aren't in this queue.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error in leave command: {e}")
+            logger.error(f"Queue state: {vote_queue._queue.__dict__}")
+            await interaction.response.send_message(f"An error occurred while leaving the queue: {str(e)}", ephemeral=True)
 
-    @app_commands.choices(game=games_choices)
+    @app_commands.command(description="Remove someone else from a vote queue")
+    @app_commands.checks.has_any_role("Event Staff")
+    @app_commands.choices(size=[
+        Choice(name="3v3", value=3),
+        Choice(name="2v2", value=2),
+        Choice(name="1v1", value=1)
+    ])
+    async def kick(self, interaction: discord.Interaction, player: discord.Member, size: int):
+        logger.info(f"{interaction.user.name} called /kick for {size}v{size}")
+        
+        if not isinstance(interaction.channel, discord.TextChannel) or interaction.channel.id != QUEUE_CHANNEL_ID:
+            await interaction.response.send_message(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
+            return
+
+        vote_queue = self.get_vote_queue(f"{size}v{size}")
+        if not vote_queue:
+            await interaction.response.send_message(f"Invalid queue size: {size}v{size}", ephemeral=True)
+            return
+
+        try:
+            # Debug logging
+            logger.info(f"Vote queue object: {vote_queue}")
+            logger.info(f"Vote queue _queue: {vote_queue._queue}")
+            logger.info(f"Vote queue vote_queue: {vote_queue._queue.vote_queue}")
+            
+            # Access the vote_queue directly
+            vote_players = vote_queue._queue.vote_queue
+            player_entry = next((entry for entry in vote_players if entry[0].id == player.id), None)
+
+            if player_entry:
+                preferred_game = player_entry[1]
+                # Remove the player from the queue
+                vote_queue._queue.vote_queue = [entry for entry in vote_players if entry[0].id != player.id]
+                
+                message = (
+                    f"**{player.display_name}** removed from {vote_queue.full_game_name} vote queue "
+                    f"(Preferred game was: {preferred_game}). "
+                    f"*({len(vote_queue._queue.vote_queue)}/{vote_queue.alliance_size * 2})*"
+                )
+                await self.update_ranked_display()
+                await interaction.response.send_message(message)
+            else:
+                await interaction.response.send_message(f"{player.display_name} is not in the {size}v{size} vote queue.", ephemeral=True)
+
+        except Exception as e:
+            logger.error(f"Error in kick command: {e}")
+            logger.error(f"Queue state: {vote_queue._queue.__dict__}")
+            await interaction.response.send_message(f"An error occurred while kicking the player: {str(e)}", ephemeral=True)
+
+    def get_vote_queue(self, size: str):
+        """Helper method to get the appropriate vote queue based on size"""
+        if size == "3v3":
+            return self.vote_queue_3v3
+        elif size == "2v2":
+            return self.vote_queue_2v2
+        elif size == "1v1":
+            return self.vote_queue_1v1
+        return None
+
     @app_commands.command(description="Edits the last match score (in the event of a human error)", name="editmatch")
+    @app_commands.describe(
+        game="The game to edit",
+        red_score="New red alliance score",
+        blue_score="New blue alliance score"
+    )
+    @app_commands.choices(game=[
+        Choice(name=game['name'], value=game['short_code'])
+        for game in games if game['game'] in active_games or game['game'] == daily_game
+    ])
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
     async def edit_match(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /editmatch")
@@ -1471,52 +1761,6 @@ async def warn_server_inactivity(server: int):
                 return
 
 
-class GameButton(discord.ui.Button['game']):
-    def __init__(self, game: str, short_code: str, cog: commands.Cog):
-        is_daily = game not in list(server_games.keys())[-3:]
-
-        super().__init__(style=discord.ButtonStyle.primary if is_daily else discord.ButtonStyle.green, label=game)
-        self.game = game
-        self.cog = cog
-        self.short_code = short_code
-
-    async def callback(self, interaction: discord.Interaction):
-        logger.info('{} game button pressed'.format(self.game))
-
-        embed = discord.Embed(
-            title=self.game, description=f"Queue for {self.game}!", color=0x00ff00)
-
-        try:
-            game_icon = game_logos[self.game]
-        except:
-            game_icon = None
-
-        if game_icon:
-            embed.set_thumbnail(url=game_icon)
-
-        view = discord.ui.View()
-
-        max_alliance = int(default_game_players[server_games[self.game]] / 2)
-
-        logger.info(
-            "Max of {} players per alliance, generating buttons".format(max_alliance))
-
-        for n in range(1, max_alliance+1):
-            view.add_item(QueueButton(
-                game=f'{self.game} {n}v{n}', short_code=self.short_code+f'{n}v{n}', display=f'{n}v{n}', cog=self.cog))
-
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True, delete_after=30)
-
-
-class QueueButton(discord.ui.Button['queue']):
-    def __init__(self, game: str, short_code: str, display: str, cog: commands.Cog):
-        super().__init__(style=discord.ButtonStyle.green, label=display)
-        self.game = game
-        self.short_code = short_code
-        self.display = display
-        self.cog = cog
-
-    async def callback(self, interaction: discord.Interaction):
-        logger.info('{} button pressed!'.format(self.game))
-
-        await self.cog.queue_player(interaction, self.short_code, True)
+def is_mock_member(member):
+    """Check if a member is a mock/test member"""
+    return hasattr(member, '_is_mock') and member._is_mock
