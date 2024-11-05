@@ -513,7 +513,7 @@ class Ranked(commands.Cog):
                                                                  f" players in queue", inline=False)
 
         # Add footer with helpful information
-        embed.set_footer(text="Use /queuevoting to join a vote queue • Use /queuestandard to join a traditional queue • Use /leave to leave a queue")
+        embed.set_footer(text="Use /queuevoting to join a vote queue • Use /queuestandard to join a traditional queue • Use /leaveall to leave a queue")
 
         leave_all = discord.ui.Button(label="Leave All Queues", style=ButtonStyle.red, row=2)
         leave_all.callback = self.leave_all_queues
@@ -661,42 +661,52 @@ class Ranked(commands.Cog):
     async def leave_all_queues(self, interaction: discord.Interaction, via_command=False):
         if not isinstance(interaction.channel, discord.TextChannel) or not isinstance(interaction.user, discord.Member):
             return
-
+        
         if not via_command and interaction.channel.id != QUEUE_CHANNEL_ID:
             return
 
         player = interaction.user
-        
+
+        message_parts = [f"🔴 **{escape_mentions(player.display_name)}** 🔴\nremoved from the queue for"]
+
         logger.info(f"Attempting to remove {player.name} from all queues")
 
         relevant_queues = [queue for queue in game_queues.values() if player in queue._queue]
         relevant_vote_queues = []
+        
+        for size in range(1, 4):
+            vote_queue = self.get_vote_queue(f"{size}v{size}")
+            try:
+                # Access the vote_queue directly
+                vote_players = vote_queue._queue.vote_queue
+                player_entry = next((entry for entry in vote_players if entry[0].id == player.id), None)
 
-        for vote_queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
-            if any(entry[0] == player for entry in vote_queue._queue.queue):
-                relevant_vote_queues.append(vote_queue)
-                logger.info(f"{player.name} found in {vote_queue.full_game_name}")
-            else:
-                logger.info(f"{player.name} not found in {vote_queue.full_game_name}")
+                if player_entry:
+                    relevant_vote_queues.append(vote_queue)
+                    preferred_game = player_entry[1]
+                    # Remove the player from the queue
+                    vote_queue._queue.vote_queue = [entry for entry in vote_players if entry[0].id != player.id]
+                    message_parts.append(
+                        f"{vote_queue.full_game_name} "
+                        f"(Preferred game was: {preferred_game}). "
+                        f"*({len(vote_queue._queue.vote_queue)}/{vote_queue.alliance_size * 2})*"
+                    )
+            except Exception as e:
+                logger.error(f"Error in leaveall command: {e}")
+                logger.error(f"Queue state: {vote_queue._queue.__dict__}")
+                await interaction.response.send_message(f"An error occurred while leaving the queue: {str(e)}", ephemeral=True)
 
         if not relevant_queues and not relevant_vote_queues:
             logger.info(f"{player.name} not found in any queues")
             await interaction.response.send_message("You aren't in any queues.", ephemeral=True, delete_after=30)
             return
-
-        message_parts = [f"🔴 **{escape_mentions(player.display_name)}** 🔴\nremoved from the queue for "]
         
         for queue in relevant_queues:
             queue._queue.remove(player)
             message_parts.append(f"__{queue.full_game_name}__. *({queue._queue.qsize()}/{queue.alliance_size * 2})*")
             logger.info(f"Removed {player.name} from {queue.full_game_name}")
 
-        for queue in relevant_vote_queues:
-            queue._queue.queue = [entry for entry in queue._queue.queue if entry[0] != player]
-            message_parts.append(f"__{queue.full_game_name}__. *({len(queue._queue.queue)}/{queue.alliance_size * 2})*")
-            logger.info(f"Removed {player.name} from vote queue {queue.full_game_name}")
-
-        message = ", ".join(message_parts)
+        message = " ".join(message_parts)
         
         await self.update_ranked_display()
         await interaction.response.send_message(message, ephemeral=True, delete_after=30)
@@ -711,7 +721,12 @@ class Ranked(commands.Cog):
             )
         
         logger.info(f"Finished removing {player.name} from all queues")
-            
+
+    @app_commands.command(name="leaveall", description="Remove yourself from all queues")
+    async def leaveall(self, interaction: discord.Interaction):
+        logger.info(f"{interaction.user.name} called /leaveall")
+        await self.leave_all_queues(interaction, True)
+
     async def random(self, qdata: Queue, interaction, game_type, from_button: bool = False):
         match = create_game(game_type)
 
@@ -946,9 +961,9 @@ class Ranked(commands.Cog):
 
     @app_commands.command(name="queuevoting", description="Add yourself to a vote queue")
     @app_commands.choices(mode=[
-        Choice(name="Vote 3v3", value="3v3"),
-        Choice(name="Vote 2v2", value="2v2"),
-        Choice(name="Vote 1v1", value="1v1")
+        Choice(name="3v3", value="3v3"),
+        Choice(name="2v2", value="2v2"),
+        Choice(name="1v1", value="1v1")
     ])
     @app_commands.choices(game=[
         Choice(name=game, value=game) 
@@ -1351,7 +1366,7 @@ class Ranked(commands.Cog):
             logger.error(f"Queue state: {vote_queue._queue.__dict__}")
             await interaction.response.send_message(f"An error occurred while fetching the queue status: {str(e)}", ephemeral=True)
 
-    @app_commands.command(name="leave", description="Remove yourself from a vote queue")
+    # @app_commands.command(name="leave", description="Remove yourself from a vote queue")
     @app_commands.choices(size=[
         Choice(name="3v3", value=3),
         Choice(name="2v2", value=2),
