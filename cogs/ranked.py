@@ -60,12 +60,12 @@ daily_game = random.choice(inactive_games)
 games = requests.get("https://secondrobotics.org/api/ranked/").json()
 
 games_choices = [Choice(name=game['name'], value=game['short_code'])
-                 for game in games if game['game'] in active_games or game['game'] == daily_game]
+                 for game in games if game['game'] in active_games] #or game['game'] == daily_game]
 
 games_players = {game['short_code']: game['players_per_alliance'] * 2 for game in games}
 
 games_categories = active_games.copy()
-games_categories.append(daily_game)
+# games_categories.append(daily_game)
 
 
 class OrderedSet(MutableSet):
@@ -483,7 +483,7 @@ class Ranked(commands.Cog):
 
         embed = discord.Embed(
             title="xRC Sim Ranked Queues",
-            description="Join a queue to start playing! Use `/queue` to join a vote queue.",
+            description="Join a queue to start playing!",
             color=0x00ff00
         )
         embed.set_thumbnail(url=XRC_SIM_LOGO_URL)
@@ -507,8 +507,13 @@ class Ranked(commands.Cog):
                 inline=False
             )
 
+        for qdata in game_queues.values():
+            if qdata._queue.qsize() > 0:
+                embed.add_field(name=qdata.full_game_name, value=f"*{qdata._queue.qsize()}/{qdata.alliance_size * 2}*"
+                                                                 f" players in queue", inline=False)
+
         # Add footer with helpful information
-        embed.set_footer(text="Use /queue to join a vote queue • Use /leave to leave a queue")
+        embed.set_footer(text="Use /queuevoting to join a vote queue • Use /queuestandard to join a traditional queue • Use /leave to leave a queue")
 
         leave_all = discord.ui.Button(label="Leave All Queues", style=ButtonStyle.red, row=2)
         leave_all.callback = self.leave_all_queues
@@ -939,11 +944,11 @@ class Ranked(commands.Cog):
 
   
 
-    @app_commands.command(name="queue", description="Queue vote style")
+    @app_commands.command(name="queuevoting", description="Add yourself to a vote queue")
     @app_commands.choices(mode=[
-        Choice(name="3v3", value="3v3"),
-        Choice(name="2v2", value="2v2"),
-        Choice(name="1v1", value="1v1")
+        Choice(name="Vote 3v3", value="3v3"),
+        Choice(name="Vote 2v2", value="2v2"),
+        Choice(name="Vote 1v1", value="1v1")
     ])
     @app_commands.choices(game=[
         Choice(name=game, value=game) 
@@ -1017,6 +1022,11 @@ class Ranked(commands.Cog):
 
         await self.add_player_to_vote_queue(interaction.user, queue, game, interaction)
         await self.check_vote_queue_status(queue, interaction)
+
+    @app_commands.choices(game=games_choices)
+    @app_commands.command(name="queuestandard", description="Add yourself to a traditional queue")
+    async def add_to_queue(self, interaction: discord.Interaction, game: str):
+        await self.queue_player(interaction, game, False)
 
     def get_vote_queue(self, mode):
         if mode == "3v3":
@@ -1154,11 +1164,6 @@ class Ranked(commands.Cog):
             if any(role in interaction.user.roles for role in red + blue):
                 await interaction.followup.send(queue.full_game_name)
                 return
-
-    # @app_commands.choices(game=games_choices)
-    # @app_commands.command(name="queue", description="Add yourself to the queue")
-    # async def add_to_queue(self, interaction: discord.Interaction, game: str):
-    #     await self.queue_player(interaction, game, False)
 
     
     @app_commands.choices(game=games_choices)
