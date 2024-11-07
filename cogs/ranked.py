@@ -1610,6 +1610,7 @@ class Ranked(commands.Cog):
             embed.add_field(name=f'{color.upper()} {"🟥" if color == "red" else "🟦"} ({score})',
                             value=players,
                             inline=True)
+        logger.info(f"embed created at {current_match.red_series}-{current_match.blue_series}")
         return embed
 
     async def handle_game_end(self, interaction, qdata, current_match, embed):
