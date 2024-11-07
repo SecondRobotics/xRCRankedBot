@@ -1470,21 +1470,16 @@ class Ranked(commands.Cog):
 
     @app_commands.command(description="Edits the last match score (in the event of a human error)", name="editmatch")
     @app_commands.describe(
-        game="The game to edit",
+        player="Whose game to edit",
         red_score="New red alliance score",
         blue_score="New blue alliance score"
     )
-    @app_commands.choices(game=[
-        Choice(name=game['name'], value=game['short_code'])
-        for game in games if game['game'] in active_games or game['game'] == daily_game
-    ])
     @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
-    async def edit_match(self, interaction: discord.Interaction, game: str, red_score: int, blue_score: int):
+    async def edit_match(self, interaction: discord.Interaction, player: discord.Member, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /editmatch")
         await interaction.response.defer()
 
-        qdata = game_queues[game]
-        current_match = qdata.matches[-1] if qdata.matches else None
+        current_match = self.find_match_by_player(player)
 
         if EVENT_STAFF_ID in [role.id for role in interaction.user.roles]:
             await handle_score_edit(interaction, current_match, red_score, blue_score)
