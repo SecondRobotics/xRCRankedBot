@@ -444,8 +444,8 @@ class Ranked(commands.Cog):
             logger.fatal("Could not find queue channel")
             raise RuntimeError("Could not find queue channel")
 
-        embed = discord.Embed(title="xRC Sim Ranked Queues",
-                              description="Ranked queues are open!", color=0x00ff00)
+        embed = discord.Embed(title="xRC Sim Casual Queues",
+                              description="Casual queues are open!", color=0x00ff00)
         embed.set_thumbnail(url=XRC_SIM_LOGO_URL)
         embed.add_field(name="No current queues",
                         value="Queue to get a match started!", inline=False)
@@ -482,7 +482,7 @@ class Ranked(commands.Cog):
             return
 
         embed = discord.Embed(
-            title="xRC Sim Ranked Queues",
+            title="xRC Sim Casual Queues",
             description="Join a queue to start playing!",
             color=0x00ff00
         )
@@ -790,9 +790,9 @@ class Ranked(commands.Cog):
         min_players = games_players[qdata.api_short]
         server_actions = self.bot.get_cog('ServerActions')
         message, port = server_actions.start_server_process(
-            match.server_game, f"Ranked{qdata.api_short}", password, min_players=min_players)
+            match.server_game, f"Casual{qdata.api_short}", password, min_players=min_players)
         if port == -1:
-            logger.warning("Server couldn't auto-start for ranked: " + message)
+            logger.warning("Server couldn't auto-start for casual: " + message)
         else:
             match.server_port = port
             match.server_password = password
@@ -817,18 +817,6 @@ class Ranked(commands.Cog):
 
     async def display_teams(self, ctx, match: XrcGame):
 
-        async def fetch_player_elo(game, user_id):
-            url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data.get('elo', 0)
-                    else:
-                        logger.error(
-                            f"Failed to fetch ELO for player {user_id}: {response.status}")
-                        return 0
-
         async def move_player(player, channel):
             try:
                 await player.move_to(channel)
@@ -851,33 +839,15 @@ class Ranked(commands.Cog):
 
         # Construct the description with all relevant variables
         description = (
-            f"Server 'Ranked{match.api_short}' started for you with password **{match.server_password}**\n"
+            f"Server 'Casual{match.api_short}' started for you with password **{match.server_password}**\n"
             f"|| IP: {ip} Port: {match.server_port} ||\n"
-            f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})\n\n"
+            f"[Adjust Display Name](https://secondrobotics.org/user/settings/)\n\n"
         )
 
         embed = discord.Embed(
             color=0x34dceb, title=f"Teams have been picked for {match.full_game_name}!", description=description
         )
         embed.set_thumbnail(url=match.game_icon)
-
-        # Fetch ELOs concurrently
-        red_elo_tasks = [fetch_player_elo(
-            match.api_short, player.id) for player in match.game.red]
-        blue_elo_tasks = [fetch_player_elo(
-            match.api_short, player.id) for player in match.game.blue]
-
-        red_elos = await asyncio.gather(*red_elo_tasks)
-        blue_elos = await asyncio.gather(*blue_elo_tasks)
-
-        # Calculate average ELO
-        avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
-        avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
-
-        embed.add_field(
-            name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
-        embed.add_field(
-            name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
 
         await queue_channel.send(embed=embed)
 
@@ -955,8 +925,6 @@ class Ranked(commands.Cog):
             if match in queue.matches:
                 queue.matches.remove(match)
                 break
-
-
   
 
     @app_commands.command(name="queuevoting", description="Add yourself to a vote queue")
@@ -984,13 +952,13 @@ class Ranked(commands.Cog):
         # Validate game exists and supports the selected mode
         game_short_code = short_codes.get(game, '')
         if not game_short_code:
-            await interaction.response.send_message(f"Error: {game} is not available for ranked play.", ephemeral=True)
+            await interaction.response.send_message(f"Error: {game} is not available for casual play.", ephemeral=True)
             return
 
         # Find all variants of this game in the API data
         game_variants = [g for g in games_data if g['game'] == game]
         if not game_variants:
-            await interaction.response.send_message(f"Error: {game} is not currently available for ranked play.", ephemeral=True)
+            await interaction.response.send_message(f"Error: {game} is not currently available for casual play.", ephemeral=True)
             return
 
         # Get all unique alliance sizes for this game
@@ -1546,8 +1514,7 @@ class Ranked(commands.Cog):
         gg, result_message = self.check_series_end(current_match)
         await interaction.followup.send(result_message)
 
-        response = await self.submit_score_to_api(current_match, red_score, blue_score)
-        embed = self.create_score_embed(current_match, red_score, blue_score, response)
+        embed = self.create_score_embed(current_match, red_score, blue_score)
 
         if gg:
             await self.handle_game_end(interaction, qdata, current_match, embed)
@@ -1584,28 +1551,15 @@ class Ranked(commands.Cog):
             return True, "🟦 Blue Wins! 🟦"
         return False, "Score Submitted"
 
-    async def submit_score_to_api(self, current_match, red_score, blue_score):
-        url = f'https://secondrobotics.org/api/ranked/{current_match.api_short}/match/'
-        json_data = {
-            "red_alliance": [player.id for player in current_match.game.red] if current_match.game else [],
-            "blue_alliance": [player.id for player in current_match.game.blue] if current_match.game else [],
-            "red_score": red_score,
-            "blue_score": blue_score
-        }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=json_data, headers=HEADER) as resp:
-                return await resp.json()
-
-    def create_score_embed(self, current_match, red_score, blue_score, response):
+    def create_score_embed(self, current_match, red_score, blue_score):
         embed = discord.Embed(color=0x34eb3d,
                               title=f"[{current_match.full_game_name}] Score submitted | 🟥 {current_match.red_series}-{current_match.blue_series}  🟦 |")
         embed.set_thumbnail(url=current_match.game_icon)
 
         for color, score in [('red', red_score), ('blue', blue_score)]:
             players = "\n".join(
-                f"[{response[f'{color}_display_names'][i]}](https://secondrobotics.org/ranked/{current_match.api_short}/{player['player']}) "
-                f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response[f'{color}_elo_changes'][i], 3))}\n```"
-                for i, player in enumerate(response[f'{color}_player_elos'])
+                f"[{[f'{color}_display_names'][i]}](https://secondrobotics.org/ranked/{current_match.api_short}/{player['player']}) "
+                for i, player in enumerate([f'{color}_player_elos'])
             )
             embed.add_field(name=f'{color.upper()} {"🟥" if color == "red" else "🟦"} ({score})',
                             value=players,
@@ -1752,7 +1706,7 @@ async def shutdown_server_inactivity(server: int):
                 if match.game:
                     for player in match.game.players:
                         await player.send(
-                            "Your ranked match has been cancelled due to inactivity.")
+                            "Your casual match has been cancelled due to inactivity.")
                 return
 
     # stop_server_process(server)  # FIXME
@@ -1798,7 +1752,7 @@ async def warn_server_inactivity(server: int):
                 if match.game:
                     for player in match.game.players:
                         await player.send(
-                            "Your ranked match has been inactive - if all players are not present within 5 minutes, the match will be cancelled.")
+                            "Your casual match has been inactive - if all players are not present within 5 minutes, the match will be cancelled.")
                 return
 
 
