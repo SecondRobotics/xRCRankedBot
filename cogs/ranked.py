@@ -790,7 +790,7 @@ class Ranked(commands.Cog):
         min_players = games_players[qdata.api_short]
         server_actions = self.bot.get_cog('ServerActions')
         message, port = server_actions.start_server_process(
-            match.server_game, f"Ranked{qdata.api_short}", password, min_players=min_players)
+            match.server_game, f"Ranked{qdata.api_short}", password, min_players=min_players, admin=RANKED_ADMIN_USERNAME)
         if port == -1:
             logger.warning("Server couldn't auto-start for ranked: " + message)
         else:

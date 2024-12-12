@@ -63,6 +63,11 @@ if not BOTS_ROLE_ID:
     logger.fatal('BOTS_ROLE_ID not found')
     raise RuntimeError('BOTS_ROLE_ID not found')
 
+RANKED_ADMIN_USERNAME = os.getenv('RANKED_ADMIN_USERNAME')
+if not RANKED_ADMIN_USERNAME:
+    logger.fatal('RANKED_ADMIN_USERNAME not found')
+    raise RuntimeError('RANKED_ADMIN_USERNAME not found')
+
 server_games = {
     "Test": "-1",
     "Splish Splash": "0",
