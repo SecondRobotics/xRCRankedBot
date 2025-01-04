@@ -31,7 +31,7 @@ if not QUEUE_STATUS_CHANNEL_ID:
     logger.fatal('QUEUE_STATUS_CHANNEL_ID not found')
     raise RuntimeError('QUEUE_STATUS_CHANNEL_ID not found')
 
-QUEUE_CHANNEL_ID =int(os.getenv('QUEUE_CHANNEL_ID'))
+QUEUE_CHANNEL_ID = int(os.getenv('QUEUE_CHANNEL_ID'))
 if not QUEUE_CHANNEL_ID:
     logger.fatal('QUEUE_CHANNEL_ID not found')
     raise RuntimeError('QUEUE_CHANNEL_ID not found')
@@ -89,6 +89,7 @@ server_games = {
     "Crescendo": "16",
     "High Stakes": "17",
     "Into The Deep": "18",
+    "Reefscape": "19",
 }
 
 server_games_choices = [
@@ -127,6 +128,7 @@ short_codes = {
     "Crescendo": "CR",
     "High Stakes": "HS",
     "Into The Deep": "ITD",
+    "Reefscape": "RS",
 }
 
 default_game_players = {
@@ -149,7 +151,8 @@ default_game_players = {
     "15": 4,
     "16": 6,
     "17": 4,
-    "18": 4,    
+    "18": 4,
+    "19": 6,
 }
 
 server_restart_modes = {
@@ -169,4 +172,5 @@ game_logos = {
     "High Stakes": "https://i.imgur.com/jWu3NHB.png",
     "Power Play": "https://i.imgur.com/tuC6s0P.png",
     "Into The Deep": "https://i.imgur.com/YqT31M8.png",
+    "Reefscape": "https://i.imgur.com/LlLfz4z.gif",
 }
