@@ -1054,13 +1054,14 @@ class Ranked(commands.Cog):
 
     async def add_player_to_vote_queue(self, player: discord.Member, queue: Queue, preferred_game: str, interaction: discord.Interaction):
         queue._queue.put((player, preferred_game))
-        await self.update_ranked_display()
         res = await self.get_player_info(player.id)
         await interaction.response.send_message(
             f"🟢 **{res['display_name']}** 🟢\nadded to {queue.full_game_name} queue with preferred game: {preferred_game}. "
             f"({queue._queue.qsize()}/{queue.alliance_size * 2})",
             ephemeral=True
         )
+        await self.update_ranked_display()
+
 
     async def check_vote_queue_status(self, queue: Queue, interaction: discord.Interaction):
         if queue._queue.qsize() >= queue.alliance_size * 2:
