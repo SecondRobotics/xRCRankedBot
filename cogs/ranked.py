@@ -971,6 +971,7 @@ class Ranked(commands.Cog):
         if game not in EXCLUDED_GAMES
     ])
     async def queue(self, interaction: discord.Interaction, mode: str, game: str):
+        await discord.Interaction.response.defer(ephemeral=True, thinking=True)
         logger.info(f"{interaction.user.name} called /queue with mode {mode} and game {game}")
         
         # Get fresh game data
@@ -978,19 +979,19 @@ class Ranked(commands.Cog):
             games_data = requests.get("https://secondrobotics.org/api/ranked/").json()
         except Exception as e:
             logger.error(f"Failed to fetch games data: {e}")
-            await interaction.response.send_message("Error: Could not validate game selection. Please try again.", ephemeral=True)
+            await interaction.followup.send("Error: Could not validate game selection. Please try again.", ephemeral=True)
             return
 
         # Validate game exists and supports the selected mode
         game_short_code = short_codes.get(game, '')
         if not game_short_code:
-            await interaction.response.send_message(f"Error: {game} is not available for ranked play.", ephemeral=True)
+            await interaction.followup.send(f"Error: {game} is not available for ranked play.", ephemeral=True)
             return
 
         # Find all variants of this game in the API data
         game_variants = [g for g in games_data if g['game'] == game]
         if not game_variants:
-            await interaction.response.send_message(f"Error: {game} is not currently available for ranked play.", ephemeral=True)
+            await interaction.followup.send(f"Error: {game} is not currently available for ranked play.", ephemeral=True)
             return
 
         # Get all unique alliance sizes for this game
@@ -998,7 +999,7 @@ class Ranked(commands.Cog):
         mode_size = int(mode[0])  # Extract number from "3v3", "2v2", "1v1"
         
         if mode_size not in supported_sizes:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Error: {game} does not support {mode} mode.",
                 ephemeral=True
             )
@@ -1006,12 +1007,12 @@ class Ranked(commands.Cog):
 
         queue = self.get_vote_queue(mode)
         if not queue:
-            await interaction.response.send_message(f"Error: Invalid mode {mode}.", ephemeral=True)
+            await interaction.followup.send(f"Error: Invalid mode {mode}.", ephemeral=True)
             return
 
         # Check if player is already in a match
         if await self.is_player_in_match(interaction.user):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "You are already in a match. Please finish your current match before queuing.",
                 ephemeral=True)
             return
@@ -1019,7 +1020,7 @@ class Ranked(commands.Cog):
         # Check if player is already in any vote queue
         for vq in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
             if any(entry[0].id == interaction.user.id for entry in vq._queue.vote_queue):
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You are already in a vote queue. Please leave that queue first.",
                     ephemeral=True)
                 return
@@ -1027,7 +1028,7 @@ class Ranked(commands.Cog):
         # Check if player is in any regular queue
         for qdata in game_queues.values():
             if interaction.user in qdata._queue:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "You are already in a regular queue. Please leave that queue first.",
                     ephemeral=True)
                 return
@@ -1053,14 +1054,15 @@ class Ranked(commands.Cog):
         return None
 
     async def add_player_to_vote_queue(self, player: discord.Member, queue: Queue, preferred_game: str, interaction: discord.Interaction):
+        await discord.Interaction.response.defer(ephemeral=True, thinking=True)
         queue._queue.put((player, preferred_game))
         res = await self.get_player_info(player.id)
-        await interaction.response.send_message(
+        await self.update_ranked_display()
+        await interaction.followup.send(
             f"🟢 **{res['display_name']}** 🟢\nadded to {queue.full_game_name} queue with preferred game: {preferred_game}. "
             f"({queue._queue.qsize()}/{queue.alliance_size * 2})",
             ephemeral=True
         )
-        await self.update_ranked_display()
 
 
     async def check_vote_queue_status(self, queue: Queue, interaction: discord.Interaction):
