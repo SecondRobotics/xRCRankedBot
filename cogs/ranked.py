@@ -1553,6 +1553,7 @@ class Ranked(commands.Cog):
         embed = self.create_score_embed(current_match, red_score, blue_score, response)
 
         if gg:
+            await interaction.channel.send(embed=embed)
             await self.handle_game_end(interaction, qdata, current_match, embed)
         else:
             await interaction.channel.send(embed=embed)
