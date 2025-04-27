@@ -971,7 +971,7 @@ class Ranked(commands.Cog):
         if game not in EXCLUDED_GAMES
     ])
     async def queue(self, interaction: discord.Interaction, mode: str, game: str):
-        await discord.Interaction.response.defer(ephemeral=True, thinking=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
         logger.info(f"{interaction.user.name} called /queue with mode {mode} and game {game}")
         
         # Get fresh game data
@@ -1054,7 +1054,7 @@ class Ranked(commands.Cog):
         return None
 
     async def add_player_to_vote_queue(self, player: discord.Member, queue: Queue, preferred_game: str, interaction: discord.Interaction):
-        await discord.Interaction.response.defer(ephemeral=True, thinking=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
         queue._queue.put((player, preferred_game))
         res = await self.get_player_info(player.id)
         await self.update_ranked_display()
