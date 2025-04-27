@@ -1054,7 +1054,6 @@ class Ranked(commands.Cog):
         return None
 
     async def add_player_to_vote_queue(self, player: discord.Member, queue: Queue, preferred_game: str, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True, thinking=True)
         queue._queue.put((player, preferred_game))
         res = await self.get_player_info(player.id)
         await self.update_ranked_display()
