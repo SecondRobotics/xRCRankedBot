@@ -447,6 +447,17 @@ class Ranked(commands.Cog):
             logger.fatal("Could not find queue channel")
             raise RuntimeError("Could not find queue channel")
 
+        # Clean up any existing server-password channels
+        category = self.bot.get_channel(CATEGORY_ID)
+        if category and isinstance(category, discord.CategoryChannel):
+            for channel in category.channels:
+                if channel.name.startswith("server-password-"):
+                    try:
+                        await channel.delete()
+                        logger.info(f"Deleted old password channel: {channel.name}")
+                    except Exception as e:
+                        logger.error(f"Error deleting password channel {channel.name}: {e}")
+
         embed = discord.Embed(title="xRC Sim Ranked Queues",
                               description="Ranked queues are open!", color=0x00ff00)
         embed.set_thumbnail(url=XRC_SIM_LOGO_URL)
@@ -878,6 +889,30 @@ class Ranked(commands.Cog):
                        f"|| IP: {ip} Port: {match.server_port} ||"
         )
         server_info_embed.set_thumbnail(url=match.game_icon)
+
+        # Add player lists to server info embed
+        red_field = "\n".join(
+            [f"🟥{player.mention}" for player in match.game.red])
+        blue_field = "\n".join(
+            [f"🟦{player.mention}" for player in match.game.blue])
+
+        # Fetch ELOs concurrently
+        red_elo_tasks = [fetch_player_elo(
+            match.api_short, player.id) for player in match.game.red]
+        blue_elo_tasks = [fetch_player_elo(
+            match.api_short, player.id) for player in match.game.blue]
+
+        red_elos = await asyncio.gather(*red_elo_tasks)
+        blue_elos = await asyncio.gather(*blue_elo_tasks)
+
+        # Calculate average ELO
+        avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
+        avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
+
+        server_info_embed.add_field(
+            name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
+        server_info_embed.add_field(
+            name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
         
         # Post server info in password channel
         await password_channel.send(
@@ -893,19 +928,6 @@ class Ranked(commands.Cog):
                        f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})"
         )
         teams_embed.set_thumbnail(url=match.game_icon)
-
-        # Fetch ELOs concurrently
-        red_elo_tasks = [fetch_player_elo(
-            match.api_short, player.id) for player in match.game.red]
-        blue_elo_tasks = [fetch_player_elo(
-            match.api_short, player.id) for player in match.game.blue]
-
-        red_elos = await asyncio.gather(*red_elo_tasks)
-        blue_elos = await asyncio.gather(*blue_elo_tasks)
-
-        # Calculate average ELO
-        avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
-        avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
 
         teams_embed.add_field(
             name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
@@ -983,14 +1005,19 @@ class Ranked(commands.Cog):
                 except Exception as e:
                     logger.error(f"Error handling channel {channel.name}: {str(e)}")
 
+        # Delete password channel
+        try:
+            password_channel = guild.get_channel(PASSWORD_CHANNEL_ID)
+            if password_channel:
+                await password_channel.delete()
+        except Exception as e:
+            logger.error(f"Error deleting password channel: {e}")
+
         # Remove the match from the queue
         for queue in game_queues.values():
             if match in queue.matches:
                 queue.matches.remove(match)
                 break
-
-
-  
 
     @app_commands.command(name="queuevoting", description="Add yourself to a vote queue")
     @app_commands.choices(mode=[
@@ -1677,6 +1704,14 @@ class Ranked(commands.Cog):
                     logger.warning(f"Channel {channel.name} was already deleted")
                 except Exception as e:
                     logger.error(f"Error handling channel {channel.name}: {e}")
+
+        # Delete password channel
+        try:
+            password_channel = interaction.guild.get_channel(PASSWORD_CHANNEL_ID)
+            if password_channel:
+                await password_channel.delete()
+        except Exception as e:
+            logger.error(f"Error deleting password channel: {e}")
 
         # Stop the server if it exists
         if current_match.server_port:
