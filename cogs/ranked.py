@@ -31,6 +31,7 @@ XRC_SIM_LOGO_URL = "https://secondrobotics.org/logos/xRC%20Logo.png"
 RULES_CHANNEL_LINK = f"The rules can be found here: <#{RULES_CHANNEL_ID}>"
 QUEUE_CHANNEL_ERROR_MSG = f"<#{QUEUE_CHANNEL_ID}> >:("
 REGISTRATION_URL = "https://www.secondrobotics.org/login"
+PASSWORD_CHANNEL_ID = 1234567890  # Replace this with your actual channel ID
 
 # Add this line
 EXCLUDED_GAMES = {"Test", "Relic Recovery", "Bot Royale"}
@@ -816,7 +817,6 @@ class Ranked(commands.Cog):
         return None
 
     async def display_teams(self, ctx, match: XrcGame):
-
         async def fetch_player_elo(game, user_id):
             url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
             async with aiohttp.ClientSession() as session:
@@ -849,17 +849,48 @@ class Ranked(commands.Cog):
         blue_field = "\n".join(
             [f"🟦{player.mention}" for player in match.game.blue])
 
-        # Construct the description with all relevant variables
-        description = (
-            f"Server 'Ranked{match.api_short}' started for you with password **{match.server_password}**\n"
-            f"|| IP: {ip} Port: {match.server_port} ||\n"
-            f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})\n\n"
+        # Create password channel if it doesn't exist
+        password_channel = ctx.guild.get_channel(PASSWORD_CHANNEL_ID)
+        if not password_channel:
+            # Create channel permissions
+            overwrites = {
+                ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                self.staff: discord.PermissionOverwrite(read_messages=True),
+                get(ctx.guild.roles, id=MOD_ROLE_ID): discord.PermissionOverwrite(read_messages=True),
+                match.red_role: discord.PermissionOverwrite(read_messages=True),
+                match.blue_role: discord.PermissionOverwrite(read_messages=True)
+            }
+            
+            # Create the channel
+            password_channel = await ctx.guild.create_text_channel(
+                f"server-password-{match.api_short}",
+                category=self.category,
+                overwrites=overwrites
+            )
+
+        # Create server info embed
+        server_info_embed = discord.Embed(
+            color=0x34dceb,
+            title=f"Server Information for {match.full_game_name}",
+            description=f"Server 'Ranked{match.api_short}' started with password **{match.server_password}**\n"
+                       f"|| IP: {ip} Port: {match.server_port} ||"
+        )
+        server_info_embed.set_thumbnail(url=match.game_icon)
+        
+        # Post server info in password channel
+        await password_channel.send(
+            f"{match.red_role.mention} {match.blue_role.mention}",
+            embed=server_info_embed
         )
 
-        embed = discord.Embed(
-            color=0x34dceb, title=f"Teams have been picked for {match.full_game_name}!", description=description
+        # Create teams embed for queue channel
+        teams_embed = discord.Embed(
+            color=0x34dceb,
+            title=f"Teams have been picked for {match.full_game_name}!",
+            description=f"Server information has been posted in {password_channel.mention}\n"
+                       f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})"
         )
-        embed.set_thumbnail(url=match.game_icon)
+        teams_embed.set_thumbnail(url=match.game_icon)
 
         # Fetch ELOs concurrently
         red_elo_tasks = [fetch_player_elo(
@@ -874,12 +905,12 @@ class Ranked(commands.Cog):
         avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
         avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
 
-        embed.add_field(
+        teams_embed.add_field(
             name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
-        embed.add_field(
+        teams_embed.add_field(
             name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
 
-        await queue_channel.send(embed=embed)
+        await queue_channel.send(embed=teams_embed)
 
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
                           match.red_role: discord.PermissionOverwrite(connect=True),
