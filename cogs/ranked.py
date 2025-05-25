@@ -856,7 +856,6 @@ class Ranked(commands.Cog):
             overwrites = {
                 ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 self.staff: discord.PermissionOverwrite(read_messages=True),
-                get(ctx.guild.roles, id=MOD_ROLE_ID): discord.PermissionOverwrite(read_messages=True),
                 match.red_role: discord.PermissionOverwrite(read_messages=True),
                 match.blue_role: discord.PermissionOverwrite(read_messages=True)
             }
