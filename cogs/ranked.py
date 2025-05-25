@@ -394,7 +394,9 @@ class Ranked(commands.Cog):
                 # Clean up old channels
                 channel_tasks = []
                 for channel in category.channels:
-                    if channel.name.startswith("🟥") or channel.name.startswith("🟦"):
+                    if (channel.name.startswith("🟥") or 
+                        channel.name.startswith("🟦") or 
+                        channel.name.startswith("server-password-")):
                         channel_tasks.append(self.delete_channel(channel))
                 await asyncio.gather(*channel_tasks)
 
@@ -857,7 +859,8 @@ class Ranked(commands.Cog):
                 ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 self.staff: discord.PermissionOverwrite(read_messages=True),
                 match.red_role: discord.PermissionOverwrite(read_messages=True),
-                match.blue_role: discord.PermissionOverwrite(read_messages=True)
+                match.blue_role: discord.PermissionOverwrite(read_messages=True),
+                ctx.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)  # Add bot permissions
             }
             
             # Create the channel
