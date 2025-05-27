@@ -31,7 +31,7 @@ class UserManagement(commands.Cog):
             logger.error("Guild not found.")
             return
 
-        url = "https://secondrobotics.org/api/ranked/leaderboard/CR3v3/"
+        url = "https://secondrobotics.org/api/ranked/leaderboard/RS3v3/"
         leaderboard_data = await self.fetch_leaderboard_data(url)
         if not leaderboard_data:
             return
