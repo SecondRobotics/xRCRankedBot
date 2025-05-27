@@ -229,6 +229,7 @@ class XrcGame:
         self.blue_channel = None  # type: discord.VoiceChannel | None
         self.last_ping_time = None  # type: datetime | None
         self.players = []
+        self.password_channel_id = None  # type: int | None
 
         try:
             self.game_icon = game_logos[game]
@@ -880,6 +881,8 @@ class Ranked(commands.Cog):
                 category=self.category,
                 overwrites=overwrites
             )
+            # Store the password channel ID
+            match.password_channel_id = password_channel.id
 
         # Create server info embed
         server_info_embed = discord.Embed(
@@ -1007,9 +1010,11 @@ class Ranked(commands.Cog):
 
         # Delete password channel
         try:
-            password_channel = guild.get_channel(PASSWORD_CHANNEL_ID)
-            if password_channel:
-                await password_channel.delete()
+            if match.password_channel_id:
+                password_channel = guild.get_channel(match.password_channel_id)
+                if password_channel:
+                    await password_channel.delete()
+                    logger.info(f"Deleted password channel with ID: {match.password_channel_id}")
         except Exception as e:
             logger.error(f"Error deleting password channel: {e}")
 
@@ -1707,9 +1712,11 @@ class Ranked(commands.Cog):
 
         # Delete password channel
         try:
-            password_channel = interaction.guild.get_channel(PASSWORD_CHANNEL_ID)
-            if password_channel:
-                await password_channel.delete()
+            if current_match.password_channel_id:
+                password_channel = interaction.guild.get_channel(current_match.password_channel_id)
+                if password_channel:
+                    await password_channel.delete()
+                    logger.info(f"Deleted password channel with ID: {current_match.password_channel_id}")
         except Exception as e:
             logger.error(f"Error deleting password channel: {e}")
 
