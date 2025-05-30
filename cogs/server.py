@@ -142,7 +142,7 @@ class ServerActions(commands.Cog):
                              restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
                              tournament_mode: bool = True, start_when_ready: bool = True,
                              register: bool = True, spectators: int = 4, min_players: int = -1,
-                             restart_all: bool = True):
+                             restart_all: bool = True, timeout: int = -1):
         if not os.path.exists(SERVER_PATH):
             return "⚠ xRC Sim server not found, use `/update` to update", -1
 
@@ -204,7 +204,23 @@ class ServerActions(commands.Cog):
         game_type = server_games.get(game, "Unknown")
         asyncio.create_task(self._create_watch_message(port, game_type))  # Use helper method
         
+        # Start timeout task if timeout is specified
+        if timeout > 0:
+            asyncio.create_task(self._handle_server_timeout(port, timeout))
+        
         return f"✅ Launched server '{comment}' on port {port}", port
+
+    async def _handle_server_timeout(self, port: int, timeout_minutes: int):
+        """Handle server timeout by shutting it down after specified minutes"""
+        try:
+            await asyncio.sleep(timeout_minutes * 60)  # Convert minutes to seconds
+            if port in self.servers_active:
+                logger.info(f"Server on port {port} timed out after {timeout_minutes} minutes")
+                self.stop_server_process(port)
+        except asyncio.CancelledError:
+            logger.info(f"Timeout task for port {port} was cancelled")
+        except Exception as e:
+            logger.error(f"Error in timeout task for port {port}: {e}")
 
     def stop_server_process(self, port: int):
         if port not in self.servers_active:
@@ -317,11 +333,29 @@ class ServerActions(commands.Cog):
                             restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
                             tournament_mode: bool = True, start_when_ready: bool = True,
                             register: bool = True, spectators: int = 4, min_players: int = -1,
-                            restart_all: bool = True):
+                            restart_all: bool = True, timeout: int = -1):
+        """Launches a new instance of xRC Sim server.
+        
+        Args:
+            game: The game to launch
+            comment: A comment/description for the server
+            password: Server password (optional)
+            admin: Admin username (default: "Admin")
+            restart_mode: Server restart mode (default: -1)
+            frame_rate: Server frame rate (default: 120)
+            update_time: Server update time (default: 10)
+            tournament_mode: Whether to enable tournament mode (default: True)
+            start_when_ready: Whether to start when ready (default: True)
+            register: Whether to register the server (default: True)
+            spectators: Number of spectator slots (default: 4)
+            min_players: Minimum players required (default: -1)
+            restart_all: Whether to restart all (default: True)
+            timeout: Server timeout in minutes (-1 for no timeout) (default: -1)
+        """
         logger.info(f"{interaction.user.name} called /launchserver")
 
         result, _ = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
-                                             tournament_mode, start_when_ready, register, spectators, min_players, restart_all)
+                                             tournament_mode, start_when_ready, register, spectators, min_players, restart_all, timeout)
 
         await interaction.response.send_message(result)
 
