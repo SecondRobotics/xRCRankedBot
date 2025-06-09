@@ -1541,7 +1541,7 @@ class Ranked(commands.Cog):
         red_score="New red alliance score",
         blue_score="New blue alliance score"
     )
-    @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
+    @app_commands.checks.cooldown(1, 120.0, key=lambda i: i.guild_id)
     async def edit_match(self, interaction: discord.Interaction, player: discord.Member, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /editmatch")
         await interaction.response.defer()
@@ -1585,7 +1585,7 @@ class Ranked(commands.Cog):
 
     
     @app_commands.command(description="Submit Score")
-    @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
+    @app_commands.checks.cooldown(1, 120.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
