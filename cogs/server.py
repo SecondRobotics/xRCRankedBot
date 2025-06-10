@@ -100,7 +100,15 @@ class ServerActions(commands.Cog):
             await asyncio.sleep(1)  # Adjusted sleep interval if needed
 
     def parse_log_line(self, port: int, line: str):
-        # Extract timestamp from the beginning of the log line
+        # Chat message pattern (matches the entire line)
+        chat_pattern = r"^(\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M): (\w+): (.+)\.$"
+        chat_match = re.match(chat_pattern, line)
+        if chat_match:
+            timestamp_str, username, chat_message = chat_match.groups()
+            self.log_chat_message(port, timestamp_str, username, chat_message)
+            return
+
+        # Extract timestamp from the beginning of the log line for other logics
         try:
             timestamp_str, message = line.split(': ', 1)  # Split timestamp and message
             timestamp = datetime.strptime(timestamp_str, "%m/%d/%Y %I:%M:%S %p")  # Parse timestamp
@@ -123,7 +131,6 @@ class ServerActions(commands.Cog):
 
         join_pattern = r"Player (\w+) joined on position (.+) from IP=(\d+\.\d+\.\d+\.\d+)."
         leave_pattern = r"Removing (\w+)"
-        chat_pattern = r"^\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M: (\w+): (.+)\.$"  # Pattern for timestamped chat messages
 
         join_match = re.search(join_pattern, message)
         if join_match:
@@ -140,12 +147,6 @@ class ServerActions(commands.Cog):
             players = self.players_active.get(port, [])
             self.players_active[port] = [p for p in players if p.name != name]
             return
-        
-        # Check for chat messages
-        chat_match = re.match(chat_pattern, message)
-        if chat_match:
-            username, chat_message = chat_match.groups()
-            self.log_chat_message(port, timestamp_str, username, chat_message)
     
     def log_chat_message(self, port: int, timestamp: str, username: str, message: str):
         """Log chat messages to separate chat log files"""
@@ -288,11 +289,6 @@ class ServerActions(commands.Cog):
                     os.rmdir(os.path.join(root, name))
             os.rmdir(output_dir)
             logger.info(f"Deleted server data directory for port {port}")
-
-        # Track server usage end in database
-        if port in self.server_owners:
-            asyncio.create_task(self.db.end_server_usage(self.server_owners[port], port))
-            del self.server_owners[port]
 
         logger.info(f"Server on port {port} shut down")
 
