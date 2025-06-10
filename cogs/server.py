@@ -23,7 +23,9 @@ from config import (
     GUILD_ID,
     server_games,
     QUEUE_STATUS_CHANNEL_ID,
+    SERVER_TIERS,
 )
+from database import DatabaseManager
 
 logger = logging.getLogger('discord')
 
@@ -57,7 +59,14 @@ class ServerActions(commands.Cog):
         self.players_active = {}  # Initialize the players_active dictionary
         self.log_read_positions = {}  # Initialize log read positions
         self.watch_messages = {}  # Initialize watch_messages dictionary
+        self.db = DatabaseManager()  # Initialize database manager
+        self.server_owners = {}  # Track which user launched each server
         self.bot.loop.create_task(self.monitor_logs())  # Start log monitoring
+        self.bot.loop.create_task(self._init_db())  # Initialize database
+    
+    async def _init_db(self):
+        """Initialize database connection"""
+        await self.db.init_db()
 
     async def monitor_logs(self):
         while True:
@@ -236,6 +245,11 @@ class ServerActions(commands.Cog):
         del self.log_files[port]
         del self.server_comments[port]
         del self.server_games[port]
+        
+        # Track server usage end in database
+        if port in self.server_owners:
+            asyncio.create_task(self.db.end_server_usage(self.server_owners[port], port))
+            del self.server_owners[port]
 
         # Delete server data directory for the port being shut down
         output_dir = os.path.join(SERVER_GAME_DATA_DIR, str(port))
@@ -327,7 +341,6 @@ class ServerActions(commands.Cog):
 
     @app_commands.choices(game=server_games_choices)
     @app_commands.command(description="Launches a new instance of xRC Sim server", name="launchserver")
-    @app_commands.checks.has_any_role("Event Staff")
     async def launch_server(self, interaction: discord.Interaction,
                             game: str, comment: str, password: str = "", admin: str = "Admin",
                             restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
@@ -353,11 +366,55 @@ class ServerActions(commands.Cog):
             timeout: Server timeout in minutes (-1 for no timeout) (default: -1)
         """
         logger.info(f"{interaction.user.name} called /launchserver")
-
-        result, _ = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
+        
+        # Check if user has Event Staff role (bypass subscription check)
+        has_event_staff = any(role.name == "Event Staff" for role in interaction.user.roles)
+        
+        if not has_event_staff:
+            # Check subscription status
+            subscription = await self.db.get_active_subscription(interaction.user.id)
+            
+            if not subscription:
+                embed = discord.Embed(
+                    title="Subscription Required",
+                    description="You need an active subscription to launch servers.\n"
+                               "Use `/subscribe` to get started!",
+                    color=discord.Color.red()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            # Check daily usage limit
+            remaining_minutes = await self.db.get_remaining_minutes(interaction.user.id)
+            
+            if remaining_minutes <= 0:
+                embed = discord.Embed(
+                    title="Daily Limit Reached",
+                    description=f"You've used all your server time for today.\n"
+                               f"Your {subscription.tier} plan allows {SERVER_TIERS[subscription.tier]} minutes per day.\n"
+                               f"Your limit resets at midnight UTC.",
+                    color=discord.Color.red()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            # Apply timeout based on remaining minutes if not specified
+            if timeout == -1 or timeout > remaining_minutes:
+                timeout = int(remaining_minutes)
+                await interaction.response.send_message(
+                    f"Starting server with {timeout} minute timeout (remaining daily allowance)...",
+                    ephemeral=True
+                )
+        
+        result, port = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
                                              tournament_mode, start_when_ready, register, spectators, min_players, restart_all, timeout)
 
-        await interaction.response.send_message(result)
+        if port != -1 and not has_event_staff:
+            # Track server usage in database
+            await self.db.start_server_usage(interaction.user.id, port, game)
+            self.server_owners[port] = interaction.user.id
+
+        await interaction.followup.send(result) if interaction.response.is_done() else await interaction.response.send_message(result)
 
     @app_commands.command(description="Shutdown a running xRC Sim server", name="landserver")
     @app_commands.checks.has_any_role("Event Staff")

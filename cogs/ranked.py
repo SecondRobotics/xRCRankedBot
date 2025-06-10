@@ -21,6 +21,8 @@ import shutil
 from config import *
 import aiohttp
 import config
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
 
 # Constants
 SERVER_PATH = "./server/xRC Simulator.x86_64"
@@ -1795,6 +1797,131 @@ class Ranked(commands.Cog):
     @check_empty_servers.before_loop
     async def before_check_empty_servers(self):
         await self.bot.wait_until_ready()
+
+    @app_commands.command(description="Test command to generate a stylized match result image")
+    @app_commands.checks.has_any_role("Event Staff")
+    async def testmatchresult(self, interaction: discord.Interaction, red_score: int, blue_score: int):
+        logger.info(f"{interaction.user.name} called /testmatchresult")
+        await interaction.response.defer()
+
+        # Create a new image with a modern dark background
+        width = 800
+        height = 200
+        image = Image.new('RGB', (width, height), color='#1a1b1e')
+        draw = ImageDraw.Draw(image)
+
+        # Load fonts
+        try:
+            text_font = ImageFont.truetype("arial.ttf", 24)
+            small_font = ImageFont.truetype("arial.ttf", 20)
+        except:
+            text_font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
+
+        # Draw background gradient
+        for y in range(height):
+            r = int(26 + (y / height) * 10)
+            g = int(27 + (y / height) * 10)
+            b = int(30 + (y / height) * 10)
+            draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+        # Draw team sections
+        y_offset = 10
+        card_height = 180
+        card_width = 250  # Reduced width
+        card_padding = 10
+
+        for team, score, color, bg_color in [
+            ('RED', red_score, '#ff4444', '#2d1a1a'),
+            ('BLUE', blue_score, '#4444ff', '#1a1a2d')
+        ]:
+            card_x = 10 if team == 'RED' else width - card_width - 10
+            draw.rectangle(
+                [(card_x, y_offset), (card_x + card_width, y_offset + card_height)],
+                fill=bg_color,
+                outline=color,
+                width=1
+            )
+
+            player_y = y_offset + card_padding
+            for i in range(3):
+                # Draw player card
+                player_card_height = 65  # Increased height
+                player_card_y = player_y + (i * (player_card_height + 8))  # Slightly more spacing
+
+                # Draw player card background
+                draw.rectangle(
+                    [(card_x + card_padding, player_card_y),
+                     (card_x + card_width - card_padding, player_card_y + player_card_height)],
+                    fill='#2a2a2a',
+                    outline=color,
+                    width=1
+                )
+
+                # Generate random stats
+                player_name = f"Player {i+1}"
+                elo = random.randint(1000, 2000)
+                elo_change = random.uniform(-10, 10)
+
+                # Draw player info (vertically centered)
+                name_y = player_card_y + 10
+                draw.text(
+                    (card_x + card_padding + 10, name_y),
+                    player_name,
+                    font=text_font,
+                    fill='#ffffff'
+                )
+
+                # Draw ELO with modern styling
+                elo_text = f"ELO: {elo}"
+                draw.text(
+                    (card_x + card_padding + 10, player_card_y + 36),
+                    elo_text,
+                    font=small_font,
+                    fill='#aaaaaa'
+                )
+
+                # Draw ELO change with color
+                elo_change_text = f"{'+' if elo_change > 0 else ''}{elo_change:.2f}"
+                elo_color = '#00ff00' if elo_change > 0 else '#ff4444'
+                change_bbox = draw.textbbox((0, 0), elo_change_text, font=small_font)
+                change_width = change_bbox[2] - change_bbox[0]
+                change_x = card_x + card_width - card_padding - change_width - 10
+                draw.text(
+                    (change_x, player_card_y + 36),
+                    elo_change_text,
+                    font=small_font,
+                    fill=elo_color
+                )
+
+        # Add a subtle border
+        border_width = 1
+        draw.rectangle(
+            [(border_width, border_width), (width - border_width, height - border_width)],
+            outline='#333333',
+            width=border_width
+        )
+
+        # Save the image to a BytesIO object
+        img_byte_arr = BytesIO()
+        image.save(img_byte_arr, format='PNG', quality=95)
+        img_byte_arr.seek(0)
+
+        # Create an embed similar to the submit command
+        embed = discord.Embed(
+            color=0x34eb3d,
+            title=f"[Test Game] Score submitted | 🟥 {red_score}-{blue_score} 🟦 |"
+        )
+        embed.set_thumbnail(url=XRC_SIM_LOGO_URL)
+
+        # Add the image to the embed
+        embed.set_image(url="attachment://match_result.png")
+
+        # Send the embed with the image
+        await interaction.followup.send(
+            embed=embed,
+            file=discord.File(img_byte_arr, 'match_result.png')
+        )
 
 
 queue_joins = {}

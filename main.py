@@ -6,7 +6,9 @@ import logging
 import logging.handlers
 from dotenv import load_dotenv
 from discord.utils import get
+import asyncio
 from config import *
+from webhook_server import StripeWebhookServer
 
 logger = logging.getLogger('discord')
 load_dotenv()
@@ -26,8 +28,14 @@ class RankedBot(commands.Bot):
         await self.load_extension("cogs.ranked")
         await self.load_extension("cogs.server")
         await self.load_extension("cogs.general")
-        await self.load_extension("cogs.userManagement")  # Load the new cog
+        await self.load_extension("cogs.userManagement")
+        await self.load_extension("cogs.payments")  # Load payments cog
         await self.tree.sync(guild=discord.Object(id=GUILD_ID))
+        
+        # Start webhook server if Stripe is configured
+        if STRIPE_API_KEY and STRIPE_WEBHOOK_SECRET:
+            self.webhook_server = StripeWebhookServer(self)
+            asyncio.create_task(self.webhook_server.start())
 
     async def on_ready(self):
         logger.info("The bot is alive!")

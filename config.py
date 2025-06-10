@@ -68,6 +68,21 @@ if not RANKED_ADMIN_USERNAME:
     logger.fatal('RANKED_ADMIN_USERNAME not found')
     raise RuntimeError('RANKED_ADMIN_USERNAME not found')
 
+# Stripe Configuration
+STRIPE_API_KEY = os.getenv('STRIPE_API_KEY')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
+STRIPE_PRICE_ID_BASIC = os.getenv('STRIPE_PRICE_ID_BASIC')  # 30 mins/day tier
+STRIPE_PRICE_ID_PREMIUM = os.getenv('STRIPE_PRICE_ID_PREMIUM')  # 60 mins/day tier
+
+# Database Configuration  
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite+aiosqlite:///bot.db')
+
+# Server Access Tiers (in minutes per day)
+SERVER_TIERS = {
+    'basic': 30,
+    'premium': 60
+}
+
 server_games = {
     "Test": "-1",
     "Splish Splash": "0",
