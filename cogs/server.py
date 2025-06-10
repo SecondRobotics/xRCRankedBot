@@ -244,15 +244,14 @@ class ServerActions(commands.Cog):
 
         logger.info(f"Server launched on port {port}: '{comment}'")
 
-        # After starting the server, create watch message
+        # After starting the server, return the game_type for possible watch message
         game_type = server_games.get(game, "Unknown")
-        asyncio.create_task(self._create_watch_message(port, game_type))  # Use helper method
         
         # Start timeout task if timeout is specified
         if timeout > 0:
             asyncio.create_task(self._handle_server_timeout(port, timeout))
         
-        return f"✅ Launched server '{comment}' on port {port}", port
+        return f"✅ Launched server '{comment}' on port {port}", port, game_type
 
     async def _handle_server_timeout(self, port: int, timeout_minutes: int):
         """Handle server timeout by shutting it down after specified minutes"""
@@ -383,7 +382,7 @@ class ServerActions(commands.Cog):
                             restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
                             tournament_mode: bool = True, start_when_ready: bool = True,
                             register: bool = True, spectators: int = 4, min_players: int = -1,
-                            restart_all: bool = True, timeout: int = -1):
+                            restart_all: bool = True, timeout: int = -1, silent: bool = False):
         """Launches a new instance of xRC Sim server.
         
         Args:
@@ -401,11 +400,15 @@ class ServerActions(commands.Cog):
             min_players: Minimum players required (default: -1)
             restart_all: Whether to restart all (default: True)
             timeout: Server timeout in minutes (-1 for no timeout) (default: -1)
+            silent: If True, do not post to the queue channel (default: False)
         """
         logger.info(f"{interaction.user.name} called /launchserver")
 
-        result, _ = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
+        result, port, game_type = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
                                              tournament_mode, start_when_ready, register, spectators, min_players, restart_all, timeout)
+
+        if not silent and port != -1:
+            asyncio.create_task(self._create_watch_message(port, game_type))
 
         await interaction.response.send_message(result)
 
