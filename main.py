@@ -27,6 +27,7 @@ class RankedBot(commands.Bot):
         await self.load_extension("cogs.server")
         await self.load_extension("cogs.general")
         await self.load_extension("cogs.userManagement")  # Load the new cog
+        await self.load_extension("cogs.question")  # Load the question cog
         await self.tree.sync(guild=discord.Object(id=GUILD_ID))
 
     async def on_ready(self):
