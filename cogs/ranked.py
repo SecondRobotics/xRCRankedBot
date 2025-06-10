@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from io import TextIOWrapper
 import subprocess
 from typing import Dict, Optional
-
 from discord import app_commands, ButtonStyle
 from discord.ui import View, Button
 import random
@@ -1586,7 +1585,7 @@ class Ranked(commands.Cog):
 
     
     @app_commands.command(description="Submit Score")
-    @app_commands.checks.cooldown(1, 120.0, key=lambda   i: (i.guild_id,i.current_match.id))
+    @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
