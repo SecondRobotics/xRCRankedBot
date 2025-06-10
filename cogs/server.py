@@ -31,6 +31,7 @@ logger = logging.getLogger('discord')
 SERVER_PATH = "./server/xRC Simulator.x86_64"
 SERVER_LOGS_DIR = "./server_logs/"
 SERVER_GAME_DATA_DIR = "./server_game_data/"  # Existing constant for score files
+CHAT_LOGS_DIR = "./chat_logs/"  # Directory for chat logs
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
@@ -51,6 +52,7 @@ class ServerActions(commands.Cog):
     players_active: Dict[int, List[Player]] = {}  # New attribute to track players
     log_read_positions: Dict[int, int] = {}  # Added to track last read positions
     watch_messages: Dict[int, discord.Message] = {}
+    chat_log_files: Dict[int, TextIOWrapper] = {}  # Chat log files for each server
 
     def __init__(self, bot):
         self.bot = bot
@@ -98,7 +100,15 @@ class ServerActions(commands.Cog):
             await asyncio.sleep(1)  # Adjusted sleep interval if needed
 
     def parse_log_line(self, port: int, line: str):
-        # Extract timestamp from the beginning of the log line
+        # Chat message pattern (matches the entire line)
+        chat_pattern = r"^(\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M): (\w+): (.+)\.$"
+        chat_match = re.match(chat_pattern, line)
+        if chat_match:
+            timestamp_str, username, chat_message = chat_match.groups()
+            self.log_chat_message(port, timestamp_str, username, chat_message)
+            return
+
+        # Extract timestamp from the beginning of the log line for other logics
         try:
             timestamp_str, message = line.split(': ', 1)  # Split timestamp and message
             timestamp = datetime.strptime(timestamp_str, "%m/%d/%Y %I:%M:%S %p")  # Parse timestamp
@@ -136,6 +146,33 @@ class ServerActions(commands.Cog):
             logger.info(f"{port} - Player {name} left server")
             players = self.players_active.get(port, [])
             self.players_active[port] = [p for p in players if p.name != name]
+            return
+    
+    def log_chat_message(self, port: int, timestamp: str, username: str, message: str):
+        """Log chat messages to separate chat log files, including IP if available"""
+        try:
+            # Ensure chat log file is open
+            if port not in self.chat_log_files:
+                os.makedirs(CHAT_LOGS_DIR, exist_ok=True)
+                chat_log_path = os.path.join(CHAT_LOGS_DIR, f"{port}.log")
+                self.chat_log_files[port] = open(chat_log_path, "a", encoding="utf-8")
+
+            # Try to find the IP for the username
+            ip = None
+            for player in self.players_active.get(port, []):
+                if player.name == username:
+                    ip = player.ip
+                    break
+            if ip:
+                log_entry = f"{timestamp}: {username} ({ip}): {message}\n"
+            else:
+                log_entry = f"{timestamp}: {username}: {message}\n"
+            self.chat_log_files[port].write(log_entry)
+            self.chat_log_files[port].flush()  # Ensure it's written immediately
+
+            logger.info(f"Chat on port {port} - {username}{' (' + ip + ')' if ip else ''}: {message}")
+        except Exception as e:
+            logger.error(f"Error logging chat message for port {port}: {e}")
     
 
     def start_server_process(self, game: str, comment: str, password: str = "", admin: str = "Admin",
@@ -174,6 +211,13 @@ class ServerActions(commands.Cog):
         f = open(f"{SERVER_LOGS_DIR}{port}.log", "a")
         self.log_files[port] = f
         f.write(f"Server started at {datetime.now()}\n")
+        
+        # Initialize chat log file
+        os.makedirs(CHAT_LOGS_DIR, exist_ok=True)
+        chat_log_path = os.path.join(CHAT_LOGS_DIR, f"{port}.log")
+        chat_f = open(chat_log_path, "a", encoding="utf-8")
+        self.chat_log_files[port] = chat_f
+        chat_f.write(f"=== Chat log started at {datetime.now()} ===\n")
 
         command = [
             SERVER_PATH, "-batchmode", "-nographics",
@@ -200,10 +244,6 @@ class ServerActions(commands.Cog):
 
         logger.info(f"Server launched on port {port}: '{comment}'")
 
-        # After starting the server, create watch message
-        game_type = server_games.get(game, "Unknown")
-        asyncio.create_task(self._create_watch_message(port, game_type))  # Use helper method
-        
         # Start timeout task if timeout is specified
         if timeout > 0:
             asyncio.create_task(self._handle_server_timeout(port, timeout))
@@ -228,6 +268,12 @@ class ServerActions(commands.Cog):
 
         logger.info(f"Shutting down server on port {port}")
         self.log_files[port].write(f"Server shut down at {datetime.now()}\n")
+
+        # Close chat log file
+        if port in self.chat_log_files:
+            self.chat_log_files[port].write(f"=== Chat log ended at {datetime.now()} ===\n")
+            self.chat_log_files[port].close()
+            del self.chat_log_files[port]
 
         self.servers_active[port].terminate()
         self.log_files[port].close()
@@ -333,7 +379,7 @@ class ServerActions(commands.Cog):
                             restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
                             tournament_mode: bool = True, start_when_ready: bool = True,
                             register: bool = True, spectators: int = 4, min_players: int = -1,
-                            restart_all: bool = True, timeout: int = -1):
+                            restart_all: bool = True, timeout: int = -1, silent: bool = False):
         """Launches a new instance of xRC Sim server.
         
         Args:
@@ -351,11 +397,16 @@ class ServerActions(commands.Cog):
             min_players: Minimum players required (default: -1)
             restart_all: Whether to restart all (default: True)
             timeout: Server timeout in minutes (-1 for no timeout) (default: -1)
+            silent: If True, do not post to the queue channel (default: False)
         """
         logger.info(f"{interaction.user.name} called /launchserver")
 
-        result, _ = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
-                                             tournament_mode, start_when_ready, register, spectators, min_players, restart_all, timeout)
+        result, port = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
+                                 tournament_mode, start_when_ready, register, spectators, min_players, restart_all, timeout)
+
+        if not silent and port != -1:
+            game_type = server_games.get(game, "Unknown")
+            asyncio.create_task(self._create_watch_message(port, game_type))
 
         await interaction.response.send_message(result)
 
