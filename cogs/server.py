@@ -509,7 +509,7 @@ class ServerActions(commands.Cog):
         await interaction.response.send_message(f"✅ Stopped watching server on port {port}.")
 
     @app_commands.command(description="Investigate server players", name="investigate")
-    @app_commands.checks.has_any_role("Admin")
+    @app_commands.checks.has_any_role("Admin", "Mod")
     @app_commands.choices(port=ports_choices)
     async def investigate(self, interaction: discord.Interaction, port: int, public: bool = False):  # Added 'public' parameter
         logger.info(f"{interaction.user.name} called /investigate for port {port}")
