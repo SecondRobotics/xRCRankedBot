@@ -149,20 +149,28 @@ class ServerActions(commands.Cog):
             return
     
     def log_chat_message(self, port: int, timestamp: str, username: str, message: str):
-        """Log chat messages to separate chat log files"""
+        """Log chat messages to separate chat log files, including IP if available"""
         try:
             # Ensure chat log file is open
             if port not in self.chat_log_files:
                 os.makedirs(CHAT_LOGS_DIR, exist_ok=True)
                 chat_log_path = os.path.join(CHAT_LOGS_DIR, f"{port}.log")
                 self.chat_log_files[port] = open(chat_log_path, "a", encoding="utf-8")
-            
-            # Write the chat message to the log file
-            log_entry = f"{timestamp}: {username}: {message}\n"
+
+            # Try to find the IP for the username
+            ip = None
+            for player in self.players_active.get(port, []):
+                if player.name == username:
+                    ip = player.ip
+                    break
+            if ip:
+                log_entry = f"{timestamp}: {username} ({ip}): {message}\n"
+            else:
+                log_entry = f"{timestamp}: {username}: {message}\n"
             self.chat_log_files[port].write(log_entry)
             self.chat_log_files[port].flush()  # Ensure it's written immediately
-            
-            logger.info(f"Chat on port {port} - {username}: {message}")
+
+            logger.info(f"Chat on port {port} - {username}{' (' + ip + ')' if ip else ''}: {message}")
         except Exception as e:
             logger.error(f"Error logging chat message for port {port}: {e}")
     
