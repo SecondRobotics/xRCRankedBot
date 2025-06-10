@@ -31,6 +31,7 @@ logger = logging.getLogger('discord')
 SERVER_PATH = "./server/xRC Simulator.x86_64"
 SERVER_LOGS_DIR = "./server_logs/"
 SERVER_GAME_DATA_DIR = "./server_game_data/"  # Existing constant for score files
+CHAT_LOGS_DIR = "./chat_logs/"  # Directory for chat logs
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
@@ -51,6 +52,7 @@ class ServerActions(commands.Cog):
     players_active: Dict[int, List[Player]] = {}  # New attribute to track players
     log_read_positions: Dict[int, int] = {}  # Added to track last read positions
     watch_messages: Dict[int, discord.Message] = {}
+    chat_log_files: Dict[int, TextIOWrapper] = {}  # Chat log files for each server
 
     def __init__(self, bot):
         self.bot = bot
@@ -121,6 +123,7 @@ class ServerActions(commands.Cog):
 
         join_pattern = r"Player (\w+) joined on position (.+) from IP=(\d+\.\d+\.\d+\.\d+)."
         leave_pattern = r"Removing (\w+)"
+        chat_pattern = r"^\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M: (\w+): (.+)\.$"  # Pattern for timestamped chat messages
 
         join_match = re.search(join_pattern, message)
         if join_match:
@@ -136,6 +139,31 @@ class ServerActions(commands.Cog):
             logger.info(f"{port} - Player {name} left server")
             players = self.players_active.get(port, [])
             self.players_active[port] = [p for p in players if p.name != name]
+            return
+        
+        # Check for chat messages
+        chat_match = re.match(chat_pattern, message)
+        if chat_match:
+            username, chat_message = chat_match.groups()
+            self.log_chat_message(port, timestamp_str, username, chat_message)
+    
+    def log_chat_message(self, port: int, timestamp: str, username: str, message: str):
+        """Log chat messages to separate chat log files"""
+        try:
+            # Ensure chat log file is open
+            if port not in self.chat_log_files:
+                os.makedirs(CHAT_LOGS_DIR, exist_ok=True)
+                chat_log_path = os.path.join(CHAT_LOGS_DIR, f"{port}.log")
+                self.chat_log_files[port] = open(chat_log_path, "a", encoding="utf-8")
+            
+            # Write the chat message to the log file
+            log_entry = f"{timestamp}: {username}: {message}\n"
+            self.chat_log_files[port].write(log_entry)
+            self.chat_log_files[port].flush()  # Ensure it's written immediately
+            
+            logger.info(f"Chat on port {port} - {username}: {message}")
+        except Exception as e:
+            logger.error(f"Error logging chat message for port {port}: {e}")
     
 
     def start_server_process(self, game: str, comment: str, password: str = "", admin: str = "Admin",
@@ -174,6 +202,13 @@ class ServerActions(commands.Cog):
         f = open(f"{SERVER_LOGS_DIR}{port}.log", "a")
         self.log_files[port] = f
         f.write(f"Server started at {datetime.now()}\n")
+        
+        # Initialize chat log file
+        os.makedirs(CHAT_LOGS_DIR, exist_ok=True)
+        chat_log_path = os.path.join(CHAT_LOGS_DIR, f"{port}.log")
+        chat_f = open(chat_log_path, "a", encoding="utf-8")
+        self.chat_log_files[port] = chat_f
+        chat_f.write(f"=== Chat log started at {datetime.now()} ===\n")
 
         command = [
             SERVER_PATH, "-batchmode", "-nographics",
@@ -229,6 +264,12 @@ class ServerActions(commands.Cog):
         logger.info(f"Shutting down server on port {port}")
         self.log_files[port].write(f"Server shut down at {datetime.now()}\n")
 
+        # Close chat log file
+        if port in self.chat_log_files:
+            self.chat_log_files[port].write(f"=== Chat log ended at {datetime.now()} ===\n")
+            self.chat_log_files[port].close()
+            del self.chat_log_files[port]
+
         self.servers_active[port].terminate()
         self.log_files[port].close()
         del self.servers_active[port]
@@ -247,6 +288,11 @@ class ServerActions(commands.Cog):
                     os.rmdir(os.path.join(root, name))
             os.rmdir(output_dir)
             logger.info(f"Deleted server data directory for port {port}")
+
+        # Track server usage end in database
+        if port in self.server_owners:
+            asyncio.create_task(self.db.end_server_usage(self.server_owners[port], port))
+            del self.server_owners[port]
 
         logger.info(f"Server on port {port} shut down")
 
