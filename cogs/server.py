@@ -244,14 +244,11 @@ class ServerActions(commands.Cog):
 
         logger.info(f"Server launched on port {port}: '{comment}'")
 
-        # After starting the server, return the game_type for possible watch message
-        game_type = server_games.get(game, "Unknown")
-        
         # Start timeout task if timeout is specified
         if timeout > 0:
             asyncio.create_task(self._handle_server_timeout(port, timeout))
         
-        return f"✅ Launched server '{comment}' on port {port}", port, game_type
+        return f"✅ Launched server '{comment}' on port {port}", port
 
     async def _handle_server_timeout(self, port: int, timeout_minutes: int):
         """Handle server timeout by shutting it down after specified minutes"""
@@ -404,10 +401,11 @@ class ServerActions(commands.Cog):
         """
         logger.info(f"{interaction.user.name} called /launchserver")
 
-        result, port, game_type = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
-                                             tournament_mode, start_when_ready, register, spectators, min_players, restart_all, timeout)
+        result, port = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
+                                 tournament_mode, start_when_ready, register, spectators, min_players, restart_all, timeout)
 
         if not silent and port != -1:
+            game_type = server_games.get(game, "Unknown")
             asyncio.create_task(self._create_watch_message(port, game_type))
 
         await interaction.response.send_message(result)
