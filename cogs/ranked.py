@@ -230,12 +230,15 @@ class XrcGame:
         self.last_ping_time = None  # type: datetime | None
         self.players = []
         self.password_channel_id = None  # type: int | None
+        self.current_match_id = None # type: None
 
         try:
             self.game_icon = game_logos[game]
         except Exception as e:
             logger.warning(f"Error setting game icon: {e}")
             self.game_icon = None
+
+
 
 
 class Queue:
@@ -1585,7 +1588,7 @@ class Ranked(commands.Cog):
 
     
     @app_commands.command(description="Submit Score")
-    @app_commands.checks.cooldown(1, 120.0, key=lambda i: (i.guild_id,i.current_match.id))
+    @app_commands.checks.cooldown(1, 120.0, key=lambda i: i.guild_id)
     async def submit(self, interaction: discord.Interaction, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
