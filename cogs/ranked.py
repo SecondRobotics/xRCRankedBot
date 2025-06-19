@@ -238,6 +238,8 @@ class XrcGame:
             self.game_icon = None
 
 
+
+
 class Queue:
     def __init__(self, game, alliance_size: int, api_short: str, full_game_name: str):
         self._queue = PlayerQueue()
@@ -754,6 +756,9 @@ class Ranked(commands.Cog):
             name=f"Red {match.full_game_name}", colour=discord.Color(0xFF0000))
         match.blue_role = await interaction.guild.create_role(
             name=f"Blue {match.full_game_name}", colour=discord.Color(0x0000FF))
+
+        # Set a unique match ID using the role IDs
+        match.current_match_id = f"{match.red_role.id}-{match.blue_role.id}"
 
         logger.info(f"Getting players for {match.game_type}")
 
@@ -1585,7 +1590,19 @@ class Ranked(commands.Cog):
 
     
     @app_commands.command(description="Submit Score")
-    @app_commands.checks.cooldown(1, 20.0, key=lambda i: i.guild_id)
+    @app_commands.checks.cooldown(1, 120.0, key=lambda i: (
+            i.guild_id,
+            # Find the match and use its current_match_id
+            getattr(
+                next(
+                    (match for queue in game_queues.values() for match in queue.matches
+                     if match.red_role in i.user.roles or match.blue_role in i.user.roles),
+                    None
+                ),
+                "current_match_id",
+                None
+            )
+    ))
     async def submit(self, interaction: discord.Interaction, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
         await interaction.response.defer()
