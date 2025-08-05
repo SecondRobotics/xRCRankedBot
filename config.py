@@ -90,6 +90,7 @@ server_games = {
     "High Stakes": "17",
     "Into The Deep": "18",
     "Reefscape": "19",
+    "Push Back": "20",
 }
 
 server_games_choices = [
@@ -130,6 +131,7 @@ short_codes = {
     "High Stakes": "HS",
     "Into The Deep": "ITD",
     "Reefscape": "RS",
+    "Push Back": "PB",
 }
 
 default_game_players = {
@@ -154,6 +156,7 @@ default_game_players = {
     "17": 4,
     "18": 4,
     "19": 6,
+    "20": 4,
 }
 
 server_restart_modes = {
@@ -174,4 +177,5 @@ game_logos = {
     "Power Play": "https://i.imgur.com/tuC6s0P.png",
     "Into The Deep": "https://i.imgur.com/YqT31M8.png",
     "Reefscape": "https://i.imgur.com/LlLfz4z.gif",
+    "Push Back": "https://i.imgur.com/LlLfz4z.gif",
 }
