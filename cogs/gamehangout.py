@@ -100,9 +100,9 @@ class StartMatchButton(Button):
             await interaction.response.send_message("This command can only be used in a server!", ephemeral=True)
             return
             
-        # Check if user has permission to start matches
-        if not any(role_id in [role.id for role in interaction.user.roles] for role_id in [EVENT_STAFF_ID, TRIAL_STAFF_ID]):
-            await interaction.response.send_message("Only staff can start matches!", ephemeral=True)
+        # Check if user is in the hangout
+        if interaction.user not in self.hangout_session.players:
+            await interaction.response.send_message("You must be in the hangout to start a match!", ephemeral=True)
             return
         
         if len(self.hangout_session.players) < 4:
@@ -145,7 +145,7 @@ class HangoutSession:
         self.player_stats = {}  # player_id: {matches_sat_out, teammates, opponents, wins, losses, total_matches}
         
     async def create_hangout_resources(self):
-        """Create the hangout role and voice channel"""
+        """Create the hangout role, voice channel, and server"""
         try:
             # Create hangout role
             role_name = f"Hangout - {self.game_type}"
@@ -186,13 +186,31 @@ class HangoutSession:
             )
             logger.info(f"Created hangout VC: {vc_name} in category: {category.name if category else 'None'}")
             
+            # Start hangout server
+            game_id = server_games[self.game_type]
+            password = str(random.randint(100, 999))
+            min_players = default_game_players.get(game_id, 4)
+            
+            server_actions = self.cog.bot.get_cog('ServerActions')
+            if server_actions:
+                message, port = server_actions.start_server_process(
+                    game_id, f"Hangout{self.game_type.replace(' ', '')}", password, 
+                    min_players=min_players, admin=RANKED_ADMIN_USERNAME
+                )
+                if port != -1:
+                    self.server_port = port
+                    self.server_password = password
+                    logger.info(f"Started hangout server on port {port}")
+                else:
+                    logger.warning(f"Failed to start hangout server: {message}")
+            
             return True
         except Exception as e:
             logger.error(f"Failed to create hangout resources: {e}")
             return False
     
     async def cleanup_hangout_resources(self):
-        """Clean up hangout role and voice channel"""
+        """Clean up hangout role, voice channel, and server"""
         # Remove roles from all players
         for player in self.players:
             try:
@@ -205,18 +223,33 @@ class HangoutSession:
             except Exception as e:
                 logger.error(f"Failed to remove roles from {player.display_name}: {e}")
         
+        # Stop hangout server
+        if self.server_port:
+            try:
+                server_actions = self.cog.bot.get_cog('ServerActions')
+                if server_actions:
+                    server_actions.stop_server_process(self.server_port)
+                    logger.info(f"Stopped hangout server on port {self.server_port}")
+                self.server_port = None
+                self.server_password = None
+            except Exception as e:
+                logger.error(f"Failed to stop hangout server: {e}")
+        
         # Delete resources
         try:
             if self.hangout_role:
                 await self.hangout_role.delete(reason="Hangout session ended")
             if self.hangout_vc:
                 await self.hangout_vc.delete(reason="Hangout session ended")
+            if self.message:
+                await self.message.delete()
+                logger.info("Deleted hangout creation message")
             await self.cleanup_match_resources()
         except Exception as e:
             logger.error(f"Failed to cleanup hangout resources: {e}")
     
     async def cleanup_match_resources(self):
-        """Clean up match-specific roles and VCs"""
+        """Clean up match-specific roles and VCs (but keep server running)"""
         try:
             if self.red_role:
                 await self.red_role.delete(reason="Match ended")
@@ -233,16 +266,7 @@ class HangoutSession:
         except Exception as e:
             logger.error(f"Failed to cleanup match resources: {e}")
         
-        # Stop server if running
-        if self.server_port:
-            try:
-                server_actions = self.cog.bot.get_cog('ServerActions')
-                if server_actions:
-                    server_actions.stop_server_process(self.server_port)
-                self.server_port = None
-                self.server_password = None
-            except Exception as e:
-                logger.error(f"Failed to stop server: {e}")
+        # Note: Server stays running for the entire hangout session
     
     def init_player_stats(self, player_id):
         """Initialize stats for a new player"""
@@ -597,24 +621,6 @@ class HangoutSession:
                     if isinstance(result, Exception):
                         logger.error(f"Failed to move player to team VC: {result}")
             
-            # Start server
-            game_id = server_games[self.game_type]
-            password = str(random.randint(100, 999))
-            min_players = default_game_players.get(game_id, 4)
-            
-            server_actions = self.cog.bot.get_cog('ServerActions')
-            if server_actions:
-                message, port = server_actions.start_server_process(
-                    game_id, f"Hangout{self.game_type.replace(' ', '')}", password, 
-                    min_players=min_players, admin=RANKED_ADMIN_USERNAME
-                )
-                if port != -1:
-                    self.server_port = port
-                    self.server_password = password
-                    logger.info(f"Started hangout server on port {port}")
-                else:
-                    logger.warning(f"Failed to start hangout server: {message}")
-            
             self.match_in_progress = True
             
             # Create match start embed
@@ -675,6 +681,13 @@ class HangoutSession:
         
         if self.hangout_vc:
             embed.add_field(name="Voice Channel", value=self.hangout_vc.mention, inline=True)
+        
+        if self.server_port and self.server_password:
+            embed.add_field(
+                name="Server Info",
+                value=f"**Server:** Hangout{self.game_type.replace(' ', '')}\n**Password:** {self.server_password}\n**Port:** {self.server_port}",
+                inline=False
+            )
         
         # Player list
         if self.players:
@@ -884,6 +897,12 @@ class GameHangout(commands.Cog):
             await interaction.response.send_message("You already have an active hangout session! End it first with `/hangout_end`", ephemeral=True)
             return
         
+        # Check if any hangout already exists in this channel
+        for session in self.active_hangouts.values():
+            if session.channel.id == interaction.channel.id:
+                await interaction.response.send_message(f"A hangout is already active in this channel! (Hosted by {session.host.display_name})", ephemeral=True)
+                return
+        
         await interaction.response.defer()
         
         # Get game name from the choice value
@@ -944,7 +963,7 @@ class GameHangout(commands.Cog):
         await interaction.followup.send(embed=final_stats_embed)
         logger.info(f"Hangout session ended by {interaction.user.display_name}")
     
-    @app_commands.command(description="Submit match result for current hangout match (Staff Only)")
+    @app_commands.command(description="Submit match result for current hangout match")
     @app_commands.describe(
         red_score="Score for red team",
         blue_score="Score for blue team"
@@ -955,23 +974,17 @@ class GameHangout(commands.Cog):
             await interaction.response.send_message("This command can only be used in a server!", ephemeral=True)
             return
             
-        # Check if user has staff permissions or is in the match
-        staff_permission = any(role_id in [role.id for role in interaction.user.roles] for role_id in [EVENT_STAFF_ID, TRIAL_STAFF_ID])
-        
         # Find the hangout session this user is involved with
         user_session = None
         for session in self.active_hangouts.values():
-            if interaction.user in session.players or staff_permission:
+            if interaction.user in session.players:
                 if session.match_in_progress:
-                    # Check if user is in the current match or is staff
-                    in_current_match = (interaction.user in session.current_match_teams["red"] or 
-                                      interaction.user in session.current_match_teams["blue"])
-                    if in_current_match or staff_permission:
-                        user_session = session
-                        break
+                    # Any player in the hangout can submit scores
+                    user_session = session
+                    break
         
         if not user_session:
-            await interaction.response.send_message("You're not eligible to submit scores for any active match!", ephemeral=True)
+            await interaction.response.send_message("You must be in an active hangout session with a match in progress to submit scores!", ephemeral=True)
             return
         
         await interaction.response.defer()
