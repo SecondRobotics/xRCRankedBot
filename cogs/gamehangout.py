@@ -1082,5 +1082,13 @@ class GameHangout(commands.Cog):
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-async def setup(bot):
-    await bot.add_cog(GameHangout(bot))
+async def setup(bot: commands.Bot) -> None:
+    cog = GameHangout(bot)
+    
+    guild = await bot.fetch_guild(GUILD_ID)
+    assert guild is not None
+    
+    await bot.add_cog(
+        cog,
+        guilds=[guild]
+    )

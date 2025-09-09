@@ -27,7 +27,14 @@ class RankedBot(commands.Bot):
         await self.load_extension("cogs.server")
         await self.load_extension("cogs.general")
         await self.load_extension("cogs.userManagement")  # Load the new cog
-        await self.load_extension("cogs.gamehangout")  # Load the gamehangout cog
+        
+        # Load gamehangout cog with error handling
+        try:
+            await self.load_extension("cogs.gamehangout")
+            logger.info("Successfully loaded gamehangout cog")
+        except Exception as e:
+            logger.error(f"Failed to load gamehangout cog: {e}")
+            
         await self.tree.sync(guild=discord.Object(id=GUILD_ID))
 
     async def on_ready(self):
