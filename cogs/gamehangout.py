@@ -116,15 +116,15 @@ class StartMatchButton(Button):
         await self.hangout_session.start_match(interaction)
 
 class HangoutSession:
-    def __init__(self, host, game_type, guild, cog):
+    def __init__(self, host, game_type, guild, cog, channel):
         self.host = host
         self.game_type = game_type
         self.guild = guild
         self.cog = cog
+        self.channel = channel  # Store the channel where command was run
         self.players = []
         self.created_at = datetime.now()
         self.message = None
-        self.channel = None
         
         # Roles and VCs
         self.hangout_role = None
@@ -157,15 +157,34 @@ class HangoutSession:
             )
             logger.info(f"Created hangout role: {role_name}")
             
-            # Create hangout VC
-            category = discord.utils.get(self.guild.categories, id=CATEGORY_ID)
+            # Create hangout VC in same category as command channel with proper permissions
+            category = self.channel.category if self.channel.category else None
+            staff_role = discord.utils.get(self.guild.roles, id=EVENT_STAFF_ID)
+            trial_staff_role = discord.utils.get(self.guild.roles, id=TRIAL_STAFF_ID)
+            bots_role = discord.utils.get(self.guild.roles, id=BOTS_ROLE_ID)
+            
+            # Set permissions: only hangout role and staff can connect
+            overwrites = {
+                self.guild.default_role: discord.PermissionOverwrite(connect=False),
+                self.hangout_role: discord.PermissionOverwrite(connect=True),
+            }
+            
+            # Add staff permissions
+            if staff_role:
+                overwrites[staff_role] = discord.PermissionOverwrite(connect=True)
+            if trial_staff_role:
+                overwrites[trial_staff_role] = discord.PermissionOverwrite(connect=True)
+            if bots_role:
+                overwrites[bots_role] = discord.PermissionOverwrite(connect=True)
+            
             vc_name = f"🎮 Hangout - {self.game_type}"
             self.hangout_vc = await self.guild.create_voice_channel(
                 vc_name,
                 category=category,
+                overwrites=overwrites,
                 reason=f"Hangout voice channel for {self.game_type}"
             )
-            logger.info(f"Created hangout VC: {vc_name}")
+            logger.info(f"Created hangout VC: {vc_name} in category: {category.name if category else 'None'}")
             
             return True
         except Exception as e:
@@ -871,7 +890,7 @@ class GameHangout(commands.Cog):
         game_name = next((name for name, value in server_games.items() if value == game), "Unknown Game")
         
         # Create hangout session
-        session = HangoutSession(interaction.user, game_name, interaction.guild, self)
+        session = HangoutSession(interaction.user, game_name, interaction.guild, self, interaction.channel)
         
         # Create hangout resources
         if not await session.create_hangout_resources():
@@ -890,7 +909,6 @@ class GameHangout(commands.Cog):
         # Store message reference for updates
         message = await interaction.original_response()
         session.message = message
-        session.channel = interaction.channel
         
         logger.info(f"Hangout session created by {interaction.user.display_name} for {game_name}")
     
