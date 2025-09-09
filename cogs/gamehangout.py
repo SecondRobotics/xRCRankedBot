@@ -323,11 +323,15 @@ class HangoutSession:
     
     def assign_teams(self, match_players):
         """Assign players to red and blue teams with balanced relationships"""
-        if len(match_players) <= 4:
-            # 2v2 format
+        if len(match_players) == 4:
+            # 2v2 format - exactly 4 players
             team_size = 2
+        elif len(match_players) == 5:
+            # 2v2 format with 1 spectator - only use 4 players
+            team_size = 2
+            match_players = match_players[:4]  # Only use first 4 players
         else:
-            # 3v3 format
+            # 3v3 format - 6+ players
             team_size = 3
         
         # Use sophisticated team balancing based on relationship history
@@ -558,21 +562,21 @@ class HangoutSession:
         try:
             # Create team roles
             self.red_role = await self.guild.create_role(
-                name=f"Hangout Red",
+                name=f"Hangout Red - {self.game_type}",
                 color=discord.Color.red(),
                 mentionable=True,
                 reason=f"Red team for hangout match"
             )
             
             self.blue_role = await self.guild.create_role(
-                name=f"Hangout Blue", 
+                name=f"Hangout Blue - {self.game_type}", 
                 color=discord.Color.blue(),
                 mentionable=True,
                 reason=f"Blue team for hangout match"
             )
             
-            # Create team VCs with proper permissions
-            category = discord.utils.get(self.guild.categories, id=CATEGORY_ID)
+            # Create team VCs with proper permissions in same category as hangout
+            category = self.channel.category if self.channel.category else None
             staff_role = discord.utils.get(self.guild.roles, id=EVENT_STAFF_ID)
             bots_role = discord.utils.get(self.guild.roles, id=BOTS_ROLE_ID)
             
