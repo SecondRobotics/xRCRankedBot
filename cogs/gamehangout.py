@@ -570,50 +570,49 @@ class HangoutSession:
             red_team, blue_team, match_spectators = self.assign_teams(match_players)
             
             all_spectators = session_spectators + match_spectators
-        
-        # Determine match format and check if server restart is needed
-        match_format = "2v2" if len(red_team) == 2 else "3v3"
-        min_players = 4 if match_format == "2v2" else 6
-        
-        # Restart server if format changed
-        if self.current_format != match_format:
-            logger.info(f"Format changed from {self.current_format} to {match_format}, restarting server")
             
-            # Stop current server
-            if self.server_port:
+            # Determine match format and check if server restart is needed
+            match_format = "2v2" if len(red_team) == 2 else "3v3"
+            min_players = 4 if match_format == "2v2" else 6
+            
+            # Restart server if format changed
+            if self.current_format != match_format:
+                logger.info(f"Format changed from {self.current_format} to {match_format}, restarting server")
+                
+                # Stop current server
+                if self.server_port:
+                    server_actions = self.cog.bot.get_cog('ServerActions')
+                    if server_actions:
+                        server_actions.stop_server_process(self.server_port)
+                        logger.info(f"Stopped server on port {self.server_port}")
+                
+                # Start new server with correct player count
+                game_id = server_games[self.game_type]
+                password = str(random.randint(100, 999))
+                
                 server_actions = self.cog.bot.get_cog('ServerActions')
                 if server_actions:
-                    server_actions.stop_server_process(self.server_port)
-                    logger.info(f"Stopped server on port {self.server_port}")
+                    message, port = server_actions.start_server_process(
+                        game_id, f"Hangout{self.game_type.replace(' ', '')}", password, 
+                        min_players=min_players, admin=RANKED_ADMIN_USERNAME
+                    )
+                    if port != -1:
+                        self.server_port = port
+                        self.server_password = password
+                        self.current_format = match_format
+                        logger.info(f"Restarted hangout server on port {port} with {match_format} format")
+                        
+                        # Update main embed with new server info
+                        await self.update_main_embed()
+                    else:
+                        logger.warning(f"Failed to restart hangout server: {message}")
             
-            # Start new server with correct player count
-            game_id = server_games[self.game_type]
-            password = str(random.randint(100, 999))
+            self.current_match_teams = {
+                "red": red_team,
+                "blue": blue_team, 
+                "spectators": all_spectators
+            }
             
-            server_actions = self.cog.bot.get_cog('ServerActions')
-            if server_actions:
-                message, port = server_actions.start_server_process(
-                    game_id, f"Hangout{self.game_type.replace(' ', '')}", password, 
-                    min_players=min_players, admin=RANKED_ADMIN_USERNAME
-                )
-                if port != -1:
-                    self.server_port = port
-                    self.server_password = password
-                    self.current_format = match_format
-                    logger.info(f"Restarted hangout server on port {port} with {match_format} format")
-                    
-                    # Update main embed with new server info
-                    await self.update_main_embed()
-                else:
-                    logger.warning(f"Failed to restart hangout server: {message}")
-        
-        self.current_match_teams = {
-            "red": red_team,
-            "blue": blue_team, 
-            "spectators": all_spectators
-        }
-        
-        try:
             # Create team roles
             self.red_role = await self.guild.create_role(
                 name=f"Hangout Red - {self.game_type}",
@@ -1063,42 +1062,42 @@ class GameHangout(commands.Cog):
             if not user_session.match_in_progress:
                 await interaction.followup.send("No match is currently in progress!", ephemeral=True)
                 return
-        
-        success, message = await user_session.submit_match_result(red_score, blue_score)
-        
-        if success:
-            # Delete previous result message to prevent chat burial
-            if user_session.last_result_message:
-                try:
-                    await user_session.last_result_message.delete()
-                    logger.info("Deleted previous hangout result message")
-                except:
-                    pass  # Message might already be deleted
             
-            # Create result embed
-            embed = discord.Embed(
-                title=f"🏆 Match Result Submitted",
-                description=message,
-                color=0x00ff00,
-                timestamp=datetime.now()
-            )
+            success, message = await user_session.submit_match_result(red_score, blue_score)
             
-            embed.add_field(
-                name="Final Score",
-                value=f"🟥 Red: {red_score}\n🟦 Blue: {blue_score}",
-                inline=True
-            )
-            
-            embed.add_field(
-                name="Match Info",
-                value=f"**Game:** {user_session.game_type}\n**Match #:** {user_session.matches_played}",
-                inline=True
-            )
-            
-            result_message = await interaction.followup.send(embed=embed)
-            user_session.last_result_message = result_message  # Store for cleanup next time
-        else:
-            await interaction.followup.send(f"❌ {message}", ephemeral=True)
+            if success:
+                # Delete previous result message to prevent chat burial
+                if user_session.last_result_message:
+                    try:
+                        await user_session.last_result_message.delete()
+                        logger.info("Deleted previous hangout result message")
+                    except:
+                        pass  # Message might already be deleted
+                
+                # Create result embed
+                embed = discord.Embed(
+                    title=f"🏆 Match Result Submitted",
+                    description=message,
+                    color=0x00ff00,
+                    timestamp=datetime.now()
+                )
+                
+                embed.add_field(
+                    name="Final Score",
+                    value=f"🟥 Red: {red_score}\n🟦 Blue: {blue_score}",
+                    inline=True
+                )
+                
+                embed.add_field(
+                    name="Match Info",
+                    value=f"**Game:** {user_session.game_type}\n**Match #:** {user_session.matches_played}",
+                    inline=True
+                )
+                
+                result_message = await interaction.followup.send(embed=embed)
+                user_session.last_result_message = result_message  # Store for cleanup next time
+            else:
+                await interaction.followup.send(f"❌ {message}", ephemeral=True)
         
         except Exception as e:
             logger.error(f"Failed to submit hangout match result: {e}")
