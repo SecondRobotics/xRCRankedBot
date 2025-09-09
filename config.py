@@ -53,6 +53,11 @@ if not EVENT_STAFF_ID:
     logger.fatal('EVENT_STAFF_ID not found')
     raise RuntimeError('EVENT_STAFF_ID not found')
 
+TRIAL_STAFF_ID = int(os.getenv('TRIAL_STAFF_ID'))
+if not TRIAL_STAFF_ID:
+    logger.fatal('TRIAL_STAFF_ID not found')
+    raise RuntimeError('TRIAL_STAFF_ID not found')
+
 LOBBY_VC_ID = int(os.getenv('LOBBY_VC_ID'))
 if not LOBBY_VC_ID:
     logger.fatal('LOBBY_VC_ID not found')
@@ -177,5 +182,5 @@ game_logos = {
     "Power Play": "https://i.imgur.com/tuC6s0P.png",
     "Into The Deep": "https://i.imgur.com/YqT31M8.png",
     "Reefscape": "https://i.imgur.com/LlLfz4z.gif",
-    "Push Back": "https://i.imgur.com/LlLfz4z.gif",
+    "Push Back": "https://v5rc-kb.recf.org/hc/article_attachments/32211108957207",
 }

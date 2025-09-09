@@ -1270,7 +1270,7 @@ class Ranked(commands.Cog):
         members_clean = [i for i in members if i]
         added_players = ""
         
-        if isinstance(interaction.user, discord.Member) and any(role.id == EVENT_STAFF_ID for role in interaction.user.roles):
+        if isinstance(interaction.user, discord.Member) and any(role.id in [EVENT_STAFF_ID, TRIAL_STAFF_ID] for role in interaction.user.roles):
             for member in members_clean:
                 qdata._queue.put(member)
                 added_players += f"\n{member.display_name}"
@@ -1304,7 +1304,7 @@ class Ranked(commands.Cog):
 
         added_players = ""
         
-        if isinstance(interaction.user, discord.Member) and any(role.id == EVENT_STAFF_ID for role in interaction.user.roles):
+        if isinstance(interaction.user, discord.Member) and any(role.id in [EVENT_STAFF_ID, TRIAL_STAFF_ID] for role in interaction.user.roles):
             for dummy_user in dummy_users:
                 # Create a mock Member object with _is_mock flag
                 mock_member = type('MockMember', (), {
@@ -1357,7 +1357,7 @@ class Ranked(commands.Cog):
 
         added_players = ""
         
-        if isinstance(interaction.user, discord.Member) and any(role.id == EVENT_STAFF_ID for role in interaction.user.roles):
+        if isinstance(interaction.user, discord.Member) and any(role.id in [EVENT_STAFF_ID, TRIAL_STAFF_ID] for role in interaction.user.roles):
             for user_id in user_ids:
                 member = interaction.guild.get_member(user_id)
                 if member:
@@ -1553,7 +1553,7 @@ class Ranked(commands.Cog):
 
         current_match = self.find_match_by_player(player)
 
-        if EVENT_STAFF_ID in [role.id for role in interaction.user.roles]:
+        if any(role_id in [role.id for role in interaction.user.roles] for role_id in [EVENT_STAFF_ID, TRIAL_STAFF_ID]):
             await handle_score_edit(interaction, current_match, red_score, blue_score)
             await interaction.followup.send(
                 f"{current_match.red_role.mention} {current_match.blue_role.mention}\nScore edited successfully: Red {red_score} - Blue {blue_score}")
@@ -1649,7 +1649,7 @@ class Ranked(commands.Cog):
         return None, None
 
     def is_eligible_to_submit(self, user_roles, current_match):
-        ranked_roles = [EVENT_STAFF_ID, current_match.red_role.id, current_match.blue_role.id] if current_match.red_role and current_match.blue_role else [EVENT_STAFF_ID]
+        ranked_roles = [EVENT_STAFF_ID, TRIAL_STAFF_ID, current_match.red_role.id, current_match.blue_role.id] if current_match.red_role and current_match.blue_role else [EVENT_STAFF_ID, TRIAL_STAFF_ID]
         return any(role.id in ranked_roles for role in user_roles)
 
     def is_series_complete(self, current_match):
@@ -1751,7 +1751,7 @@ class Ranked(commands.Cog):
     async def clearmatch(self, interaction: discord.Interaction, player: discord.Member):
         logger.info(f"{interaction.user.name} called /clearmatch for player {player.name}")
         
-        if EVENT_STAFF_ID not in [role.id for role in interaction.user.roles]:
+        if not any(role_id in [role.id for role in interaction.user.roles] for role_id in [EVENT_STAFF_ID, TRIAL_STAFF_ID]):
             await interaction.response.send_message("You don't have permission to do that!", ephemeral=True)
             return
 
