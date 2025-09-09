@@ -113,6 +113,10 @@ class StartMatchButton(Button):
             await interaction.response.send_message("A match is already in progress!", ephemeral=True)
             return
         
+        if self.hangout_session.match_starting:
+            await interaction.response.send_message("A match is already being started! Please wait...", ephemeral=True)
+            return
+        
         await self.hangout_session.start_match(interaction)
 
 class HangoutSession:
@@ -140,6 +144,10 @@ class HangoutSession:
         self.matches_played = 0
         self.server_port = None
         self.server_password = None
+        self.current_format = None  # Track current server format (2v2 or 3v3)
+        self.last_result_message = None  # Track last submit result message for cleanup
+        self.match_starting = False  # Prevent double match starts
+        self.submitting_result = False  # Prevent double submissions
         
         # Player statistics for this hangout session
         self.player_stats = {}  # player_id: {matches_sat_out, teammates, opponents, wins, losses, total_matches}
@@ -186,10 +194,10 @@ class HangoutSession:
             )
             logger.info(f"Created hangout VC: {vc_name} in category: {category.name if category else 'None'}")
             
-            # Start hangout server
+            # Start hangout server (default to 4 players for 2v2)
             game_id = server_games[self.game_type]
             password = str(random.randint(100, 999))
-            min_players = default_game_players.get(game_id, 4)
+            min_players = 4  # Start with 2v2 format
             
             server_actions = self.cog.bot.get_cog('ServerActions')
             if server_actions:
@@ -200,7 +208,8 @@ class HangoutSession:
                 if port != -1:
                     self.server_port = port
                     self.server_password = password
-                    logger.info(f"Started hangout server on port {port}")
+                    self.current_format = "2v2"  # Track initial format
+                    logger.info(f"Started hangout server on port {port} with 2v2 format")
                 else:
                     logger.warning(f"Failed to start hangout server: {message}")
             
@@ -545,13 +554,58 @@ class HangoutSession:
     
     async def start_match(self, interaction):
         """Start a new match with selected players"""
-        await interaction.response.defer()
+        # Set starting flag to prevent double execution
+        self.match_starting = True
         
-        # Select players for match
-        match_players, session_spectators = self.select_match_players()
-        red_team, blue_team, match_spectators = self.assign_teams(match_players)
+        try:
+            await interaction.response.defer()
+            
+            # Double-check conditions after defer (in case of race condition)
+            if self.match_in_progress:
+                await interaction.followup.send("A match is already in progress!", ephemeral=True)
+                return
+            
+            # Select players for match
+            match_players, session_spectators = self.select_match_players()
+            red_team, blue_team, match_spectators = self.assign_teams(match_players)
+            
+            all_spectators = session_spectators + match_spectators
         
-        all_spectators = session_spectators + match_spectators
+        # Determine match format and check if server restart is needed
+        match_format = "2v2" if len(red_team) == 2 else "3v3"
+        min_players = 4 if match_format == "2v2" else 6
+        
+        # Restart server if format changed
+        if self.current_format != match_format:
+            logger.info(f"Format changed from {self.current_format} to {match_format}, restarting server")
+            
+            # Stop current server
+            if self.server_port:
+                server_actions = self.cog.bot.get_cog('ServerActions')
+                if server_actions:
+                    server_actions.stop_server_process(self.server_port)
+                    logger.info(f"Stopped server on port {self.server_port}")
+            
+            # Start new server with correct player count
+            game_id = server_games[self.game_type]
+            password = str(random.randint(100, 999))
+            
+            server_actions = self.cog.bot.get_cog('ServerActions')
+            if server_actions:
+                message, port = server_actions.start_server_process(
+                    game_id, f"Hangout{self.game_type.replace(' ', '')}", password, 
+                    min_players=min_players, admin=RANKED_ADMIN_USERNAME
+                )
+                if port != -1:
+                    self.server_port = port
+                    self.server_password = password
+                    self.current_format = match_format
+                    logger.info(f"Restarted hangout server on port {port} with {match_format} format")
+                    
+                    # Update main embed with new server info
+                    await self.update_main_embed()
+                else:
+                    logger.warning(f"Failed to restart hangout server: {message}")
         
         self.current_match_teams = {
             "red": red_team,
@@ -665,6 +719,9 @@ class HangoutSession:
         except Exception as e:
             logger.error(f"Failed to start match: {e}")
             await interaction.followup.send("Failed to start match. Please try again.", ephemeral=True)
+        finally:
+            # Always reset the starting flag
+            self.match_starting = False
     
     def create_embed(self):
         """Create the main hangout embed"""
@@ -991,11 +1048,33 @@ class GameHangout(commands.Cog):
             await interaction.response.send_message("You must be in an active hangout session with a match in progress to submit scores!", ephemeral=True)
             return
         
-        await interaction.response.defer()
+        # Check if already submitting to prevent double submissions
+        if user_session.submitting_result:
+            await interaction.response.send_message("A match result is already being submitted! Please wait...", ephemeral=True)
+            return
+        
+        # Set submitting flag
+        user_session.submitting_result = True
+        
+        try:
+            await interaction.response.defer()
+            
+            # Double-check conditions after defer
+            if not user_session.match_in_progress:
+                await interaction.followup.send("No match is currently in progress!", ephemeral=True)
+                return
         
         success, message = await user_session.submit_match_result(red_score, blue_score)
         
         if success:
+            # Delete previous result message to prevent chat burial
+            if user_session.last_result_message:
+                try:
+                    await user_session.last_result_message.delete()
+                    logger.info("Deleted previous hangout result message")
+                except:
+                    pass  # Message might already be deleted
+            
             # Create result embed
             embed = discord.Embed(
                 title=f"🏆 Match Result Submitted",
@@ -1016,9 +1095,17 @@ class GameHangout(commands.Cog):
                 inline=True
             )
             
-            await interaction.followup.send(embed=embed)
+            result_message = await interaction.followup.send(embed=embed)
+            user_session.last_result_message = result_message  # Store for cleanup next time
         else:
             await interaction.followup.send(f"❌ {message}", ephemeral=True)
+        
+        except Exception as e:
+            logger.error(f"Failed to submit hangout match result: {e}")
+            await interaction.followup.send("Failed to submit match result. Please try again.", ephemeral=True)
+        finally:
+            # Always reset the submitting flag
+            user_session.submitting_result = False
     
     @app_commands.command(description="Skip current hangout match due to technical issues (Staff Only)")
     @app_commands.describe(reason="Reason for skipping the match")
