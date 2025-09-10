@@ -220,6 +220,19 @@ class HangoutSession:
     
     async def cleanup_hangout_resources(self):
         """Clean up hangout role, voice channel, and server"""
+        # Move players to lobby first
+        lobby_vc = self.guild.get_channel(700415847294042162)
+        move_tasks = []
+        for player in self.players:
+            if player.voice:
+                move_tasks.append(player.move_to(lobby_vc))
+        
+        if move_tasks:
+            results = await asyncio.gather(*move_tasks, return_exceptions=True)
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"Failed to move player to lobby: {result}")
+        
         # Remove roles from all players
         for player in self.players:
             try:
@@ -786,7 +799,12 @@ class HangoutSession:
         view = View(timeout=7200)  # 2 hour timeout to prevent memory leaks
         view.add_item(JoinHangoutButton(self))
         view.add_item(LeaveHangoutButton(self))
-        if not self.match_in_progress and len(self.players) >= 4:
+        
+        # Debug logging for start button visibility
+        should_show_start = not self.match_in_progress and len(self.players) >= 4
+        logger.info(f"Start button check - Players: {len(self.players)}, Match in progress: {self.match_in_progress}, Should show start: {should_show_start}")
+        
+        if should_show_start:
             view.add_item(StartMatchButton(self))
         return view
     
@@ -807,6 +825,7 @@ class HangoutSession:
         if self.message:
             embed = self.create_embed()
             view = self.create_view()
+            logger.info(f"Updating main embed for hangout with {len(self.players)} players")
             try:
                 await self.message.edit(embed=embed, view=view)
             except Exception as e:
@@ -1202,6 +1221,134 @@ class GameHangout(commands.Cog):
             )
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    # Slash commands for hangout operations
+    @app_commands.command(description="Join an active hangout session")
+    async def join(self, interaction: discord.Interaction):
+        # Check if user is a Member (has roles)
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("This command can only be used in a server!", ephemeral=True)
+            return
+        
+        # Find hangout session in this channel
+        active_session = None
+        for session in self.active_hangouts.values():
+            if session.channel.id == interaction.channel.id:
+                active_session = session
+                break
+        
+        if not active_session:
+            await interaction.response.send_message("No active hangout session in this channel!", ephemeral=True)
+            return
+        
+        if interaction.user in active_session.players:
+            await interaction.response.send_message("You're already in this hangout!", ephemeral=True)
+            return
+        
+        # Add player to list
+        active_session.players.append(interaction.user)
+        
+        # Assign hangout role
+        try:
+            await interaction.user.add_roles(active_session.hangout_role)
+            logger.info(f"Added hangout role to {interaction.user.display_name}")
+        except Exception as e:
+            logger.error(f"Failed to assign hangout role: {e}")
+        
+        # Move player to hangout VC if they're in a voice channel
+        if interaction.user.voice and active_session.hangout_vc:
+            try:
+                await interaction.user.move_to(active_session.hangout_vc)
+            except Exception as e:
+                logger.error(f"Failed to move player to hangout VC: {e}")
+        
+        # Update main hangout embed
+        await active_session.update_main_embed()
+        
+        await interaction.response.send_message(f"✅ {interaction.user.display_name} joined the {active_session.game_type} hangout!")
+    
+    @app_commands.command(description="Leave the active hangout session")
+    async def leave(self, interaction: discord.Interaction):
+        # Check if user is a Member (has roles)
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("This command can only be used in a server!", ephemeral=True)
+            return
+        
+        # Find hangout session this user is in
+        user_session = None
+        for session in self.active_hangouts.values():
+            if interaction.user in session.players:
+                user_session = session
+                break
+        
+        if not user_session:
+            await interaction.response.send_message("You're not in any hangout session!", ephemeral=True)
+            return
+        
+        # Remove player from list
+        user_session.players.remove(interaction.user)
+        
+        # Remove hangout role
+        try:
+            await interaction.user.remove_roles(user_session.hangout_role)
+            logger.info(f"Removed hangout role from {interaction.user.display_name}")
+        except Exception as e:
+            logger.error(f"Failed to remove hangout role: {e}")
+        
+        # Remove from any team roles if in match
+        if user_session.red_role:
+            try:
+                await interaction.user.remove_roles(user_session.red_role)
+            except:
+                pass
+        if user_session.blue_role:
+            try:
+                await interaction.user.remove_roles(user_session.blue_role)
+            except:
+                pass
+        
+        # Update main hangout embed
+        await user_session.update_main_embed()
+        
+        await interaction.response.send_message(f"👋 {interaction.user.display_name} left the {user_session.game_type} hangout!")
+    
+    @app_commands.command(description="Start a match in the active hangout session")
+    async def start(self, interaction: discord.Interaction):
+        # Check if user is a Member (has roles)
+        if not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("This command can only be used in a server!", ephemeral=True)
+            return
+        
+        # Find hangout session in this channel
+        active_session = None
+        for session in self.active_hangouts.values():
+            if session.channel.id == interaction.channel.id:
+                active_session = session
+                break
+        
+        if not active_session:
+            await interaction.response.send_message("No active hangout session in this channel!", ephemeral=True)
+            return
+        
+        # Check if user is in the hangout
+        if interaction.user not in active_session.players:
+            await interaction.response.send_message("You must be in the hangout to start a match!", ephemeral=True)
+            return
+        
+        if len(active_session.players) < 4:
+            await interaction.response.send_message("Need at least 4 players to start a match!", ephemeral=True)
+            return
+        
+        if active_session.match_in_progress:
+            await interaction.response.send_message("A match is already in progress!", ephemeral=True)
+            return
+        
+        if active_session.match_starting:
+            await interaction.response.send_message("A match is already being started! Please wait...", ephemeral=True)
+            return
+        
+        # Start the match using the existing method
+        await active_session.start_match(interaction)
 
 async def setup(bot: commands.Bot) -> None:
     cog = GameHangout(bot)
