@@ -73,6 +73,7 @@ if not RANKED_ADMIN_USERNAME:
     logger.fatal('RANKED_ADMIN_USERNAME not found')
     raise RuntimeError('RANKED_ADMIN_USERNAME not found')
 
+
 server_games = {
     "Test": "-1",
     "Splish Splash": "0",

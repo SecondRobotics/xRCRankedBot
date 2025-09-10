@@ -133,6 +133,7 @@ class HangoutSession:
         # Roles and VCs
         self.hangout_role = None
         self.hangout_vc = None
+        self.hangout_results_channel = None
         self.red_role = None
         self.blue_role = None
         self.red_vc = None
@@ -193,6 +194,25 @@ class HangoutSession:
                 reason=f"Hangout voice channel for {self.game_type}"
             )
             logger.info(f"Created hangout VC: {vc_name} in category: {category.name if category else 'None'}")
+            
+            # Create hangout results text channel
+            results_channel_name = f"hangout-results-{self.game_type.lower().replace(' ', '-')}"
+            results_overwrites = {
+                self.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                self.hangout_role: discord.PermissionOverwrite(read_messages=True, send_messages=False),
+                staff_role: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                trial_staff_role: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                bots_role: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            }
+            
+            self.hangout_results_channel = await self.guild.create_text_channel(
+                results_channel_name,
+                category=category,
+                overwrites=results_overwrites,
+                topic=f"Match results for {self.game_type} hangout session hosted by {self.host.display_name}",
+                reason=f"Hangout results channel for {self.game_type}"
+            )
+            logger.info(f"Created hangout results channel: {results_channel_name}")
             
             # Start hangout server (default to 4 players for 2v2)
             game_id = server_games[self.game_type]
@@ -263,6 +283,8 @@ class HangoutSession:
                 await self.hangout_role.delete(reason="Hangout session ended")
             if self.hangout_vc:
                 await self.hangout_vc.delete(reason="Hangout session ended")
+            if self.hangout_results_channel:
+                await self.hangout_results_channel.delete(reason="Hangout session ended")
             if self.message:
                 await self.message.delete()
                 logger.info("Deleted hangout creation message")
@@ -647,27 +669,29 @@ class HangoutSession:
             bots_role = discord.utils.get(self.guild.roles, id=BOTS_ROLE_ID)
             
             red_overwrites = {
-                self.guild.default_role: discord.PermissionOverwrite(connect=False),
-                self.red_role: discord.PermissionOverwrite(connect=True),
-                staff_role: discord.PermissionOverwrite(connect=True),
-                bots_role: discord.PermissionOverwrite(connect=True)
+                self.guild.default_role: discord.PermissionOverwrite(connect=False, view_channel=False),
+                self.red_role: discord.PermissionOverwrite(connect=True, view_channel=True, send_messages=True),
+                self.hangout_role: discord.PermissionOverwrite(view_channel=True, send_messages=False),
+                staff_role: discord.PermissionOverwrite(connect=True, view_channel=True, send_messages=True),
+                bots_role: discord.PermissionOverwrite(connect=True, view_channel=True, send_messages=True)
             }
             
             blue_overwrites = {
-                self.guild.default_role: discord.PermissionOverwrite(connect=False),
-                self.blue_role: discord.PermissionOverwrite(connect=True),
-                staff_role: discord.PermissionOverwrite(connect=True),
-                bots_role: discord.PermissionOverwrite(connect=True)
+                self.guild.default_role: discord.PermissionOverwrite(connect=False, view_channel=False),
+                self.blue_role: discord.PermissionOverwrite(connect=True, view_channel=True, send_messages=True),
+                self.hangout_role: discord.PermissionOverwrite(view_channel=True, send_messages=False),
+                staff_role: discord.PermissionOverwrite(connect=True, view_channel=True, send_messages=True),
+                bots_role: discord.PermissionOverwrite(connect=True, view_channel=True, send_messages=True)
             }
             
             self.red_vc = await self.guild.create_voice_channel(
-                f"🟥 Hangout Red",
+                f"🟥 Hangout Red - {self.game_type}",
                 category=category,
                 overwrites=red_overwrites
             )
             
             self.blue_vc = await self.guild.create_voice_channel(
-                f"🟦 Hangout Blue",
+                f"🟦 Hangout Blue - {self.game_type}",
                 category=category,
                 overwrites=blue_overwrites
             )
@@ -1010,7 +1034,7 @@ class GameHangout(commands.Cog):
         
         logger.info(f"Hangout session created by {interaction.user.display_name} for {game_name}")
     
-    @app_commands.command(description="End your active hangout session (Staff Only)")
+    @app_commands.command(description="End an active hangout session (Staff Only)")
     async def hangout_end(self, interaction: discord.Interaction):
         # Check if user is a Member and has staff permissions
         if not isinstance(interaction.user, discord.Member):
@@ -1021,25 +1045,37 @@ class GameHangout(commands.Cog):
             await interaction.response.send_message("Only staff members can end hangout sessions!", ephemeral=True)
             return
         
-        # Check if staff has an active hangout
-        if interaction.user.id not in self.active_hangouts:
-            await interaction.response.send_message("You don't have an active hangout session!", ephemeral=True)
+        # Find hangout session in this channel (any staff can end any hangout)
+        session_to_end = None
+        session_host_id = None
+        for host_id, session in self.active_hangouts.items():
+            if session.channel.id == interaction.channel.id:
+                session_to_end = session
+                session_host_id = host_id
+                break
+        
+        if not session_to_end:
+            await interaction.response.send_message("No active hangout session in this channel!", ephemeral=True)
             return
         
         await interaction.response.defer()
         
-        session = self.active_hangouts[interaction.user.id]
-        
         # Generate final stats
-        final_stats_embed = session.generate_final_stats()
+        final_stats_embed = session_to_end.generate_final_stats()
         
         # Clean up all resources
-        await session.cleanup_hangout_resources()
+        await session_to_end.cleanup_hangout_resources()
         
         # Remove from active hangouts
-        del self.active_hangouts[interaction.user.id]
+        del self.active_hangouts[session_host_id]
         
-        await interaction.followup.send(embed=final_stats_embed)
+        # Post final stats to hangout results channel
+        if session_to_end.hangout_results_channel:
+            await session_to_end.hangout_results_channel.send(embed=final_stats_embed)
+            await interaction.followup.send(f"✅ Hangout session ended! Final stats posted to {session_to_end.hangout_results_channel.mention}")
+        else:
+            # Fallback to original channel if hangout results channel not found
+            await interaction.followup.send(embed=final_stats_embed)
         logger.info(f"Hangout session ended by {interaction.user.display_name}")
     
     @app_commands.command(description="Submit match result for current hangout match")
@@ -1113,8 +1149,16 @@ class GameHangout(commands.Cog):
                     inline=True
                 )
                 
-                result_message = await interaction.followup.send(embed=embed)
-                user_session.last_result_message = result_message  # Store for cleanup next time
+                # Post to hangout results channel
+                if user_session.hangout_results_channel:
+                    result_message = await user_session.hangout_results_channel.send(embed=embed)
+                    user_session.last_result_message = result_message  # Store for cleanup next time
+                    # Also send a brief confirmation to the original channel
+                    await interaction.followup.send(f"✅ Match result posted to {user_session.hangout_results_channel.mention}")
+                else:
+                    # Fallback to original channel if hangout results channel not found
+                    result_message = await interaction.followup.send(embed=embed)
+                    user_session.last_result_message = result_message
             else:
                 await interaction.followup.send(f"❌ {message}", ephemeral=True)
         
@@ -1224,7 +1268,7 @@ class GameHangout(commands.Cog):
     
     # Slash commands for hangout operations
     @app_commands.command(description="Join an active hangout session")
-    async def join(self, interaction: discord.Interaction):
+    async def hangout_join(self, interaction: discord.Interaction):
         # Check if user is a Member (has roles)
         if not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message("This command can only be used in a server!", ephemeral=True)
@@ -1238,7 +1282,7 @@ class GameHangout(commands.Cog):
                 break
         
         if not active_session:
-            await interaction.response.send_message("No active hangout session in this channel!", ephemeral=True)
+            await interaction.response.send_message("No active hangout session in this channel! You can only join hangouts in the channel where they were created.", ephemeral=True)
             return
         
         if interaction.user in active_session.players:
@@ -1268,7 +1312,7 @@ class GameHangout(commands.Cog):
         await interaction.response.send_message(f"✅ {interaction.user.display_name} joined the {active_session.game_type} hangout!")
     
     @app_commands.command(description="Leave the active hangout session")
-    async def leave(self, interaction: discord.Interaction):
+    async def hangout_leave(self, interaction: discord.Interaction):
         # Check if user is a Member (has roles)
         if not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message("This command can only be used in a server!", ephemeral=True)
@@ -1313,7 +1357,7 @@ class GameHangout(commands.Cog):
         await interaction.response.send_message(f"👋 {interaction.user.display_name} left the {user_session.game_type} hangout!")
     
     @app_commands.command(description="Start a match in the active hangout session")
-    async def start(self, interaction: discord.Interaction):
+    async def hangout_start(self, interaction: discord.Interaction):
         # Check if user is a Member (has roles)
         if not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message("This command can only be used in a server!", ephemeral=True)
