@@ -97,6 +97,7 @@ server_games = {
     "Into The Deep": "18",
     "Reefscape": "19",
     "Push Back": "20",
+    "Decode": "21",
 }
 
 server_games_choices = [
@@ -138,6 +139,7 @@ short_codes = {
     "Into The Deep": "ITD",
     "Reefscape": "RS",
     "Push Back": "PB",
+    "Decode": "DC"
 }
 
 default_game_players = {
@@ -163,6 +165,7 @@ default_game_players = {
     "18": 4,
     "19": 6,
     "20": 4,
+    "21": 4,
 }
 
 server_restart_modes = {
@@ -184,4 +187,5 @@ game_logos = {
     "Into The Deep": "https://i.imgur.com/YqT31M8.png",
     "Reefscape": "https://i.imgur.com/LlLfz4z.gif",
     "Push Back": "https://v5rc-kb.recf.org/hc/article_attachments/32211108957207",
+    "Decode": "https://i.imgur.com/BNlGrth.png",
 }
