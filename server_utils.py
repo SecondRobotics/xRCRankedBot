@@ -17,7 +17,7 @@ last_active: Dict[int, datetime] = {}
 
 # Function to start a server process
 def start_server_process(game: str, comment: str, password: str = "", admin: str = "Admin",
-                         restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
+                         restart_mode: int = -1, frame_rate: int = 60, update_time: int = 10,
                          tournament_mode: bool = True, start_when_ready: bool = True,
                          register: bool = True, spectators: int = 4, min_players: int = -1,
                          restart_all: bool = True):
