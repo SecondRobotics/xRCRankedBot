@@ -376,6 +376,7 @@ class Ranked(commands.Cog):
         self.bots = None  # type: discord.Role | None
         self.bot = bot
         self.ranked_display = None
+        self.session = None  # type: aiohttp.ClientSession | None
         self.check_queue_joins.start()
         self.lobby = self.bot.get_channel(LOBBY_VC_ID)
 
@@ -387,6 +388,24 @@ class Ranked(commands.Cog):
         self.vote_queue_3v3 = Queue("Vote3v3", 3, "vote3v3", "Vote 3v3")
         self.vote_queue_2v2 = Queue("Vote2v2", 2, "vote2v2", "Vote 2v2")
         self.vote_queue_1v1 = Queue("Vote1v1", 1, "vote1v1", "Vote 1v1")
+
+    async def cog_load(self):
+        self.session = aiohttp.ClientSession(
+            headers=HEADER,
+            timeout=aiohttp.ClientTimeout(total=10)
+        )
+
+    def _get_session(self) -> aiohttp.ClientSession:
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession(
+                headers=HEADER,
+                timeout=aiohttp.ClientTimeout(total=10)
+            )
+        return self.session
+
+    async def cog_unload(self):
+        if self.session:
+            await self.session.close()
 
     async def cleanup_old_data(self):
         await self.bot.wait_until_ready()
@@ -566,9 +585,13 @@ class Ranked(commands.Cog):
 
     async def validate_player(self, interaction: discord.Interaction, game: str) -> bool:
         url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
-        async with aiohttp.ClientSession(headers=HEADER) as session:
-            async with session.get(url) as x:
+        try:
+            async with self._get_session().get(url) as x:
                 res = await x.json()
+        except Exception as e:
+            logger.error(f"Failed to validate player {interaction.user.id}: {e}")
+            await interaction.followup.send("Could not reach the ranked API. Please try again.", ephemeral=True)
+            return False
         logger.info(res)
 
         if not res["exists"]:
@@ -616,8 +639,9 @@ class Ranked(commands.Cog):
         qdata._queue.put(player)
         await self.update_ranked_display()
         res = await self.get_player_info(player.id)
+        display_name = res['display_name'] if res else player.display_name
         followup = await interaction.followup.send(
-            f"🟢 **{res['display_name']}** 🟢\nadded to queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
+            f"🟢 **{display_name}** 🟢\nadded to queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
             f" *({qdata._queue.qsize()}/{qdata.alliance_size * 2})*\n"
             f"[Edit Display Name](https://secondrobotics.org/user/settings/)", ephemeral=True)
 
@@ -661,9 +685,12 @@ class Ranked(commands.Cog):
 
     async def get_player_info(self, player_id: int):
         url = f'https://secondrobotics.org/api/ranked/player/{player_id}'
-        async with aiohttp.ClientSession(headers=HEADER) as session:
-            async with session.get(url) as x:
+        try:
+            async with self._get_session().get(url) as x:
                 return await x.json()
+        except Exception as e:
+            logger.error(f"Failed to fetch player info for {player_id}: {e}")
+            return None
 
     server_game_names = [
         Choice(name=game, value=game) for game in server_games.keys()
@@ -840,15 +867,17 @@ class Ranked(commands.Cog):
     async def display_teams(self, ctx, match: XrcGame):
         async def fetch_player_elo(game, user_id):
             url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
+            try:
+                async with self._get_session().get(url) as response:
                     if response.status == 200:
                         data = await response.json()
                         return data.get('elo', 0)
                     else:
-                        logger.error(
-                            f"Failed to fetch ELO for player {user_id}: {response.status}")
+                        logger.error(f"Failed to fetch ELO for player {user_id}: {response.status}")
                         return 0
+            except Exception as e:
+                logger.error(f"Failed to fetch ELO for player {user_id}: {e}")
+                return 0
 
         async def move_player(player, channel):
             try:
@@ -1128,9 +1157,10 @@ class Ranked(commands.Cog):
     async def add_player_to_vote_queue(self, player: discord.Member, queue: Queue, preferred_game: str, interaction: discord.Interaction):
         queue._queue.put((player, preferred_game))
         res = await self.get_player_info(player.id)
+        display_name = res['display_name'] if res else player.display_name
         await self.update_ranked_display()
         await interaction.followup.send(
-            f"🟢 **{res['display_name']}** 🟢\nadded to {queue.full_game_name} queue with preferred game: {preferred_game}. "
+            f"🟢 **{display_name}** 🟢\nadded to {queue.full_game_name} queue with preferred game: {preferred_game}. "
             f"({queue._queue.qsize()}/{queue.alliance_size * 2})",
             ephemeral=True
         )
@@ -1633,6 +1663,12 @@ class Ranked(commands.Cog):
         await interaction.followup.send(result_message)
 
         response = await self.submit_score_to_api(current_match, red_score, blue_score)
+        if response is None:
+            await interaction.followup.send("⚠ Score submitted locally but failed to reach the API. Please report this.", ephemeral=True)
+            if gg:
+                await self.handle_game_end(interaction, qdata, current_match, None)
+            return
+
         embed = self.create_score_embed(current_match, red_score, blue_score, response)
 
         if gg:
@@ -1679,9 +1715,12 @@ class Ranked(commands.Cog):
             "red_score": red_score,
             "blue_score": blue_score
         }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=json_data, headers=HEADER) as resp:
+        try:
+            async with self._get_session().post(url, json=json_data) as resp:
                 return await resp.json()
+        except Exception as e:
+            logger.error(f"Failed to submit score for {current_match.api_short}: {e}")
+            return None
 
     def create_score_embed(self, current_match, red_score, blue_score, response):
         embed = discord.Embed(color=0x34eb3d,
