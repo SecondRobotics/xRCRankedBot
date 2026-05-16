@@ -275,7 +275,13 @@ class ServerActions(commands.Cog):
             self.chat_log_files[port].close()
             del self.chat_log_files[port]
 
-        self.servers_active[port].terminate()
+        process = self.servers_active[port]
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
         self.log_files[port].close()
         del self.servers_active[port]
         del self.last_active[port]

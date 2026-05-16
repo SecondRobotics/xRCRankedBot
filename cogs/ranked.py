@@ -566,8 +566,9 @@ class Ranked(commands.Cog):
 
     async def validate_player(self, interaction: discord.Interaction, game: str) -> bool:
         url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
-        x = requests.get(url, headers=HEADER)
-        res = x.json()
+        async with aiohttp.ClientSession(headers=HEADER) as session:
+            async with session.get(url) as x:
+                res = await x.json()
         logger.info(res)
 
         if not res["exists"]:
@@ -660,8 +661,9 @@ class Ranked(commands.Cog):
 
     async def get_player_info(self, player_id: int):
         url = f'https://secondrobotics.org/api/ranked/player/{player_id}'
-        x = requests.get(url, headers=HEADER)
-        return x.json()
+        async with aiohttp.ClientSession(headers=HEADER) as session:
+            async with session.get(url) as x:
+                return await x.json()
 
     server_game_names = [
         Choice(name=game, value=game) for game in server_games.keys()
@@ -1783,8 +1785,11 @@ class Ranked(commands.Cog):
             if timestamp < cutoff_time:
                 if player in queue:
                     queue.remove(player)
-                    await player.send(
-                        "You have been removed from a queue because you have been in the queue for more than 1 hour.")
+                    try:
+                        await player.send(
+                            "You have been removed from a queue because you have been in the queue for more than 1 hour.")
+                    except discord.HTTPException:
+                        pass
                 else:
                     queue_joins.pop((queue, player))
 
