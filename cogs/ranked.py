@@ -1851,8 +1851,11 @@ async def shutdown_server_inactivity(server: int):
 
                 if match.game:
                     for player in match.game.players:
-                        await player.send(
-                            "Your ranked match has been cancelled due to inactivity.")
+                        try:
+                            await player.send(
+                                "Your ranked match has been cancelled due to inactivity.")
+                        except discord.HTTPException:
+                            pass
                 return
 
     # stop_server_process(server)  # FIXME
@@ -1897,8 +1900,11 @@ async def warn_server_inactivity(server: int):
             if match.server_port == server:
                 if match.game:
                     for player in match.game.players:
-                        await player.send(
-                            "Your ranked match has been inactive - if all players are not present within 5 minutes, the match will be cancelled.")
+                        try:
+                            await player.send(
+                                "Your ranked match has been inactive - if all players are not present within 5 minutes, the match will be cancelled.")
+                        except discord.HTTPException:
+                            pass
                 return
 
 
