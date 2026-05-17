@@ -177,17 +177,26 @@ class ServerActions(commands.Cog):
             self.chat_log_files[port].write(log_entry)
             self.chat_log_files[port].flush()  # Ensure it's written immediately
 
-            asyncio.ensure_future(self._send_chat_to_discord(log_entry.strip()))
+            asyncio.ensure_future(self._send_chat_to_discord(port, timestamp, username, ip, game_name, game_format, message))
 
             logger.info(f"Chat on port {port} [{game_name} {game_format}] - {username}{' (' + ip + ')' if ip else ''}: {message}")
         except Exception as e:
             logger.error(f"Error logging chat message for port {port}: {e}")
 
-    async def _send_chat_to_discord(self, log_entry: str):
+    async def _send_chat_to_discord(self, port: int, timestamp: str, username: str, ip: str | None, game_name: str, game_format: str, message: str):
         try:
             channel = self.bot.get_channel(CHAT_LOG_CHANNEL_ID)
-            if channel:
-                await channel.send(f"`{log_entry}`")
+            if not channel:
+                return
+            RESET = "[0m"
+            DIM_CYAN = "[2;36m"
+            BOLD_YELLOW = "[1;33m"
+            DIM = "[2m"
+            header = f"{DIM_CYAN}[{port} | {game_name} {game_format}]{RESET}"
+            user_part = f"{BOLD_YELLOW}{username}{RESET}"
+            ip_part = f" {DIM}({ip}){RESET}" if ip else ""
+            safe_message = message.replace("```", "`​`​`")
+            await channel.send(f"```ansi\n{header} {user_part}{ip_part}: {safe_message}\n```")
         except Exception as e:
             logger.error(f"Error sending chat message to Discord: {e}")
 
