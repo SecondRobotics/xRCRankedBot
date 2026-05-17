@@ -33,6 +33,7 @@ SERVER_PATH = "./server/xRC Simulator.x86_64"
 SERVER_LOGS_DIR = "./server_logs/"
 SERVER_GAME_DATA_DIR = "./server_game_data/"  # Existing constant for score files
 CHAT_LOGS_DIR = "./chat_logs/"  # Directory for chat logs
+CHAT_LOG_CHANNEL_ID = 1505392192724799528
 
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
 
@@ -176,10 +177,19 @@ class ServerActions(commands.Cog):
             self.chat_log_files[port].write(log_entry)
             self.chat_log_files[port].flush()  # Ensure it's written immediately
 
+            asyncio.ensure_future(self._send_chat_to_discord(log_entry.strip()))
+
             logger.info(f"Chat on port {port} [{game_name} {game_format}] - {username}{' (' + ip + ')' if ip else ''}: {message}")
         except Exception as e:
             logger.error(f"Error logging chat message for port {port}: {e}")
-    
+
+    async def _send_chat_to_discord(self, log_entry: str):
+        try:
+            channel = self.bot.get_channel(CHAT_LOG_CHANNEL_ID)
+            if channel:
+                await channel.send(f"`{log_entry}`")
+        except Exception as e:
+            logger.error(f"Error sending chat message to Discord: {e}")
 
     def start_server_process(self, game: str, comment: str, password: str = "", admin: str = "Admin",
                              restart_mode: int = -1, frame_rate: int = 60, update_time: int = 10,
