@@ -42,137 +42,103 @@ class General(commands.Cog):
             user = interaction.user
         user_id = user.id
 
-        url = f'https://secondrobotics.org/api/ranked/player/{user_id}'
-        async with aiohttp.ClientSession(headers=HEADER) as session:
-            async with session.get(url) as response:
+        async with aiohttp.ClientSession(headers=HEADER, timeout=aiohttp.ClientTimeout(total=10)) as session:
+            # Fetch player profile and avatar concurrently
+            async with session.get(f'https://secondrobotics.org/api/ranked/player/{user_id}') as response:
                 res = await response.json()
 
-                # Get a random pixel color from the thumbnail image or use a default color if failed
+            if not res["exists"]:
+                await interaction.followup.send(
+                    "That player needs to register at <https://www.secondrobotics.org/login> first.",
+                    ephemeral=True)
+                return
+
+            # Fetch avatar for embed color
+            random_color = discord.Color.blue()
+            try:
+                async with session.get(res['avatar']) as response:
+                    thumbnail_bytes = await response.read()
+                thumbnail_image = Image.open(BytesIO(thumbnail_bytes))
+                w, h = thumbnail_image.size
+                random_pixel = thumbnail_image.getpixel((random.randint(0, w - 1), random.randint(0, h - 1)))
+                random_color = discord.Color.from_rgb(*random_pixel[:3])
+            except Exception as e:
+                logger.error(f"Failed to fetch avatar: {e}")
+
+            # Fetch all game stats concurrently
+            async def fetch_game(game):
                 try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(res['avatar']) as response:
-                            thumbnail_bytes = await response.read()
-
-                    thumbnail_image = Image.open(BytesIO(thumbnail_bytes))
-                    thumbnail_width, thumbnail_height = thumbnail_image.size
-                    random_pixel = thumbnail_image.getpixel(
-                        (random.randint(0, thumbnail_width - 1), random.randint(0, thumbnail_height - 1)))
-                    random_color = discord.Color.from_rgb(*random_pixel[:3])
+                    async with session.get(f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}') as r:
+                        return await r.json()
                 except Exception as e:
-                    logger.error(f"Failed to fetch avatar: {e}")
-                    random_color = discord.Color.blue()
+                    logger.error(f"Failed to fetch game {game} for {user_id}: {e}")
+                    return None
 
-        if not res["exists"]:
-            await interaction.followup.send(
-                "The player you requested register for an account at <https://www.secondrobotics.org/login> before you can get info.",
-                ephemeral=True)
-            return
+            game_results = await asyncio.gather(*[fetch_game(g) for g in short_codes_sorted])
+
+        total_wins = total_losses = total_ties = total_points = 0
+        best_elo = 0
+        best_game = favorite_game = None
+        favorite_game_matches = 0
+        played_games = []
+
+        for gamedata in game_results:
+            if gamedata is None or "error" in gamedata or gamedata.get('matches_played', 0) == 0:
+                continue
+
+            total_wins += gamedata['matches_won']
+            total_losses += gamedata['matches_lost']
+            total_ties += gamedata['matches_drawn']
+            total_points += gamedata['total_score']
+
+            if gamedata['elo'] > best_elo:
+                best_elo = gamedata['elo']
+                best_game = gamedata['name']
+
+            if gamedata['matches_played'] > favorite_game_matches:
+                favorite_game = gamedata['name']
+                favorite_game_matches = gamedata['matches_played']
+
+            played_games.append(gamedata)
+
+        # Top 12 by ELO
+        top_games = sorted(played_games, key=lambda g: g['elo'], reverse=True)[:12]
 
         embed = discord.Embed(title="Player Information", color=random_color)
-        embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.avatar.url)
+        embed.set_author(name=user.display_name, icon_url=user.display_avatar.url)
         embed.set_thumbnail(url=res.get('avatar', FALLBACK_AVATAR_URL))
-        embed.add_field(name="Display Name",
-                        value=f"[{res['display_name']}](https://secondrobotics.org/user/{user_id})", inline=False)
+        embed.add_field(
+            name="Display Name",
+            value=f"[{res['display_name']}](https://secondrobotics.org/user/{user_id})",
+            inline=False
+        )
 
-        total_wins = 0
-        total_losses = 0
-        total_ties = 0
-        total_points = 0
-        best_elo = 0
-        best_game = None
-        elos = []
-
-        async def process_game(game):
-            url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
-            async with session.get(url) as response:
-                gamedata = await response.json()
-
-            if "error" not in gamedata:
-                total_score = "{:,}".format(gamedata['total_score'])
-                record = f"{gamedata['matches_won']}-{gamedata['matches_lost']}-{gamedata['matches_drawn']}"
-                win_rate = (gamedata['matches_won'] / gamedata['matches_played']) * 100 if gamedata[
-                                                                                               'matches_played'] > 0 else 0
-                win_rate = round(win_rate, 2)
-
-                nonlocal total_wins, total_losses, total_ties, total_points, best_elo, best_game
-                total_wins += gamedata['matches_won']
-                total_losses += gamedata['matches_lost']
-                total_ties += gamedata['matches_drawn']
-                total_points += gamedata['total_score']
-
-                if gamedata['elo'] > best_elo:
-                    best_elo = gamedata['elo']
-                    best_game = gamedata['name']
-
-                elos.append(gamedata['elo'])  # Store the ELO value
-
-                return (
-                    gamedata['name'], round(gamedata['elo'], 2), record, gamedata['matches_played'], win_rate,
-                    total_score
-                )
-            else:
-                elos.append(0)
-                return None
-
-        tasks = []
-        game_results = []
-
-        async with aiohttp.ClientSession(headers=HEADER) as session:
-            for game in short_codes_sorted:
-                tasks.append(process_game(game))
-
-            game_results = await asyncio.gather(*tasks)
-
-        favorite_game = None
-        favorite_game_matches_played = 0
-
-        column_data = [[] for _ in range(3)]  # Three columns for balanced layout
-        column_index = 0
-
-        for result in game_results:
-            if result is not None:
-                name, elo, record, matches_played, win_rate, total_score = result
-                win_rate_str = f"{win_rate}%"
-                if win_rate > 60:
-                    win_rate_str += " :crown:"
-                game_info = (
-                    f"**{name} [{elo}]**\n"
-                    f"{record} [{matches_played}] {win_rate_str}\n"
-                    f"Total Points Scored: {total_score}\n\n"
-                )
-                column_data[column_index].append(game_info)
-                column_index = (column_index + 1) % 3
-
-                if matches_played > favorite_game_matches_played:
-                    favorite_game = name
-                    favorite_game_matches_played = matches_played
-
-        for index, column in enumerate(column_data):
-            embed.add_field(name=f"Games (Column {index + 1})", value="".join(column), inline=True)
+        # Build compact game list split into two columns
+        col1 = top_games[:6]
+        col2 = top_games[6:]
+        for col in [col1, col2]:
+            if not col:
+                break
+            lines = []
+            for g in col:
+                mp = g['matches_played']
+                wr = round((g['matches_won'] / mp) * 100) if mp > 0 else 0
+                crown = " 👑" if wr > 60 else ""
+                lines.append(f"**{g['name']}** `{round(g['elo'])}` {g['matches_won']}-{g['matches_lost']}-{g['matches_drawn']} ({wr}%{crown})")
+            embed.add_field(name="Top Games by ELO" if col is col1 else "​", value="\n".join(lines), inline=True)
 
         total_matches = total_wins + total_losses + total_ties
-        win_rate = (total_wins / total_matches) * 100 if total_matches > 0 else 0
-        win_rate_str = f"{round(win_rate, 2)}%"
-        if win_rate > 60:
-            win_rate_str += " :crown:"
+        overall_wr = round((total_wins / total_matches) * 100, 1) if total_matches > 0 else 0
+        overall_wr_str = f"{overall_wr}%" + (" 👑" if overall_wr > 60 else "")
+        avg_elo = round(sum(g['elo'] for g in played_games) / len(played_games), 1) if played_games else 0
 
         summary = (
             f"Record: {total_wins}-{total_losses}-{total_ties} [{total_matches}]\n"
-            f"Total Points Scored: {total_points:,}\n"
-            f"Win Rate: {win_rate_str}\n"
-            f"Favorite Game: {favorite_game}\n"
-            f"Best Game: {best_game} ({round(best_elo, 2)})"
+            f"Win Rate: {overall_wr_str}\n"
+            f"Total Points: {total_points:,}\n"
+            f"Avg ELO: {avg_elo} | Best: {best_game} ({round(best_elo, 1)})\n"
+            f"Favorite: {favorite_game} ({favorite_game_matches} matches)"
         )
-
-        average_elo = None
-        if elos:
-            average_elo = round(sum(elos) / len(elos), 2)
-
-        if average_elo is not None:
-            summary += f"\nAverage ELO: {average_elo}"
-        else:
-            summary += "\nAverage ELO: Unknown"
-
         embed.add_field(name="Summary", value=summary, inline=False)
 
         await interaction.followup.send(embed=embed)
