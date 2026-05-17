@@ -845,6 +845,13 @@ class Ranked(commands.Cog):
 
         await self.display_teams(interaction, match)
 
+    def find_match_by_port(self, port: int):
+        for queue in game_queues.values():
+            for match in queue.matches:
+                if match.server_port == port:
+                    return match
+        return None
+
     def find_match_by_player(self, player: discord.Member):
         logger.info(f"Searching for match containing player: {player.name}")
         for queue in game_queues.values():

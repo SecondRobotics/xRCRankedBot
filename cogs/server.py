@@ -55,13 +55,17 @@ class ServerActions(commands.Cog):
     log_read_positions: Dict[int, int] = {}  # Added to track last read positions
     watch_messages: Dict[int, discord.Message] = {}
     chat_log_files: Dict[int, TextIOWrapper] = {}  # Chat log files for each server
+    last_timer: Dict[int, float] = {}
+    score_posted: Dict[int, bool] = {}
 
     def __init__(self, bot):
         self.bot = bot
-        self.players_active = {}  # Initialize the players_active dictionary
-        self.log_read_positions = {}  # Initialize log read positions
-        self.watch_messages = {}  # Initialize watch_messages dictionary
-        self.bot.loop.create_task(self.monitor_logs())  # Start log monitoring
+        self.players_active = {}
+        self.log_read_positions = {}
+        self.watch_messages = {}
+        self.last_timer = {}
+        self.score_posted = {}
+        self.bot.loop.create_task(self.monitor_logs())
 
     async def monitor_logs(self):
         while True:
@@ -99,7 +103,10 @@ class ServerActions(commands.Cog):
                     logger.error(f"Log file for port {port} not found.")
                 except Exception as e:
                     logger.error(f"Error reading log file for port {port}: {e}")
-            await asyncio.sleep(1)  # Adjusted sleep interval if needed
+
+                await self._check_match_end(port)
+
+            await asyncio.sleep(1)
 
     def parse_log_line(self, port: int, line: str):
         # Chat message pattern (matches the entire line)
@@ -199,6 +206,57 @@ class ServerActions(commands.Cog):
             await channel.send(f"```ansi\n{header} {user_part}{ip_part}: {safe_message}\n```")
         except Exception as e:
             logger.error(f"Error sending chat message to Discord: {e}")
+
+    async def _check_match_end(self, port: int):
+        data = self.get_server_data(port)
+        if not data:
+            return
+        try:
+            timer = float(data['timer'])
+        except (ValueError, KeyError):
+            return
+
+        prev = self.last_timer.get(port, 0.0)
+
+        if timer > 0:
+            self.score_posted[port] = False
+
+        self.last_timer[port] = timer
+
+        if timer <= 0 and prev > 0 and not self.score_posted.get(port, False):
+            ranked_cog = self.bot.get_cog('Ranked')
+            if not ranked_cog:
+                return
+            match = ranked_cog.find_match_by_port(port)
+            if not match or not match.password_channel_id:
+                return
+            await self._post_match_scores(port, data, match)
+            self.score_posted[port] = True
+
+    async def _post_match_scores(self, port: int, data: dict, match):
+        try:
+            channel = self.bot.get_channel(match.password_channel_id)
+            if not channel:
+                return
+            red = int(float(data['Score_R']))
+            blue = int(float(data['Score_B']))
+            if red > blue:
+                winner = "🟥 Red wins!"
+                color_line = "🟥"
+            elif blue > red:
+                winner = "🟦 Blue wins!"
+                color_line = "🟦"
+            else:
+                winner = "Tie!"
+                color_line = "⚪"
+            await channel.send(
+                f"**Match Over — {match.full_game_name}**\n"
+                f"🟥 Red — **{red}**\n"
+                f"🟦 Blue — **{blue}**\n\n"
+                f"{color_line} **{winner}**"
+            )
+        except Exception as e:
+            logger.error(f"Error posting match scores for port {port}: {e}")
 
     def start_server_process(self, game: str, comment: str, password: str = "", admin: str = "Admin",
                              restart_mode: int = -1, frame_rate: int = 60, update_time: int = 10,
