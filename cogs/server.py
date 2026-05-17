@@ -57,6 +57,7 @@ class ServerActions(commands.Cog):
     chat_log_files: Dict[int, TextIOWrapper] = {}  # Chat log files for each server
     last_timer: Dict[int, float] = {}
     score_posted: Dict[int, bool] = {}
+    chat_discord_buffer: List[str] = []
 
     def __init__(self, bot):
         self.bot = bot
@@ -65,7 +66,9 @@ class ServerActions(commands.Cog):
         self.watch_messages = {}
         self.last_timer = {}
         self.score_posted = {}
+        self.chat_discord_buffer = []
         self.bot.loop.create_task(self.monitor_logs())
+        self.bot.loop.create_task(self._flush_chat_buffer())
 
     async def monitor_logs(self):
         while True:
@@ -184,29 +187,48 @@ class ServerActions(commands.Cog):
             self.chat_log_files[port].write(log_entry)
             self.chat_log_files[port].flush()  # Ensure it's written immediately
 
-            asyncio.ensure_future(self._send_chat_to_discord(port, timestamp, username, ip, game_name, game_format, message))
+            self._buffer_chat_message(port, game_name, game_format, username, ip, message)
 
             logger.info(f"Chat on port {port} [{game_name} {game_format}] - {username}{' (' + ip + ')' if ip else ''}: {message}")
         except Exception as e:
             logger.error(f"Error logging chat message for port {port}: {e}")
 
-    async def _send_chat_to_discord(self, port: int, timestamp: str, username: str, ip: str | None, game_name: str, game_format: str, message: str):
-        try:
-            channel = self.bot.get_channel(CHAT_LOG_CHANNEL_ID)
-            if not channel:
-                return
-            RESET = "[0m"
-            DIM_CYAN = "[2;36m"
-            BOLD_YELLOW = "[1;33m"
-            DIM = "[2m"
-            header = f"{DIM_CYAN}[{port} | {game_name} {game_format}]{RESET}"
-            user_part = f"{BOLD_YELLOW}{username}{RESET}"
-            ip_part = f" {DIM}({ip}){RESET}" if ip else ""
-            safe_message = message.replace("```", "`​`​`")
-            await channel.send(f"```ansi\n{header} {user_part}{ip_part}: {safe_message}\n```")
-        except Exception as e:
-            logger.error(f"Error sending chat message to Discord: {e}")
+    def _buffer_chat_message(self, port: int, game_name: str, game_format: str, username: str, ip, message: str):
+        RESET = "\x1b[0m"
+        DIM_CYAN = "\x1b[2;36m"
+        BOLD_YELLOW = "\x1b[1;33m"
+        DIM = "\x1b[2m"
+        header = f"{DIM_CYAN}[{port} | {game_name} {game_format}]{RESET}"
+        user_part = f"{BOLD_YELLOW}{username}{RESET}"
+        ip_part = f" {DIM}({ip}){RESET}" if ip else ""
+        safe_message = message.replace("```", "`​`​`")
+        self.chat_discord_buffer.append(f"{header} {user_part}{ip_part}: {safe_message}")
 
+    async def _flush_chat_buffer(self):
+        await self.bot.wait_until_ready()
+        channel = self.bot.get_channel(CHAT_LOG_CHANNEL_ID)
+        while True:
+            await asyncio.sleep(2)
+            if not self.chat_discord_buffer or not channel:
+                continue
+            lines, self.chat_discord_buffer = self.chat_discord_buffer, []
+            chunks = []
+            current = []
+            current_len = 0
+            for line in lines:
+                if current_len + len(line) + 1 > 1900:
+                    chunks.append(current)
+                    current = []
+                    current_len = 0
+                current.append(line)
+                current_len += len(line) + 1
+            if current:
+                chunks.append(current)
+            for chunk in chunks:
+                try:
+                    await channel.send("```ansi\n" + "\n".join(chunk) + "\n```")
+                except Exception as e:
+                    logger.error(f"Error flushing chat buffer to Discord: {e}")
     async def _check_match_end(self, port: int):
         if not self.players_active.get(port):
             return
