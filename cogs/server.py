@@ -229,6 +229,24 @@ class ServerActions(commands.Cog):
                     await channel.send("```ansi\n" + "\n".join(chunk) + "\n```")
                 except Exception as e:
                     logger.error(f"Error flushing chat buffer to Discord: {e}")
+    @staticmethod
+    def _parse_timer(raw) -> Optional[float]:
+        if raw is None:
+            return None
+        s = str(raw).strip()
+        if not s:
+            return None
+        if ':' in s:
+            try:
+                minutes, seconds = s.split(':', 1)
+                return float(minutes) * 60.0 + float(seconds)
+            except ValueError:
+                return None
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
     async def _check_match_end(self, port: int):
         if not self.players_active.get(port):
             return
@@ -236,9 +254,8 @@ class ServerActions(commands.Cog):
         if not data:
             logger.info(f"[match_end] port {port}: no score data")
             return
-        try:
-            timer = float(data['timer'])
-        except (ValueError, KeyError):
+        timer = self._parse_timer(data.get('timer'))
+        if timer is None:
             logger.info(f"[match_end] port {port}: unparseable timer value: {data.get('timer')!r}")
             return
 
