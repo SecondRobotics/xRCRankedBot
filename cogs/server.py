@@ -160,6 +160,8 @@ class ServerActions(commands.Cog):
 
             game_number = self.server_games.get(port, "Unknown")
             game_name = next((n for n, num in server_games.items() if num == game_number), game_number)
+            alliance_size = default_game_players.get(game_number, 4) // 2
+            game_format = f"{alliance_size}v{alliance_size}"
 
             # Try to find the IP for the username
             ip = None
@@ -168,13 +170,13 @@ class ServerActions(commands.Cog):
                     ip = player.ip
                     break
             if ip:
-                log_entry = f"{timestamp} [{game_name}]: {username} ({ip}): {message}\n"
+                log_entry = f"{timestamp} [{game_name} {game_format}]: {username} ({ip}): {message}\n"
             else:
-                log_entry = f"{timestamp} [{game_name}]: {username}: {message}\n"
+                log_entry = f"{timestamp} [{game_name} {game_format}]: {username}: {message}\n"
             self.chat_log_files[port].write(log_entry)
             self.chat_log_files[port].flush()  # Ensure it's written immediately
 
-            logger.info(f"Chat on port {port} [{game_name}] - {username}{' (' + ip + ')' if ip else ''}: {message}")
+            logger.info(f"Chat on port {port} [{game_name} {game_format}] - {username}{' (' + ip + ')' if ip else ''}: {message}")
         except Exception as e:
             logger.error(f"Error logging chat message for port {port}: {e}")
     
