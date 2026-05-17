@@ -929,12 +929,6 @@ class Ranked(commands.Cog):
         )
         server_info_embed.set_thumbnail(url=match.game_icon)
 
-        # Add player lists to server info embed
-        red_field = "\n".join(
-            [f"🟥{player.mention}" for player in match.game.red])
-        blue_field = "\n".join(
-            [f"🟦{player.mention}" for player in match.game.blue])
-
         # Fetch ELOs concurrently
         red_elo_tasks = [fetch_player_elo(
             match.api_short, player.id) for player in match.game.red]
@@ -948,10 +942,16 @@ class Ranked(commands.Cog):
         avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
         avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
 
+        # Build player fields with ELOs
+        red_field = "\n".join(
+            [f"🟥{player.mention} `{red_elos[i]:.0f}`" for i, player in enumerate(match.game.red)])
+        blue_field = "\n".join(
+            [f"🟦{player.mention} `{blue_elos[i]:.0f}`" for i, player in enumerate(match.game.blue)])
+
         server_info_embed.add_field(
-            name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
+            name=f'RED (Avg: {avg_red_elo:.0f})', value=red_field, inline=True)
         server_info_embed.add_field(
-            name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
+            name=f'BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
         
         # Post server info in password channel
         await password_channel.send(
@@ -969,9 +969,9 @@ class Ranked(commands.Cog):
         teams_embed.set_thumbnail(url=match.game_icon)
 
         teams_embed.add_field(
-            name=f'RED (Avg ELO: {avg_red_elo:.2f})', value=red_field, inline=True)
+            name=f'RED (Avg: {avg_red_elo:.0f})', value=red_field, inline=True)
         teams_embed.add_field(
-            name=f'BLUE (Avg ELO: {avg_blue_elo:.2f})', value=blue_field, inline=True)
+            name=f'BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
 
         await queue_channel.send(embed=teams_embed)
 
