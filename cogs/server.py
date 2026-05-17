@@ -212,13 +212,16 @@ class ServerActions(commands.Cog):
             return
         data = self.get_server_data(port)
         if not data:
+            logger.info(f"[match_end] port {port}: no score data")
             return
         try:
             timer = float(data['timer'])
         except (ValueError, KeyError):
+            logger.info(f"[match_end] port {port}: unparseable timer value: {data.get('timer')!r}")
             return
 
         prev = self.last_timer.get(port, 0.0)
+        logger.info(f"[match_end] port {port}: timer={timer} prev={prev} score_posted={self.score_posted.get(port, False)}")
 
         if timer > 0:
             self.score_posted[port] = False
@@ -228,9 +231,14 @@ class ServerActions(commands.Cog):
         if timer <= 0 and prev > 0 and not self.score_posted.get(port, False):
             ranked_cog = self.bot.get_cog('Ranked')
             if not ranked_cog:
+                logger.warning(f"[match_end] port {port}: Ranked cog not found")
                 return
             match = ranked_cog.find_match_by_port(port)
-            if not match or not match.password_channel_id:
+            if not match:
+                logger.warning(f"[match_end] port {port}: no match found for port")
+                return
+            if not match.password_channel_id:
+                logger.warning(f"[match_end] port {port}: match has no password_channel_id")
                 return
             await self._post_match_scores(port, data, match)
             self.score_posted[port] = True
