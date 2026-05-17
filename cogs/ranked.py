@@ -565,7 +565,10 @@ class Ranked(commands.Cog):
 
     async def queue_player(self, interaction: discord.Interaction, game: str, from_button: bool = False):
         logger.info(f"{interaction.user.name} called /q")
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            return
 
         if not await self.validate_player(interaction, game):
             return
