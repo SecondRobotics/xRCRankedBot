@@ -592,8 +592,6 @@ class Ranked(commands.Cog):
             logger.error(f"Failed to validate player {interaction.user.id}: {e}")
             await interaction.followup.send("Could not reach the ranked API. Please try again.", ephemeral=True)
             return False
-        logger.info(res)
-
         if not res["exists"]:
             await interaction.followup.send(
                 f"You must register for an account at <{REGISTRATION_URL}> before you can queue.",
@@ -802,8 +800,6 @@ class Ranked(commands.Cog):
             if not is_mock_member(player):
                 await player.add_roles(match.red_role)
 
-        logger.info(f"Red: {red}")
-
         # Assign remaining players to blue team and give them the blue role
         blue = [player for player in players_list if player not in red]
         for player in blue:
@@ -811,8 +807,6 @@ class Ranked(commands.Cog):
             # Only add roles to real members
             if not is_mock_member(player):
                 await player.add_roles(match.blue_role)
-
-        logger.info(f"Blue: {blue}")
 
         # Remove players from other queues
         all_players = red + blue
