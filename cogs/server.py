@@ -208,6 +208,8 @@ class ServerActions(commands.Cog):
             logger.error(f"Error sending chat message to Discord: {e}")
 
     async def _check_match_end(self, port: int):
+        if not self.players_active.get(port):
+            return
         data = self.get_server_data(port)
         if not data:
             return
@@ -595,8 +597,8 @@ class ServerActions(commands.Cog):
                 server_data['Score_R'] = f.read().strip()
             with open(score_b_path, 'r') as f:
                 server_data['Score_B'] = f.read().strip()
-        except FileNotFoundError as e:
-            logger.error(f"Required file not found for port {port}: {e}")
+        except FileNotFoundError:
+            logger.debug(f"Score files not yet available for port {port}")
             return None
         
         return server_data
