@@ -230,6 +230,30 @@ class ServerActions(commands.Cog):
                 except Exception as e:
                     logger.error(f"Error flushing chat buffer to Discord: {e}")
     @staticmethod
+    def _read_opr(port: int) -> Optional[Dict[str, list]]:
+        opr_path = os.path.join(SERVER_GAME_DATA_DIR, str(port), 'OPR.txt')
+        try:
+            with open(opr_path, 'r', encoding='utf-8') as f:
+                raw = f.read()
+        except OSError:
+            return None
+        entries = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            name, _, score = line.partition(':')
+            try:
+                score_val = float(score.strip())
+            except ValueError:
+                score_val = 0.0
+            entries.append((name.strip(), score_val))
+        if not entries:
+            return None
+        midpoint = -(-len(entries) // 2)
+        return {'red': entries[:midpoint], 'blue': entries[midpoint:]}
+
+    @staticmethod
     def _parse_timer(raw) -> Optional[float]:
         if raw is None:
             return None
@@ -252,15 +276,12 @@ class ServerActions(commands.Cog):
             return
         data = self.get_server_data(port)
         if not data:
-            logger.info(f"[match_end] port {port}: no score data")
             return
         timer = self._parse_timer(data.get('timer'))
         if timer is None:
-            logger.info(f"[match_end] port {port}: unparseable timer value: {data.get('timer')!r}")
             return
 
         prev = self.last_timer.get(port, 0.0)
-        logger.info(f"[match_end] port {port}: timer={timer} prev={prev} score_posted={self.score_posted.get(port, False)}")
 
         if timer > 0:
             self.score_posted[port] = False
@@ -279,6 +300,7 @@ class ServerActions(commands.Cog):
             if not match.password_channel_id:
                 logger.warning(f"[match_end] port {port}: match has no password_channel_id")
                 return
+            logger.info(f"[match_end] port {port}: posting scores (prev={prev}, timer={timer})")
             await self._post_match_scores(port, data, match)
             self.score_posted[port] = True
 
@@ -290,20 +312,35 @@ class ServerActions(commands.Cog):
             red = int(float(data['Score_R']))
             blue = int(float(data['Score_B']))
             if red > blue:
-                winner = "🟥 Red wins!"
-                color_line = "🟥"
+                result = "🟥 Red wins"
+                color = discord.Color(0xE74C3C)
             elif blue > red:
-                winner = "🟦 Blue wins!"
-                color_line = "🟦"
+                result = "🟦 Blue wins"
+                color = discord.Color(0x3498DB)
             else:
-                winner = "Tie!"
-                color_line = "⚪"
-            await channel.send(
-                f"**Match Over — {match.full_game_name}**\n"
-                f"🟥 Red — **{red}**\n"
-                f"🟦 Blue — **{blue}**\n\n"
-                f"{color_line} **{winner}**"
+                result = "🤝 Tie"
+                color = discord.Color(0x95A5A6)
+
+            embed = discord.Embed(
+                title=f"🏁 {match.full_game_name} — Match Over",
+                description=f"## 🟥 `{red:>3}`  —  `{blue:<3}` 🟦\n**{result}**",
+                color=color,
+                timestamp=datetime.now(timezone.utc),
             )
+
+            opr = self._read_opr(port)
+            if opr:
+                def fmt(entries):
+                    if not entries:
+                        return "—"
+                    name_w = max(len(n) for n, _ in entries)
+                    rows = [f"{name:<{name_w}}  {score:>6g}"
+                            for name, score in sorted(entries, key=lambda e: -e[1])]
+                    return "```\n" + "\n".join(rows) + "\n```"
+                embed.add_field(name="🟥 Red OPR", value=fmt(opr['red']), inline=True)
+                embed.add_field(name="🟦 Blue OPR", value=fmt(opr['blue']), inline=True)
+
+            await channel.send(embed=embed)
         except Exception as e:
             logger.error(f"Error posting match scores for port {port}: {e}")
 
