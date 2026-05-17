@@ -10,6 +10,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from discord.app_commands import Choice
 import asyncio
+import psutil
 import json  # For reading status.json
 import re  # Add import for regex
 from dataclasses import dataclass  # Add import for Player dataclass
@@ -443,6 +444,55 @@ class ServerActions(commands.Cog):
 
         response = "Running servers:\n" + "\n".join(server_list)
         await interaction.response.send_message(response)
+
+    @app_commands.command(description="Show live performance stats for running servers", name="serverstats")
+    @app_commands.checks.has_any_role("Event Staff")
+    async def server_stats(self, interaction: discord.Interaction):
+        logger.info(f"{interaction.user.name} called /serverstats")
+        await interaction.response.defer()
+
+        if not self.servers_active:
+            await interaction.followup.send("⚠ No servers are currently running.")
+            return
+
+        embed = discord.Embed(title="Server Performance", color=0x34dceb)
+        embed.timestamp = datetime.now()
+
+        for port, process in self.servers_active.items():
+            game_number = self.server_games.get(port, "Unknown")
+            game_name = next((n for n, num in server_games.items() if num == game_number), "Unknown")
+            comment = self.server_comments.get(port, "N/A")
+            start_time = self.last_active.get(port)
+            player_count = len(self.players_active.get(port, []))
+
+            uptime_str = "Unknown"
+            if start_time:
+                delta = datetime.now() - start_time
+                h, rem = divmod(int(delta.total_seconds()), 3600)
+                m, s = divmod(rem, 60)
+                uptime_str = f"{h}h {m}m {s}s" if h else f"{m}m {s}s"
+
+            cpu_pct = "N/A"
+            mem_mb = "N/A"
+            try:
+                proc = psutil.Process(process.pid)
+                cpu_pct = f"{await asyncio.to_thread(proc.cpu_percent, 0.1):.1f}%"
+                mem_mb = f"{proc.memory_info().rss / 1024 / 1024:.1f} MB"
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                logger.warning(f"Could not get stats for port {port}: {e}")
+
+            embed.add_field(
+                name=f"Port {port} — {game_name}",
+                value=(
+                    f"**Comment:** {comment}\n"
+                    f"**Uptime:** {uptime_str}\n"
+                    f"**Players:** {player_count}\n"
+                    f"**CPU:** {cpu_pct} | **RAM:** {mem_mb}"
+                ),
+                inline=False
+            )
+
+        await interaction.followup.send(embed=embed)
 
     def get_server_data(self, port: int) -> Optional[Dict[str, any]]:
         """
