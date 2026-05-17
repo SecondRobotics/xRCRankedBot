@@ -25,40 +25,51 @@ class UserManagement(commands.Cog):
     async def update_player_roles(self):
         start_time = time.time()
         logger.info("Starting role update process")
-        
+
         guild = self.bot.get_guild(GUILD_ID)
         if not guild:
             logger.error("Guild not found.")
             return
 
-        url = "https://secondrobotics.org/api/ranked/leaderboard/RS3v3/"
+        url = "https://secondrobotics.org/api/ranked/leaderboard/RB3v3/"
         leaderboard_data = await self.fetch_leaderboard_data(url)
         if not leaderboard_data:
             return
 
-        for player_data in leaderboard_data:
-            discord_id = player_data['player_id']
-            rank_name = player_data['rank_name']
-            member = guild.get_member(discord_id)
+        # Build leaderboard lookup and collect all rank role names
+        leaderboard = {entry['player_id']: entry['rank_name'] for entry in leaderboard_data}
+        rank_role_names = {entry['rank_name'] for entry in leaderboard_data}
 
+        # Ensure all rank roles exist
+        rank_roles = {}
+        for name in rank_role_names:
+            role = discord.utils.get(guild.roles, name=name)
+            if not role:
+                role = await guild.create_role(name=name)
+            rank_roles[name] = role
+
+        # Assign correct rank roles to leaderboard players
+        for player_id, rank_name in leaderboard.items():
+            member = guild.get_member(player_id)
             if not member:
                 continue
 
-            current_roles = set(member.roles)
-            rank_role = discord.utils.get(guild.roles, name=rank_name)
-            if not rank_role:
-                rank_role = await guild.create_role(name=rank_name)
+            correct_role = rank_roles[rank_name]
+            roles_to_remove = [r for r in member.roles if r.name in rank_role_names and r != correct_role]
 
-            roles_to_remove = [role for role in current_roles if role.name in [r['rank_name'] for r in leaderboard_data]]
-            if rank_role not in current_roles:
-                await member.add_roles(rank_role)
+            if correct_role not in member.roles:
+                await member.add_roles(correct_role)
             for role in roles_to_remove:
-                if role != rank_role:
+                await member.remove_roles(role)
+
+        # Strip rank roles from anyone not on the leaderboard
+        for role in rank_roles.values():
+            for member in role.members:
+                if member.id not in leaderboard:
                     await member.remove_roles(role)
 
         end_time = time.time()
-        duration = end_time - start_time
-        logger.info(f"Role update process completed in {duration:.2f} seconds")
+        logger.info(f"Role update process completed in {end_time - start_time:.2f} seconds")
 
     async def fetch_leaderboard_data(self, url):
         try:
