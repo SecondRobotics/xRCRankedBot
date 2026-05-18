@@ -596,9 +596,15 @@ class Ranked(commands.Cog):
             )
 
         for qdata in game_queues.values():
-            if qdata._queue.qsize() > 0:
-                embed.add_field(name=qdata.full_game_name, value=f"*{qdata._queue.qsize()}/{qdata.alliance_size * 2}*"
-                                                                 f" players in queue", inline=False)
+            queue_size = qdata._queue.qsize()
+            if queue_size > 0:
+                needed = qdata.alliance_size * 2
+                progress = "██" * queue_size + "░░" * (needed - queue_size)
+                embed.add_field(
+                    name=qdata.full_game_name,
+                    value=f"({queue_size}/{needed})\n`{progress}`",
+                    inline=False
+                )
 
         # Add footer with helpful information
         embed.set_footer(text="Use /queuevoting to join a vote queue • Use /queuestandard to join a traditional queue • Use /leaveall to leave a queue")
@@ -999,25 +1005,30 @@ class Ranked(commands.Cog):
             [f"🟦{p.mention} `{blue_elos[i]:.0f}`" for i, p in enumerate(blue_players)])
 
         # Build both embeds
+        now = datetime.now(timezone.utc)
         server_info_embed = discord.Embed(
             color=0x34dceb,
-            title=f"Server Information for {match.full_game_name}",
-            description=f"Server 'Ranked{match.api_short}' started with password **{match.server_password}**\n"
-                       f"|| IP: {ip} Port: {match.server_port} ||"
+            title="Server Information",
+            description=f"Server `Ranked{match.api_short}` started with password **{match.server_password}**\n"
+                       f"|| IP: {ip} Port: {match.server_port} ||",
+            timestamp=now
         )
-        server_info_embed.set_thumbnail(url=match.game_icon)
-        server_info_embed.add_field(name=f'RED (Avg: {avg_red_elo:.0f})', value=red_field, inline=True)
-        server_info_embed.add_field(name=f'BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
+        server_info_embed.set_author(name=match.full_game_name, icon_url=match.game_icon)
+        server_info_embed.add_field(name=f'🟥 RED (Avg: {avg_red_elo:.0f})', value=red_field, inline=True)
+        server_info_embed.add_field(name=f'🟦 BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
+        server_info_embed.set_footer(text="xRC Sim Ranked", icon_url=XRC_SIM_LOGO_URL)
 
         teams_embed = discord.Embed(
             color=0x34dceb,
-            title=f"Teams have been picked for {match.full_game_name}!",
-            description=f"Server information has been posted in {password_channel.mention}\n"
-                       f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})"
+            title="Teams Picked!",
+            description=f"Server info posted in {password_channel.mention}\n"
+                       f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})",
+            timestamp=now
         )
-        teams_embed.set_thumbnail(url=match.game_icon)
-        teams_embed.add_field(name=f'RED (Avg: {avg_red_elo:.0f})', value=red_field, inline=True)
-        teams_embed.add_field(name=f'BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
+        teams_embed.set_author(name=match.full_game_name, icon_url=match.game_icon)
+        teams_embed.add_field(name=f'🟥 RED (Avg: {avg_red_elo:.0f})', value=red_field, inline=True)
+        teams_embed.add_field(name=f'🟦 BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
+        teams_embed.set_footer(text="xRC Sim Ranked", icon_url=XRC_SIM_LOGO_URL)
 
         # Send to both channels in parallel
         await asyncio.gather(
@@ -1087,14 +1098,16 @@ class Ranked(commands.Cog):
         total = len(match.game.red | match.game.blue)
         needed = total // 2 + 1
         embed = discord.Embed(
-            title="Match Inactivity",
+            title="⏱ Match Inactivity",
             description=(
                 f"This match has been inactive for 10 minutes.\n"
                 f"Vote to clear if the match is not happening.\n"
                 f"**{needed}/{total}** votes needed to clear."
             ),
-            color=discord.Color.orange()
+            color=discord.Color.orange(),
+            timestamp=datetime.now(timezone.utc)
         )
+        embed.set_footer(text="xRC Sim Ranked", icon_url=XRC_SIM_LOGO_URL)
         view = ClearVoteView(self, guild, match)
         try:
             msg = await password_channel.send(
@@ -1828,17 +1841,29 @@ class Ranked(commands.Cog):
             return None
 
     def create_score_embed(self, current_match, red_score, blue_score, response):
-        embed = discord.Embed(color=0x34eb3d,
-                              title=f"[{current_match.full_game_name}] Score submitted | 🟥 {current_match.red_series}-{current_match.blue_series}  🟦 |")
-        embed.set_thumbnail(url=current_match.game_icon)
+        game_number = len(current_match.game_scores)
+        if red_score > blue_score:
+            embed_color = discord.Color(0xE74C3C)
+        elif blue_score > red_score:
+            embed_color = discord.Color(0x3498DB)
+        else:
+            embed_color = discord.Color(0x95A5A6)
 
-        for color, score in [('red', red_score), ('blue', blue_score)]:
+        embed = discord.Embed(
+            color=embed_color,
+            title=f"Game {game_number} — 🟥 {current_match.red_series}–{current_match.blue_series} 🟦",
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_author(name=current_match.full_game_name, icon_url=current_match.game_icon)
+        embed.set_footer(text="xRC Sim Ranked", icon_url=XRC_SIM_LOGO_URL)
+
+        for side, score in [('red', red_score), ('blue', blue_score)]:
             players = "\n".join(
-                f"[{response[f'{color}_display_names'][i]}](https://secondrobotics.org/ranked/{current_match.api_short}/{player['player']}) "
-                f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response[f'{color}_elo_changes'][i], 3))}\n```"
-                for i, player in enumerate(response[f'{color}_player_elos'])
+                f"[{response[f'{side}_display_names'][i]}](https://secondrobotics.org/ranked/{current_match.api_short}/{player['player']}) "
+                f"`[{round(player['elo'], 2)}]` ```diff\n{'%+.2f' % (round(response[f'{side}_elo_changes'][i], 3))}\n```"
+                for i, player in enumerate(response[f'{side}_player_elos'])
             )
-            embed.add_field(name=f'{color.upper()} {"🟥" if color == "red" else "🟦"} ({score})',
+            embed.add_field(name=f'{"🟥 RED" if side == "red" else "🟦 BLUE"} ({score})',
                             value=players,
                             inline=True)
         logger.info(f"embed created at {current_match.red_series}-{current_match.blue_series}")
@@ -1856,7 +1881,8 @@ class Ranked(commands.Cog):
             color=color,
             timestamp=datetime.now(timezone.utc),
         )
-        embed.set_thumbnail(url=match.game_icon)
+        embed.set_author(name=match.full_game_name, icon_url=match.game_icon)
+        embed.set_footer(text="xRC Sim Ranked", icon_url=XRC_SIM_LOGO_URL)
 
         if match.game_scores:
             lines = []
