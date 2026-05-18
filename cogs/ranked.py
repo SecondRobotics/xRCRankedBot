@@ -1077,7 +1077,10 @@ class Ranked(commands.Cog):
         if game not in EXCLUDED_GAMES
     ])
     async def queue(self, interaction: discord.Interaction, mode: str, game: str):
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        except discord.errors.NotFound:
+            return
         logger.info(f"{interaction.user.name} called /queue with mode {mode} and game {game}")
         
         # Get fresh game data
@@ -1940,7 +1943,7 @@ async def server_has_players(server: int) -> bool:
 
 async def warn_server_inactivity(server: int):
     for queue in game_queues.values():
-        for match in queue.matches:
+        for match in list(queue.matches):
             if match.server_port == server:
                 if match.game:
                     for player in match.game.players:

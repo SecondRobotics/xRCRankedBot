@@ -436,7 +436,8 @@ class ServerActions(commands.Cog):
             return f"⚠ Server on port {port} not found"
 
         logger.info(f"Shutting down server on port {port}")
-        self.log_files[port].write(f"Server shut down at {datetime.now()}\n")
+        if port in self.log_files:
+            self.log_files[port].write(f"Server shut down at {datetime.now()}\n")
 
         # Close chat log file
         if port in self.chat_log_files:
@@ -451,12 +452,16 @@ class ServerActions(commands.Cog):
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
-        self.log_files[port].close()
-        del self.servers_active[port]
-        del self.last_active[port]
-        del self.log_files[port]
-        del self.server_comments[port]
-        del self.server_games[port]
+        if port in self.log_files:
+            self.log_files[port].close()
+        self.servers_active.pop(port, None)
+        self.last_active.pop(port, None)
+        self.log_files.pop(port, None)
+        self.server_comments.pop(port, None)
+        self.server_games.pop(port, None)
+        self.log_read_positions.pop(port, None)
+        self.last_timer.pop(port, None)
+        self.score_posted.pop(port, None)
 
         # Delete server data directory for the port being shut down
         output_dir = os.path.join(SERVER_GAME_DATA_DIR, str(port))
