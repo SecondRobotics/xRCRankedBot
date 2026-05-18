@@ -231,6 +231,7 @@ class XrcGame:
         self.players = []
         self.password_channel_id = None  # type: int | None
         self.elo_history: list = []
+        self.game_scores: list = []
 
         try:
             self.game_icon = game_logos[game]
@@ -1664,6 +1665,7 @@ class Ranked(commands.Cog):
             return
 
         current_match.elo_history.append(response)
+        current_match.game_scores.append((red_score, blue_score))
         embed = self.create_score_embed(current_match, red_score, blue_score, response)
 
         password_channel = (interaction.guild.get_channel(current_match.password_channel_id)
@@ -1672,8 +1674,13 @@ class Ranked(commands.Cog):
         await interaction.followup.send(result_message, ephemeral=True)
 
         if gg:
+            summary_embed = self.create_series_summary_embed(current_match)
             if password_channel:
-                await password_channel.send(embed=self.create_series_summary_embed(current_match))
+                await password_channel.send(embed=summary_embed)
+            await queue_channel.send(
+                content=f"{current_match.red_role.mention} {current_match.blue_role.mention}",
+                embed=summary_embed
+            )
             await self.handle_game_end(interaction, qdata, current_match, embed)
 
     # Helper methods
@@ -1751,6 +1758,17 @@ class Ranked(commands.Cog):
             timestamp=datetime.now(timezone.utc),
         )
         embed.set_thumbnail(url=match.game_icon)
+
+        if match.game_scores:
+            lines = []
+            for i, (rs, bs) in enumerate(match.game_scores, 1):
+                if rs > bs:
+                    lines.append(f"Game {i}: 🟥 **{rs}** — {bs} 🟦")
+                elif bs > rs:
+                    lines.append(f"Game {i}: 🟥 {rs} — **{bs}** 🟦")
+                else:
+                    lines.append(f"Game {i}: 🟥 {rs} — {bs} 🟦")
+            embed.add_field(name="Results", value="\n".join(lines), inline=False)
 
         history = [r for r in match.elo_history if r]
         if history:
