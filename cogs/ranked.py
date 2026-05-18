@@ -38,6 +38,9 @@ EXCLUDED_GAMES = {"Test", "Relic Recovery", "Bot Royale"}
 
 logger = logging.getLogger('discord')
 
+_player_cache: Dict[int, tuple] = {}
+PLAYER_CACHE_TTL = timedelta(minutes=5)
+
 queue_channel = 0
 
 team_size = 6
@@ -705,13 +708,22 @@ class Ranked(commands.Cog):
         await qdata.status_message.delete(delay=30)
 
     async def get_player_info(self, player_id: int):
+        if player_id in _player_cache:
+            data, ts = _player_cache[player_id]
+            if datetime.now() - ts < PLAYER_CACHE_TTL:
+                return data
+            del _player_cache[player_id]
+
         url = f'https://secondrobotics.org/api/ranked/player/{player_id}'
         try:
             async with self._get_session().get(url) as x:
-                return await x.json()
+                data = await x.json()
         except Exception as e:
             logger.error(f"Failed to fetch player info for {player_id}: {e}")
             return None
+
+        _player_cache[player_id] = (data, datetime.now())
+        return data
 
     server_game_names = [
         Choice(name=game, value=game) for game in server_games.keys()
