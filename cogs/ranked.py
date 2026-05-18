@@ -1699,7 +1699,7 @@ class Ranked(commands.Cog):
         return any(role.id in ranked_roles for role in user_roles)
 
     def is_series_complete(self, current_match):
-        return current_match.red_series == 2 or current_match.blue_series == 2
+        return current_match.red_series >= 2 or current_match.blue_series >= 2
 
     def update_series_score(self, current_match, red_score, blue_score):
         if red_score > blue_score:
@@ -1709,9 +1709,9 @@ class Ranked(commands.Cog):
         logger.info(f"Updated match series scores: red_series={current_match.red_series}, blue_series={current_match.blue_series}")
 
     def check_series_end(self, current_match):
-        if current_match.red_series == 2:
+        if current_match.red_series >= 2:
             return True, "🟥 Red Wins! 🟥"
-        elif current_match.blue_series == 2:
+        elif current_match.blue_series >= 2:
             return True, "🟦 Blue Wins! 🟦"
         return False, "Score Submitted"
 
