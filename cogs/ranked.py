@@ -1153,15 +1153,6 @@ class Ranked(commands.Cog):
     async def add_to_queue(self, interaction: discord.Interaction, game: str):
         await self.queue_player(interaction, game, False)
 
-    def get_vote_queue(self, mode):
-        if mode == "3v3":
-            return self.vote_queue_3v3
-        elif mode == "2v2":
-            return self.vote_queue_2v2
-        elif mode == "1v1":
-            return self.vote_queue_1v1
-        return None
-
     async def add_player_to_vote_queue(self, player: discord.Member, queue: Queue, preferred_game: str, interaction: discord.Interaction, player_info=None):
         queue._queue.put((player, preferred_game))
         display_name = player_info['display_name'] if player_info else player.display_name
