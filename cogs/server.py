@@ -345,7 +345,7 @@ class ServerActions(commands.Cog):
             logger.error(f"Error posting match scores for port {port}: {e}")
 
     def start_server_process(self, game: str, comment: str, password: str = "", admin: str = "Admin",
-                             restart_mode: int = -1, frame_rate: int = 60, update_time: int = 10,
+                             restart_mode: int = -1, frame_rate: int = 60, update_time: int = 20,
                              tournament_mode: bool = True, start_when_ready: bool = True,
                              register: bool = True, spectators: int = 4, min_players: int = -1,
                              restart_all: bool = True, timeout: int = -1):
@@ -401,7 +401,7 @@ class ServerActions(commands.Cog):
             f"Admin={admin}", f"GameSettings={game_settings}",
             f"MinPlayers={min_players}",
             f"RestartAll={'On' if restart_all else 'Off'}",
-            "NetStats=On", "Profiling=On",
+            "NetStats=Off", "Profiling=Off",
             f"OUTPUT_SCORE_FILES={output_dir}"  # Added parameter
         ]
 
