@@ -904,6 +904,7 @@ class Ranked(commands.Cog):
             [f"🟦{player.mention}" for player in match.game.blue])
 
         # Create password channel if it doesn't exist
+        port_suffix = match.server_port % 1000 if match.server_port else random.randint(100, 999)
         password_channel = ctx.guild.get_channel(PASSWORD_CHANNEL_ID)
         if not password_channel:
             # Create channel permissions
@@ -914,10 +915,10 @@ class Ranked(commands.Cog):
                 match.blue_role: discord.PermissionOverwrite(read_messages=True),
                 ctx.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)  # Add bot permissions
             }
-            
+
             # Create the channel
             password_channel = await ctx.guild.create_text_channel(
-                f"server-password-{match.api_short}",
+                f"server-password-{match.api_short}-{port_suffix}",
                 category=self.category,
                 overwrites=overwrites
             )
@@ -996,8 +997,8 @@ class Ranked(commands.Cog):
 
                 # Create the voice channels with proper error handling
                 match.red_channel, match.blue_channel = await asyncio.gather(
-                    ctx.guild.create_voice_channel(f"🟥{match.full_game_name}🟥", category=self.category, overwrites=overwrites_red),
-                    ctx.guild.create_voice_channel(f"🟦{match.full_game_name}🟦", category=self.category, overwrites=overwrites_blue)
+                    ctx.guild.create_voice_channel(f"🟥{match.full_game_name} {port_suffix}🟥", category=self.category, overwrites=overwrites_red),
+                    ctx.guild.create_voice_channel(f"🟦{match.full_game_name} {port_suffix}🟦", category=self.category, overwrites=overwrites_blue)
                 )
             except discord.errors.Forbidden:
                 print("I don't have permission to create voice channels.")
