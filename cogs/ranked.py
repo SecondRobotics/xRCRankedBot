@@ -250,6 +250,8 @@ class Queue:
         self.alliance_size = alliance_size
         self.api_short = api_short
         self.full_game_name = full_game_name
+        self.status_message: Optional[discord.Message] = None
+        self._status_task: Optional[asyncio.Task] = None
 
     def create_match(self):
         match = XrcGame(self.game_type, self.alliance_size,
@@ -658,7 +660,7 @@ class Ranked(commands.Cog):
         if qdata._queue.qsize() >= qdata.alliance_size * 2:
             await self.start_match(qdata, interaction, False)
         else:
-            await self.send_queue_status(qdata, interaction)
+            await self.send_queue_status(qdata)
 
     def should_ping_queue(self, qdata: Queue) -> bool:
         return qdata._queue.qsize() in {3, 4} and qdata.alliance_size in {4, 6}
@@ -682,10 +684,25 @@ class Ranked(commands.Cog):
                 )
                 
 
-    async def send_queue_status(self, qdata: Queue, interaction: discord.Interaction):
-        qstatus = await queue_channel.send(
-            f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short}) is now **[{qdata._queue.qsize()}/{qdata.alliance_size * 2}]**")
-        await qstatus.delete(delay=30)
+    async def send_queue_status(self, qdata: Queue):
+        if qdata._status_task and not qdata._status_task.done():
+            qdata._status_task.cancel()
+        qdata._status_task = asyncio.create_task(self._do_send_queue_status(qdata))
+
+    async def _do_send_queue_status(self, qdata: Queue):
+        await asyncio.sleep(0.75)
+        content = (f"Queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})"
+                   f" is now **[{qdata._queue.qsize()}/{qdata.alliance_size * 2}]**")
+        if qdata.status_message:
+            try:
+                await qdata.status_message.edit(content=content)
+                return
+            except discord.NotFound:
+                qdata.status_message = None
+            except Exception:
+                qdata.status_message = None
+        qdata.status_message = await queue_channel.send(content)
+        await qdata.status_message.delete(delay=30)
 
     async def get_player_info(self, player_id: int):
         url = f'https://secondrobotics.org/api/ranked/player/{player_id}'
@@ -705,7 +722,10 @@ class Ranked(commands.Cog):
             await interaction.followup.send("Queue is not full.", ephemeral=True)
             return
 
-        # Always create a new match and reset series scores to 0
+        if qdata._status_task and not qdata._status_task.done():
+            qdata._status_task.cancel()
+            qdata._status_task = None
+
         await self.random(qdata, interaction, qdata.api_short, from_button)
 
     async def leave_all_queues(self, interaction: discord.Interaction, via_command=False):
@@ -762,14 +782,6 @@ class Ranked(commands.Cog):
         await interaction.response.send_message(message, ephemeral=True, delete_after=30)
         await queue_channel.send(message)
 
-        for queue in relevant_queues + relevant_vote_queues:
-            queue_size = queue._queue.qsize() if hasattr(queue._queue, 'qsize') else len(queue._queue.queue)
-            await queue_channel.send(
-                f"Queue for [{queue.full_game_name}](https://secondrobotics.org/ranked/{queue.api_short}) "
-                f"is now **[{queue_size}/{queue.alliance_size * 2}]**",
-                delete_after=60
-            )
-        
         logger.info(f"Finished removing {player.name} from all queues")
 
     @app_commands.command(name="leaveall", description="Remove yourself from all queues")
@@ -1165,18 +1177,22 @@ class Ranked(commands.Cog):
         if queue._queue.qsize() >= queue.alliance_size * 2:
             await self.start_vote_match(queue, interaction)
         else:
-            await self.send_queue_status(queue, interaction)
+            await self.send_queue_status(queue)
 
     async def start_vote_match(self, queue: Queue, interaction: discord.Interaction):
         logger.info("Starting vote match...")
         players_and_games = []
         queue_size = queue._queue.qsize()
-        
+
         logger.info(f"Queue size: {queue_size}, Required size: {queue.alliance_size * 2}")
-        
+
         if queue_size < queue.alliance_size * 2:
             await interaction.followup.send(f"Not enough players in queue ({queue_size}/{queue.alliance_size * 2})", ephemeral=True)
             return
+
+        if queue._status_task and not queue._status_task.done():
+            queue._status_task.cancel()
+            queue._status_task = None
             
         try:
             with queue._queue.mutex:  # Lock the queue while we process it
