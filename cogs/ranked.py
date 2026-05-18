@@ -235,6 +235,7 @@ class XrcGame:
         self.password_channel_id = None  # type: int | None
         self.elo_history: list = []
         self.game_scores: list = []
+        self.clear_vote_task: Optional[asyncio.Task] = None
 
         try:
             self.game_icon = game_logos[game]
@@ -333,6 +334,49 @@ class VoteView(View):
     async def on_timeout(self):
         await self.interaction.followup.send("Score edit attempt failed. Continuing with the series.")
         self.stop()
+
+
+class ClearVoteView(View):
+    def __init__(self, ranked_cog, guild: discord.Guild, match: XrcGame):
+        super().__init__(timeout=120)
+        self.ranked_cog = ranked_cog
+        self.guild = guild
+        self.match = match
+        self.votes: set = set()
+        self.total_players = len(match.game.red | match.game.blue)
+        self.cleared = False
+        self.message: Optional[discord.Message] = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if self.match.red_role in interaction.user.roles or self.match.blue_role in interaction.user.roles:
+            return True
+        await interaction.response.send_message("You're not in this match.", ephemeral=True)
+        return False
+
+    @discord.ui.button(label="Vote to Clear", style=ButtonStyle.red)
+    async def vote_clear(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id in self.votes:
+            await interaction.response.send_message("You already voted to clear.", ephemeral=True)
+            return
+        self.votes.add(interaction.user.id)
+        needed = self.total_players // 2 + 1
+        if len(self.votes) >= needed:
+            self.cleared = True
+            self.stop()
+            await interaction.response.send_message(
+                f"Match cleared by vote ({len(self.votes)}/{self.total_players}).")
+            await self.ranked_cog.do_clear_match(self.guild, self.match)
+        else:
+            await interaction.response.send_message(
+                f"Vote recorded ({len(self.votes)}/{self.total_players}, need {needed} to clear).",
+                ephemeral=True)
+
+    async def on_timeout(self):
+        if not self.cleared and self.message:
+            try:
+                await self.message.edit(content="Auto-clear vote expired.", view=None)
+            except Exception:
+                pass
 
 
 async def remove_roles(guild: discord.Guild, qdata: XrcGame):
@@ -1023,7 +1067,49 @@ class Ranked(commands.Cog):
 
         asyncio.create_task(self.update_ranked_display())
 
+        if match.clear_vote_task and not match.clear_vote_task.done():
+            match.clear_vote_task.cancel()
+        match.clear_vote_task = asyncio.create_task(self._auto_clear_check(match, ctx.guild))
+
+    async def _auto_clear_check(self, match: XrcGame, guild: discord.Guild):
+        await asyncio.sleep(600)
+
+        is_active = any(match in queue.matches for queue in game_queues.values())
+        if not is_active or match.red_series >= 2 or match.blue_series >= 2:
+            return
+
+        if not match.password_channel_id:
+            return
+        password_channel = guild.get_channel(match.password_channel_id)
+        if not password_channel:
+            return
+
+        total = len(match.game.red | match.game.blue)
+        needed = total // 2 + 1
+        embed = discord.Embed(
+            title="Match Inactivity",
+            description=(
+                f"This match has been inactive for 10 minutes.\n"
+                f"Vote to clear if the match is not happening.\n"
+                f"**{needed}/{total}** votes needed to clear."
+            ),
+            color=discord.Color.orange()
+        )
+        view = ClearVoteView(self, guild, match)
+        try:
+            msg = await password_channel.send(
+                f"{match.red_role.mention} {match.blue_role.mention}",
+                embed=embed,
+                view=view
+            )
+            view.message = msg
+        except Exception as e:
+            logger.error(f"Error sending auto-clear vote for {match.full_game_name}: {e}")
+
     async def do_clear_match(self, guild: discord.Guild, match: XrcGame):
+        if match.clear_vote_task and not match.clear_vote_task.done():
+            match.clear_vote_task.cancel()
+
         if match.server_port:
             server_actions = self.bot.get_cog('ServerActions')
             server_actions.stop_server_process(match.server_port)
@@ -1689,6 +1775,12 @@ class Ranked(commands.Cog):
                 embed=summary_embed
             )
             await self.handle_game_end(interaction, qdata, current_match, embed)
+        else:
+            if current_match.clear_vote_task and not current_match.clear_vote_task.done():
+                current_match.clear_vote_task.cancel()
+            current_match.clear_vote_task = asyncio.create_task(
+                self._auto_clear_check(current_match, interaction.guild)
+            )
 
     # Helper methods
     def find_current_match(self, user_roles):
@@ -1793,7 +1885,9 @@ class Ranked(commands.Cog):
         return embed
 
     async def handle_game_end(self, interaction, qdata, current_match, embed):
-        # Get lobby channel
+        if current_match.clear_vote_task and not current_match.clear_vote_task.done():
+            current_match.clear_vote_task.cancel()
+
         lobby = self.bot.get_channel(LOBBY_VC_ID)
 
         # Move all members to lobby, then delete voice channels
