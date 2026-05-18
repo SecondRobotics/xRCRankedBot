@@ -328,12 +328,12 @@ class VoteView(View):
 
 
 async def remove_roles(guild: discord.Guild, qdata: XrcGame):
-    red_check = get(guild.roles, name=f"Red {qdata.full_game_name}")
-    blue_check = get(guild.roles, name=f"Blue {qdata.full_game_name}")
-    if red_check:
-        await red_check.delete()
-    if blue_check:
-        await blue_check.delete()
+    for role in [qdata.red_role, qdata.blue_role]:
+        if role:
+            try:
+                await role.delete()
+            except discord.NotFound:
+                pass
 
 
 def create_game(game_type):
