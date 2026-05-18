@@ -578,7 +578,8 @@ class Ranked(commands.Cog):
         except discord.errors.NotFound:
             return
 
-        if not await self.validate_player(interaction, game):
+        valid, player_info = await self.validate_player(interaction, game)
+        if not valid:
             return
 
         qdata = game_queues[game]
@@ -591,32 +592,25 @@ class Ranked(commands.Cog):
         if await self.is_player_in_queue_or_match(player, qdata):
             return
 
-        await self.add_player_to_queue(player, qdata, interaction)
+        await self.add_player_to_queue(player, qdata, interaction, player_info)
         await self.check_queue_status(qdata, interaction)
 
-    async def validate_player(self, interaction: discord.Interaction, game: str) -> bool:
-        url = f'https://secondrobotics.org/api/ranked/player/{interaction.user.id}'
-        try:
-            async with self._get_session().get(url) as x:
-                res = await x.json()
-        except Exception as e:
-            logger.error(f"Failed to validate player {interaction.user.id}: {e}")
+    async def validate_player(self, interaction: discord.Interaction, game: str) -> tuple:
+        res = await self.get_player_info(interaction.user.id)
+        if res is None:
             await interaction.followup.send("Could not reach the ranked API. Please try again.", ephemeral=True)
-            return False
+            return False, None
         if not res["exists"]:
             await interaction.followup.send(
                 f"You must register for an account at <{REGISTRATION_URL}> before you can queue.",
                 ephemeral=True)
-            return False
-
-        # Check if the player is already in a game
+            return False, None
         if await self.is_player_in_match(interaction.user):
             await interaction.followup.send(
                 "You are already in a match. Please finish your current match before queuing for a new one.",
                 ephemeral=True)
-            return False
-
-        return True
+            return False, None
+        return True, res
 
     async def is_player_in_match(self, player: discord.Member) -> bool:
         for qdata in game_queues.values():
@@ -644,11 +638,10 @@ class Ranked(commands.Cog):
 
         return False
 
-    async def add_player_to_queue(self, player: discord.Member, qdata: Queue, interaction: discord.Interaction):
+    async def add_player_to_queue(self, player: discord.Member, qdata: Queue, interaction: discord.Interaction, player_info=None):
         qdata._queue.put(player)
         await self.update_ranked_display()
-        res = await self.get_player_info(player.id)
-        display_name = res['display_name'] if res else player.display_name
+        display_name = player_info['display_name'] if player_info else player.display_name
         followup = await interaction.followup.send(
             f"🟢 **{display_name}** 🟢\nadded to queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
             f" *({qdata._queue.qsize()}/{qdata.alliance_size * 2})*\n"
@@ -1153,10 +1146,11 @@ class Ranked(commands.Cog):
                     ephemeral=True)
                 return
 
-        if not await self.validate_player(interaction, game):
+        valid, player_info = await self.validate_player(interaction, game)
+        if not valid:
             return
 
-        await self.add_player_to_vote_queue(interaction.user, queue, game, interaction)
+        await self.add_player_to_vote_queue(interaction.user, queue, game, interaction, player_info)
         await self.check_vote_queue_status(queue, interaction)
 
     @app_commands.choices(game=games_choices)
@@ -1173,10 +1167,9 @@ class Ranked(commands.Cog):
             return self.vote_queue_1v1
         return None
 
-    async def add_player_to_vote_queue(self, player: discord.Member, queue: Queue, preferred_game: str, interaction: discord.Interaction):
+    async def add_player_to_vote_queue(self, player: discord.Member, queue: Queue, preferred_game: str, interaction: discord.Interaction, player_info=None):
         queue._queue.put((player, preferred_game))
-        res = await self.get_player_info(player.id)
-        display_name = res['display_name'] if res else player.display_name
+        display_name = player_info['display_name'] if player_info else player.display_name
         await self.update_ranked_display()
         await interaction.followup.send(
             f"🟢 **{display_name}** 🟢\nadded to {queue.full_game_name} queue with preferred game: {preferred_game}. "
