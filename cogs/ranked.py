@@ -266,8 +266,9 @@ async def handle_score_edit(interaction: discord.Interaction, qdata: XrcGame, re
         "red_score": red_score,
         "blue_score": blue_score
     }
-    x = requests.patch(url, json=json, headers=HEADER)
-    response = x.json()
+    async with aiohttp.ClientSession(headers=HEADER) as session:
+        async with session.patch(url, json=json) as x:
+            response = await x.json()
     logger.info(response)
 
     if 'error' in response:
@@ -1085,7 +1086,8 @@ class Ranked(commands.Cog):
         
         # Get fresh game data
         try:
-            games_data = requests.get("https://secondrobotics.org/api/ranked/").json()
+            async with self._get_session().get("https://secondrobotics.org/api/ranked/") as resp:
+                games_data = await resp.json()
         except Exception as e:
             logger.error(f"Failed to fetch games data: {e}")
             await interaction.followup.send("Error: Could not validate game selection. Please try again.", ephemeral=True)
