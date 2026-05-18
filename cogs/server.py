@@ -229,15 +229,56 @@ class ServerActions(commands.Cog):
                     await channel.send("```ansi\n" + "\n".join(chunk) + "\n```")
                 except Exception as e:
                     logger.error(f"Error flushing chat buffer to Discord: {e}")
+    @staticmethod
+    def _read_opr(port: int) -> Optional[Dict[str, list]]:
+        opr_path = os.path.join(SERVER_GAME_DATA_DIR, str(port), 'OPR.txt')
+        try:
+            with open(opr_path, 'r', encoding='utf-8') as f:
+                raw = f.read()
+        except OSError:
+            return None
+        entries = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            name, _, score = line.partition(':')
+            try:
+                score_val = float(score.strip())
+            except ValueError:
+                score_val = 0.0
+            entries.append((name.strip(), score_val))
+        if not entries:
+            return None
+        midpoint = -(-len(entries) // 2)
+        return {'red': entries[:midpoint], 'blue': entries[midpoint:]}
+
+    @staticmethod
+    def _parse_timer(raw) -> Optional[float]:
+        if raw is None:
+            return None
+        s = str(raw).strip()
+        if not s:
+            return None
+        if ':' in s:
+            try:
+                minutes, seconds = s.split(':', 1)
+                return float(minutes) * 60.0 + float(seconds)
+            except ValueError:
+                return None
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
     async def _check_match_end(self, port: int):
         if not self.players_active.get(port):
             return
         data = self.get_server_data(port)
         if not data:
             return
-        try:
-            timer = float(data['timer'])
-        except (ValueError, KeyError):
+        timer = self._parse_timer(data.get('timer'))
+        if timer is None:
             return
 
         prev = self.last_timer.get(port, 0.0)
@@ -250,10 +291,16 @@ class ServerActions(commands.Cog):
         if timer <= 0 and prev > 0 and not self.score_posted.get(port, False):
             ranked_cog = self.bot.get_cog('Ranked')
             if not ranked_cog:
+                logger.warning(f"[match_end] port {port}: Ranked cog not found")
                 return
             match = ranked_cog.find_match_by_port(port)
-            if not match or not match.password_channel_id:
+            if not match:
+                logger.warning(f"[match_end] port {port}: no match found for port")
                 return
+            if not match.password_channel_id:
+                logger.warning(f"[match_end] port {port}: match has no password_channel_id")
+                return
+            logger.info(f"[match_end] port {port}: posting scores (prev={prev}, timer={timer})")
             await self._post_match_scores(port, data, match)
             self.score_posted[port] = True
 
@@ -265,20 +312,35 @@ class ServerActions(commands.Cog):
             red = int(float(data['Score_R']))
             blue = int(float(data['Score_B']))
             if red > blue:
-                winner = "🟥 Red wins!"
-                color_line = "🟥"
+                result = "🟥 Red wins"
+                color = discord.Color(0xE74C3C)
             elif blue > red:
-                winner = "🟦 Blue wins!"
-                color_line = "🟦"
+                result = "🟦 Blue wins"
+                color = discord.Color(0x3498DB)
             else:
-                winner = "Tie!"
-                color_line = "⚪"
-            await channel.send(
-                f"**Match Over — {match.full_game_name}**\n"
-                f"🟥 Red — **{red}**\n"
-                f"🟦 Blue — **{blue}**\n\n"
-                f"{color_line} **{winner}**"
+                result = "🤝 Tie"
+                color = discord.Color(0x95A5A6)
+
+            embed = discord.Embed(
+                title=f"🏁 {match.full_game_name} — Match Over",
+                description=f"## 🟥 `{red:>3}`  —  `{blue:<3}` 🟦\n**{result}**",
+                color=color,
+                timestamp=datetime.now(timezone.utc),
             )
+
+            opr = self._read_opr(port)
+            if opr:
+                def fmt(entries):
+                    if not entries:
+                        return "—"
+                    name_w = max(len(n) for n, _ in entries)
+                    rows = [f"{name:<{name_w}}  {score:>6g}"
+                            for name, score in sorted(entries, key=lambda e: -e[1])]
+                    return "```\n" + "\n".join(rows) + "\n```"
+                embed.add_field(name="🟥 Red OPR", value=fmt(opr['red']), inline=True)
+                embed.add_field(name="🟦 Blue OPR", value=fmt(opr['blue']), inline=True)
+
+            await channel.send(embed=embed)
         except Exception as e:
             logger.error(f"Error posting match scores for port {port}: {e}")
 
