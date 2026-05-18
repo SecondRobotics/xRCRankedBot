@@ -905,41 +905,56 @@ class Ranked(commands.Cog):
 
         logger.info(f"Displaying teams for {match.game_type}")
 
-        self.category = self.category or get(
-            ctx.guild.categories, id=CATEGORY_ID)
+        self.category = self.category or get(ctx.guild.categories, id=CATEGORY_ID)
         self.staff = self.staff or get(ctx.guild.roles, id=EVENT_STAFF_ID)
         self.bots = self.bots or get(ctx.guild.roles, id=BOTS_ROLE_ID)
 
-        logger.info(f"Getting IP for {match.game_type}")
-
-        red_field = "\n".join(
-            [f"🟥{player.mention}" for player in match.game.red])
-        blue_field = "\n".join(
-            [f"🟦{player.mention}" for player in match.game.blue])
-
-        # Create password channel if it doesn't exist
         port_suffix = match.server_port % 1000 if match.server_port else random.randint(100, 999)
-        password_channel = ctx.guild.get_channel(PASSWORD_CHANNEL_ID)
-        if not password_channel:
-            # Create channel permissions
+
+        # Snapshot into lists so ELO index alignment is guaranteed across awaits
+        red_players = list(match.game.red)
+        blue_players = list(match.game.blue)
+        elo_tasks = [fetch_player_elo(match.api_short, p.id) for p in red_players + blue_players]
+
+        # Run password channel creation and all ELO fetches in parallel
+        existing_channel = ctx.guild.get_channel(PASSWORD_CHANNEL_ID)
+        if existing_channel:
+            password_channel = existing_channel
+            all_elos = list(await asyncio.gather(*elo_tasks))
+        else:
             overwrites = {
                 ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 self.staff: discord.PermissionOverwrite(read_messages=True),
                 match.red_role: discord.PermissionOverwrite(read_messages=True),
                 match.blue_role: discord.PermissionOverwrite(read_messages=True),
-                ctx.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)  # Add bot permissions
+                ctx.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
             }
-
-            # Create the channel
-            password_channel = await ctx.guild.create_text_channel(
-                f"server-password-{match.api_short}-{port_suffix}",
-                category=self.category,
-                overwrites=overwrites
+            results = await asyncio.gather(
+                ctx.guild.create_text_channel(
+                    f"server-password-{match.api_short}-{port_suffix}",
+                    category=self.category,
+                    overwrites=overwrites
+                ),
+                *elo_tasks
             )
-            # Store the password channel ID
+            password_channel = results[0]
+            all_elos = list(results[1:])
             match.password_channel_id = password_channel.id
 
-        # Create server info embed
+        # Split ELOs back into red/blue using the same lists
+        n_red = len(red_players)
+        red_elos = all_elos[:n_red]
+        blue_elos = all_elos[n_red:]
+
+        avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
+        avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
+
+        red_field = "\n".join(
+            [f"🟥{p.mention} `{red_elos[i]:.0f}`" for i, p in enumerate(red_players)])
+        blue_field = "\n".join(
+            [f"🟦{p.mention} `{blue_elos[i]:.0f}`" for i, p in enumerate(blue_players)])
+
+        # Build both embeds
         server_info_embed = discord.Embed(
             color=0x34dceb,
             title=f"Server Information for {match.full_game_name}",
@@ -947,38 +962,9 @@ class Ranked(commands.Cog):
                        f"|| IP: {ip} Port: {match.server_port} ||"
         )
         server_info_embed.set_thumbnail(url=match.game_icon)
+        server_info_embed.add_field(name=f'RED (Avg: {avg_red_elo:.0f})', value=red_field, inline=True)
+        server_info_embed.add_field(name=f'BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
 
-        # Fetch ELOs concurrently
-        red_elo_tasks = [fetch_player_elo(
-            match.api_short, player.id) for player in match.game.red]
-        blue_elo_tasks = [fetch_player_elo(
-            match.api_short, player.id) for player in match.game.blue]
-
-        red_elos = await asyncio.gather(*red_elo_tasks)
-        blue_elos = await asyncio.gather(*blue_elo_tasks)
-
-        # Calculate average ELO
-        avg_red_elo = sum(red_elos) / len(red_elos) if red_elos else 0
-        avg_blue_elo = sum(blue_elos) / len(blue_elos) if blue_elos else 0
-
-        # Build player fields with ELOs
-        red_field = "\n".join(
-            [f"🟥{player.mention} `{red_elos[i]:.0f}`" for i, player in enumerate(match.game.red)])
-        blue_field = "\n".join(
-            [f"🟦{player.mention} `{blue_elos[i]:.0f}`" for i, player in enumerate(match.game.blue)])
-
-        server_info_embed.add_field(
-            name=f'RED (Avg: {avg_red_elo:.0f})', value=red_field, inline=True)
-        server_info_embed.add_field(
-            name=f'BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
-        
-        # Post server info in password channel
-        await password_channel.send(
-            f"{match.red_role.mention} {match.blue_role.mention}",
-            embed=server_info_embed
-        )
-
-        # Create teams embed for queue channel
         teams_embed = discord.Embed(
             color=0x34dceb,
             title=f"Teams have been picked for {match.full_game_name}!",
@@ -986,13 +972,14 @@ class Ranked(commands.Cog):
                        f"[Adjust Display Name](https://secondrobotics.org/user/settings/) | [Leaderboard](https://secondrobotics.org/ranked/{match.api_short})"
         )
         teams_embed.set_thumbnail(url=match.game_icon)
+        teams_embed.add_field(name=f'RED (Avg: {avg_red_elo:.0f})', value=red_field, inline=True)
+        teams_embed.add_field(name=f'BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
 
-        teams_embed.add_field(
-            name=f'RED (Avg: {avg_red_elo:.0f})', value=red_field, inline=True)
-        teams_embed.add_field(
-            name=f'BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
-
-        await queue_channel.send(content=f"{match.red_role.mention} {match.blue_role.mention}", embed=teams_embed)
+        # Send to both channels in parallel
+        await asyncio.gather(
+            password_channel.send(f"{match.red_role.mention} {match.blue_role.mention}", embed=server_info_embed),
+            queue_channel.send(content=f"{match.red_role.mention} {match.blue_role.mention}", embed=teams_embed)
+        )
 
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
                           match.red_role: discord.PermissionOverwrite(connect=True),
@@ -1005,11 +992,9 @@ class Ranked(commands.Cog):
 
         if match.game_size != 2:
             try:
-                # Ensure the roles exist before creating channels
                 if not match.red_role or not match.blue_role:
                     raise ValueError("Team roles are not properly set")
 
-                # Create the voice channels with proper error handling
                 match.red_channel, match.blue_channel = await asyncio.gather(
                     ctx.guild.create_voice_channel(f"🟥{match.full_game_name} {port_suffix}🟥", category=self.category, overwrites=overwrites_red),
                     ctx.guild.create_voice_channel(f"🟦{match.full_game_name} {port_suffix}🟦", category=self.category, overwrites=overwrites_blue)
@@ -1036,7 +1021,7 @@ class Ranked(commands.Cog):
 
         await asyncio.gather(*tasks, return_exceptions=True)
 
-        await self.update_ranked_display()
+        asyncio.create_task(self.update_ranked_display())
 
     async def do_clear_match(self, guild: discord.Guild, match: XrcGame):
         if match.server_port:
