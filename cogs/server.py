@@ -72,7 +72,7 @@ class ServerActions(commands.Cog):
 
     async def monitor_logs(self):
         while True:
-            for port, process in self.servers_active.items():
+            for port, process in list(self.servers_active.items()):
                 log_path = f"{SERVER_LOGS_DIR}{port}.log"
 
                 if port not in self.log_read_positions:

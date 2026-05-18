@@ -1886,7 +1886,7 @@ async def setup(bot: commands.Bot) -> None:
 
 async def shutdown_server_inactivity(server: int):
     for queue in game_queues.values():
-        for match in queue.matches:
+        for match in list(queue.matches):
             if match.server_port == server:
                 if cog and guild:
                     await cog.do_clear_match(guild, match)
