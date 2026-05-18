@@ -72,6 +72,7 @@ class ServerActions(commands.Cog):
         self.score_posted = {}
         self.chat_discord_buffer = []
         self.server_data_cache = {}
+        self.chat_header_posted: set = set()
         self.bot.loop.create_task(self.monitor_logs())
         self.bot.loop.create_task(self._flush_chat_buffer())
 
@@ -198,7 +199,18 @@ class ServerActions(commands.Cog):
         RESET = "\x1b[0m"
         DIM_CYAN = "\x1b[2;36m"
         BOLD_YELLOW = "\x1b[1;33m"
+        BOLD_GREEN = "\x1b[1;32m"
         DIM = "\x1b[2m"
+
+        if port not in self.chat_header_posted:
+            self.chat_header_posted.add(port)
+            sep = "─" * 44
+            self.chat_discord_buffer.append(
+                f"{BOLD_GREEN}{sep}\n"
+                f"  🟢  {game_name} {game_format}  ·  Port {port}\n"
+                f"{sep}{RESET}"
+            )
+
         header = f"{DIM_CYAN}[{port} | {game_name} {game_format}]{RESET}"
         user_part = f"{BOLD_YELLOW}{username}{RESET}"
         ip_part = f" {DIM}({ip}){RESET}" if ip else ""
@@ -462,6 +474,7 @@ class ServerActions(commands.Cog):
         self.server_games.pop(port, None)
         self.log_read_positions.pop(port, None)
         self.last_timer.pop(port, None)
+        self.chat_header_posted.discard(port)
         self.score_posted.pop(port, None)
         self.server_data_cache.pop(port, None)
 
