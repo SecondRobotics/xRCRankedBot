@@ -814,22 +814,23 @@ class Ranked(commands.Cog):
 
         # Convert the set to a list before using random.sample
         players_list = list(match.game.players)
-        
-        # Assign players to red team and give them the red role
+
         red = random.sample(players_list, int(match.team_size))
+        blue = [player for player in players_list if player not in red]
+
         for player in red:
             match.game.add_to_red(player)
-            # Only add roles to real members
-            if not is_mock_member(player):
-                await player.add_roles(match.red_role)
-
-        # Assign remaining players to blue team and give them the blue role
-        blue = [player for player in players_list if player not in red]
         for player in blue:
             match.game.add_to_blue(player)
-            # Only add roles to real members
+
+        role_tasks = []
+        for player in red:
             if not is_mock_member(player):
-                await player.add_roles(match.blue_role)
+                role_tasks.append(player.add_roles(match.red_role))
+        for player in blue:
+            if not is_mock_member(player):
+                role_tasks.append(player.add_roles(match.blue_role))
+        await asyncio.gather(*role_tasks, return_exceptions=True)
 
         # Remove players from other queues
         all_players = red + blue
