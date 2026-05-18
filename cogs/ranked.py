@@ -1871,19 +1871,18 @@ class Ranked(commands.Cog):
 
     @tasks.loop(minutes=10)
     async def check_queue_joins(self):
-        cutoff_time = datetime.now() - timedelta(hours=1)
+        cutoff_time = datetime.now() - timedelta(minutes=30)
 
         for (queue, player), timestamp in queue_joins.copy().items():
             if timestamp < cutoff_time:
+                queue_joins.pop((queue, player), None)
                 if player in queue:
                     queue.remove(player)
                     try:
                         await player.send(
-                            "You have been removed from a queue because you have been in the queue for more than 1 hour.")
+                            "You have been removed from a queue because you have been in the queue for more than 30 minutes.")
                     except discord.HTTPException:
                         pass
-                else:
-                    queue_joins.pop((queue, player))
 
         await self.update_ranked_display()
 
