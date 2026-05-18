@@ -802,10 +802,10 @@ class Ranked(commands.Cog):
             return
 
         # Create roles before assigning players to teams
-        match.red_role = await interaction.guild.create_role(
-            name=f"Red {match.full_game_name}", colour=discord.Color(0xFF0000))
-        match.blue_role = await interaction.guild.create_role(
-            name=f"Blue {match.full_game_name}", colour=discord.Color(0x0000FF))
+        match.red_role, match.blue_role = await asyncio.gather(
+            interaction.guild.create_role(name=f"Red {match.full_game_name}", colour=discord.Color(0xFF0000)),
+            interaction.guild.create_role(name=f"Blue {match.full_game_name}", colour=discord.Color(0x0000FF))
+        )
 
         # Set a unique match ID using the role IDs
         match.current_match_id = f"{match.red_role.id}-{match.blue_role.id}"
