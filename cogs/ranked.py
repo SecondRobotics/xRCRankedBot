@@ -1818,23 +1818,19 @@ class Ranked(commands.Cog):
         # Get lobby channel
         lobby = self.bot.get_channel(LOBBY_VC_ID)
         
-        # Handle each channel sequentially
-        for channel in [current_match.red_channel, current_match.blue_channel]:
-            if channel:
-                try:
-                    # Move members one at a time
-                    for member in channel.members:
-                        try:
-                            await member.move_to(lobby)
-                        except Exception as e:
-                            logger.error(f"Error moving member {member.name}: {e}")
-                    
-                    # Delete the channel after members are moved
-                    await channel.delete()
-                except discord.NotFound:
-                    logger.warning(f"Channel {channel.name} was already deleted")
-                except Exception as e:
-                    logger.error(f"Error handling channel {channel.name}: {e}")
+        channels = [c for c in [current_match.red_channel, current_match.blue_channel] if c]
+
+        move_tasks = [
+            member.move_to(lobby)
+            for channel in channels
+            for member in channel.members
+        ]
+        await asyncio.gather(*move_tasks, return_exceptions=True)
+
+        await asyncio.gather(
+            *[channel.delete() for channel in channels],
+            return_exceptions=True
+        )
 
         # Delete password channel
         try:
