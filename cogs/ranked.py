@@ -640,7 +640,7 @@ class Ranked(commands.Cog):
 
     async def add_player_to_queue(self, player: discord.Member, qdata: Queue, interaction: discord.Interaction, player_info=None):
         qdata._queue.put(player)
-        await self.update_ranked_display()
+        asyncio.create_task(self.update_ranked_display())
         display_name = player_info['display_name'] if player_info else player.display_name
         followup = await interaction.followup.send(
             f"🟢 **{display_name}** 🟢\nadded to queue for [{qdata.full_game_name}](https://secondrobotics.org/ranked/{qdata.api_short})."
@@ -782,8 +782,8 @@ class Ranked(commands.Cog):
             logger.info(f"Removed {player.name} from {queue.full_game_name}")
 
         message = " ".join(message_parts)
-        
-        await self.update_ranked_display()
+
+        asyncio.create_task(self.update_ranked_display())
         await interaction.response.send_message(message, ephemeral=True, delete_after=30)
         await queue_channel.send(message)
 
@@ -1170,7 +1170,7 @@ class Ranked(commands.Cog):
     async def add_player_to_vote_queue(self, player: discord.Member, queue: Queue, preferred_game: str, interaction: discord.Interaction, player_info=None):
         queue._queue.put((player, preferred_game))
         display_name = player_info['display_name'] if player_info else player.display_name
-        await self.update_ranked_display()
+        asyncio.create_task(self.update_ranked_display())
         await interaction.followup.send(
             f"🟢 **{display_name}** 🟢\nadded to {queue.full_game_name} queue with preferred game: {preferred_game}. "
             f"({queue._queue.qsize()}/{queue.alliance_size * 2})",
