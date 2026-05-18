@@ -58,6 +58,10 @@ class ServerActions(commands.Cog):
     last_timer: Dict[int, float] = {}
     score_posted: Dict[int, bool] = {}
     chat_discord_buffer: List[str] = []
+    server_data_cache: Dict[int, Optional[dict]] = {}
+    _CHAT_RE = re.compile(r"^(\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M): (\w+): (.+)\.$")
+    _JOIN_RE = re.compile(r"Player (\w+) joined on position (.+) from IP=(\d+\.\d+\.\d+\.\d+).")
+    _LEAVE_RE = re.compile(r"Removing (\w+)")
 
     def __init__(self, bot):
         self.bot = bot
@@ -67,6 +71,7 @@ class ServerActions(commands.Cog):
         self.last_timer = {}
         self.score_posted = {}
         self.chat_discord_buffer = []
+        self.server_data_cache = {}
         self.bot.loop.create_task(self.monitor_logs())
         self.bot.loop.create_task(self._flush_chat_buffer())
 
@@ -107,14 +112,13 @@ class ServerActions(commands.Cog):
                 except Exception as e:
                     logger.error(f"Error reading log file for port {port}: {e}")
 
+                self.server_data_cache[port] = self.get_server_data(port)
                 await self._check_match_end(port)
 
             await asyncio.sleep(1)
 
     def parse_log_line(self, port: int, line: str):
-        # Chat message pattern (matches the entire line)
-        chat_pattern = r"^(\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M): (\w+): (.+)\.$"
-        chat_match = re.match(chat_pattern, line)
+        chat_match = self._CHAT_RE.match(line)
         if chat_match:
             timestamp_str, username, chat_message = chat_match.groups()
             self.log_chat_message(port, timestamp_str, username, chat_message)
@@ -141,10 +145,7 @@ class ServerActions(commands.Cog):
             self.players_active[port].clear()  # Clear existing players
             return
 
-        join_pattern = r"Player (\w+) joined on position (.+) from IP=(\d+\.\d+\.\d+\.\d+)."
-        leave_pattern = r"Removing (\w+)"
-
-        join_match = re.search(join_pattern, message)
+        join_match = self._JOIN_RE.search(message)
         if join_match:
             name, position, ip = join_match.groups()
             player = Player(name=name, join_time=timestamp, position=position, ip=ip)  # Use log timestamp
@@ -152,7 +153,7 @@ class ServerActions(commands.Cog):
             self.players_active.setdefault(port, []).append(player)
             return
 
-        leave_match = re.match(leave_pattern, message)
+        leave_match = self._LEAVE_RE.match(message)
         if leave_match:
             name = leave_match.group(1)
             logger.info(f"{port} - Player {name} left server")
@@ -274,7 +275,7 @@ class ServerActions(commands.Cog):
     async def _check_match_end(self, port: int):
         if not self.players_active.get(port):
             return
-        data = self.get_server_data(port)
+        data = self.server_data_cache.get(port)
         if not data:
             return
         timer = self._parse_timer(data.get('timer'))
@@ -462,16 +463,12 @@ class ServerActions(commands.Cog):
         self.log_read_positions.pop(port, None)
         self.last_timer.pop(port, None)
         self.score_posted.pop(port, None)
+        self.server_data_cache.pop(port, None)
 
         # Delete server data directory for the port being shut down
         output_dir = os.path.join(SERVER_GAME_DATA_DIR, str(port))
         if os.path.exists(output_dir):
-            for root, dirs, files in os.walk(output_dir, topdown=False):
-                for name in files:
-                    os.remove(os.path.join(root, name))
-                for name in dirs:
-                    os.rmdir(os.path.join(root, name))
-            os.rmdir(output_dir)
+            shutil.rmtree(output_dir)
             logger.info(f"Deleted server data directory for port {port}")
 
         logger.info(f"Server on port {port} shut down")
@@ -508,7 +505,7 @@ class ServerActions(commands.Cog):
     
     async def server_watch_task(self, port: int, message: discord.Message):
         while port in self.servers_active:
-            data = self.get_server_data(port)
+            data = self.server_data_cache.get(port)
             if data:
                 embed = discord.Embed(
                     title=f"🖥️ Server Watch for Port {port}",

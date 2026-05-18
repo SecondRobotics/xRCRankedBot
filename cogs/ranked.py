@@ -854,19 +854,10 @@ class Ranked(commands.Cog):
         return None
 
     def find_match_by_player(self, player: discord.Member):
-        logger.info(f"Searching for match containing player: {player.name}")
         for queue in game_queues.values():
-            logger.info(f"Checking queue: {queue.game_type}")
             for match in queue.matches:
-                logger.info(f"Checking match: {match}")
-                if match.game:
-                    logger.info(f"Match game: {match.game}")
-                    logger.info(f"Red team: {match.game.red}")
-                    logger.info(f"Blue team: {match.game.blue}")
                 if isinstance(match, XrcGame) and match.game and (player in match.game.red or player in match.game.blue):
-                    logger.info(f"Found match for player {player.name}")
                     return match
-        logger.info(f"No match found for player {player.name}")
         return None
 
     async def display_teams(self, ctx, match: XrcGame):
@@ -1084,14 +1075,7 @@ class Ranked(commands.Cog):
             return
         logger.info(f"{interaction.user.name} called /queue with mode {mode} and game {game}")
         
-        # Get fresh game data
-        try:
-            async with self._get_session().get("https://secondrobotics.org/api/ranked/") as resp:
-                games_data = await resp.json()
-        except Exception as e:
-            logger.error(f"Failed to fetch games data: {e}")
-            await interaction.followup.send("Error: Could not validate game selection. Please try again.", ephemeral=True)
-            return
+        games_data = games
 
         # Validate game exists and supports the selected mode
         game_short_code = short_codes.get(game, '')
