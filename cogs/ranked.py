@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import TextIOWrapper
 import subprocess
 from typing import Dict, Optional
@@ -230,6 +230,7 @@ class XrcGame:
         self.last_ping_time = None  # type: datetime | None
         self.players = []
         self.password_channel_id = None  # type: int | None
+        self.elo_history: list = []
 
         try:
             self.game_icon = game_logos[game]
@@ -970,7 +971,7 @@ class Ranked(commands.Cog):
         teams_embed.add_field(
             name=f'BLUE (Avg: {avg_blue_elo:.0f})', value=blue_field, inline=True)
 
-        await queue_channel.send(embed=teams_embed)
+        await queue_channel.send(content=f"{match.red_role.mention} {match.blue_role.mention}", embed=teams_embed)
 
         overwrites_red = {ctx.guild.default_role: discord.PermissionOverwrite(connect=False),
                           match.red_role: discord.PermissionOverwrite(connect=True),
@@ -1014,7 +1015,6 @@ class Ranked(commands.Cog):
 
         await asyncio.gather(*tasks, return_exceptions=True)
 
-        await queue_channel.send(f"{match.red_role.mention} {match.blue_role.mention}", delete_after=30)
         await self.update_ranked_display()
 
     async def do_clear_match(self, guild: discord.Guild, match: XrcGame):
@@ -1631,15 +1631,17 @@ class Ranked(commands.Cog):
     ))
     async def submit(self, interaction: discord.Interaction, red_score: int, blue_score: int):
         logger.info(f"{interaction.user.name} called /submit")
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
-        # Find the current match and queue data
         qdata, current_match = self.find_current_match(interaction.user.roles)
         if not qdata or not current_match:
             await interaction.followup.send("You are ineligible to submit!", ephemeral=True)
             return
 
-        if not self.is_valid_queue_channel(interaction, False):
+        in_queue_channel = self.is_valid_queue_channel(interaction, False)
+        in_password_channel = (current_match.password_channel_id and
+                               interaction.channel.id == current_match.password_channel_id)
+        if not in_queue_channel and not in_password_channel:
             await interaction.followup.send(QUEUE_CHANNEL_ERROR_MSG, ephemeral=True)
             return
 
@@ -1652,9 +1654,7 @@ class Ranked(commands.Cog):
             return
 
         self.update_series_score(current_match, red_score, blue_score)
-        
         gg, result_message = self.check_series_end(current_match)
-        await interaction.followup.send(result_message)
 
         response = await self.submit_score_to_api(current_match, red_score, blue_score)
         if response is None:
@@ -1663,13 +1663,18 @@ class Ranked(commands.Cog):
                 await self.handle_game_end(interaction, qdata, current_match, None)
             return
 
+        current_match.elo_history.append(response)
         embed = self.create_score_embed(current_match, red_score, blue_score, response)
 
+        password_channel = (interaction.guild.get_channel(current_match.password_channel_id)
+                            if current_match.password_channel_id else None)
+        await (password_channel or interaction.channel).send(embed=embed)
+        await interaction.followup.send(result_message, ephemeral=True)
+
         if gg:
-            await interaction.channel.send(embed=embed)
+            if password_channel:
+                await password_channel.send(embed=self.create_series_summary_embed(current_match))
             await self.handle_game_end(interaction, qdata, current_match, embed)
-        else:
-            await interaction.channel.send(embed=embed)
 
     # Helper methods
     def find_current_match(self, user_roles):
@@ -1731,6 +1736,35 @@ class Ranked(commands.Cog):
                             value=players,
                             inline=True)
         logger.info(f"embed created at {current_match.red_series}-{current_match.blue_series}")
+        return embed
+
+    def create_series_summary_embed(self, match: XrcGame) -> discord.Embed:
+        if match.red_series > match.blue_series:
+            winner, color = "🟥 Red", discord.Color(0xE74C3C)
+        else:
+            winner, color = "🟦 Blue", discord.Color(0x3498DB)
+
+        embed = discord.Embed(
+            title=f"Series Complete — {match.full_game_name}",
+            description=f"**{winner} wins {match.red_series}–{match.blue_series}**",
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.set_thumbnail(url=match.game_icon)
+
+        history = [r for r in match.elo_history if r]
+        if history:
+            red_names = history[0].get('red_display_names', [])
+            blue_names = history[0].get('blue_display_names', [])
+            red_totals = [sum(r['red_elo_changes'][i] for r in history) for i in range(len(red_names))]
+            blue_totals = [sum(r['blue_elo_changes'][i] for r in history) for i in range(len(blue_names))]
+
+            def fmt(names, totals):
+                return "\n".join(f"{name}  `{'%+.1f' % t}`" for name, t in zip(names, totals)) or "—"
+
+            embed.add_field(name="🟥 Red", value=fmt(red_names, red_totals), inline=True)
+            embed.add_field(name="🟦 Blue", value=fmt(blue_names, blue_totals), inline=True)
+
         return embed
 
     async def handle_game_end(self, interaction, qdata, current_match, embed):
