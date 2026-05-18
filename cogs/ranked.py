@@ -595,7 +595,7 @@ class Ranked(commands.Cog):
         await self.add_player_to_queue(player, qdata, interaction, player_info)
         await self.check_queue_status(qdata, interaction)
 
-    async def validate_player(self, interaction: discord.Interaction, game: str) -> tuple:
+    async def validate_player(self, interaction: discord.Interaction, game: str) -> tuple[bool, dict | None]:
         res = await self.get_player_info(interaction.user.id)
         if res is None:
             await interaction.followup.send("Could not reach the ranked API. Please try again.", ephemeral=True)
@@ -715,6 +715,8 @@ class Ranked(commands.Cog):
             logger.error(f"Failed to fetch player info for {player_id}: {e}")
             return None
 
+        if len(_player_cache) > 500:
+            _player_cache.clear()
         _player_cache[player_id] = (data, datetime.now())
         return data
 
@@ -1049,16 +1051,19 @@ class Ranked(commands.Cog):
             logger.error(f"Error removing roles: {str(e)}")
 
         lobby = self.bot.get_channel(LOBBY_VC_ID)
-        for channel in [match.red_channel, match.blue_channel]:
-            if channel:
-                try:
-                    for member in channel.members:
-                        await member.move_to(lobby)
-                    await channel.delete()
-                except discord.errors.NotFound:
-                    logger.warning(f"Channel {channel.name} not found, it may have already been deleted.")
-                except Exception as e:
-                    logger.error(f"Error handling channel {channel.name}: {str(e)}")
+        channels = [c for c in [match.red_channel, match.blue_channel] if c]
+
+        move_tasks = [
+            member.move_to(lobby)
+            for channel in channels
+            for member in channel.members
+        ]
+        await asyncio.gather(*move_tasks, return_exceptions=True)
+
+        await asyncio.gather(
+            *[channel.delete() for channel in channels],
+            return_exceptions=True
+        )
 
         # Delete password channel
         try:
@@ -1522,7 +1527,7 @@ class Ranked(commands.Cog):
                     f"*({len(vote_queue._queue.vote_queue)}/{vote_queue.alliance_size * 2})*"
                 )
                 await interaction.response.send_message(message, ephemeral=False)
-                await self.update_ranked_display()
+                asyncio.create_task(self.update_ranked_display())
             else:
                 await interaction.response.send_message("You aren't in this queue.", ephemeral=True)
         except Exception as e:
@@ -1569,7 +1574,7 @@ class Ranked(commands.Cog):
                     f"(Preferred game was: {preferred_game}). "
                     f"*({len(vote_queue._queue.vote_queue)}/{vote_queue.alliance_size * 2})*"
                 )
-                await self.update_ranked_display()
+                asyncio.create_task(self.update_ranked_display())
                 await interaction.response.send_message(message)
             else:
                 await interaction.response.send_message(f"{player.display_name} is not in the {size}v{size} vote queue.", ephemeral=True)
@@ -1808,16 +1813,10 @@ class Ranked(commands.Cog):
         return embed
 
     async def handle_game_end(self, interaction, qdata, current_match, embed):
-        # Delete roles first
-        try:
-            await current_match.red_role.delete()
-            await current_match.blue_role.delete()
-        except Exception as e:
-            logger.error(f"Error deleting roles: {e}")
-
         # Get lobby channel
         lobby = self.bot.get_channel(LOBBY_VC_ID)
-        
+
+        # Move all members to lobby, then delete voice channels
         channels = [c for c in [current_match.red_channel, current_match.blue_channel] if c]
 
         move_tasks = [
@@ -1841,6 +1840,16 @@ class Ranked(commands.Cog):
                     logger.info(f"Deleted password channel with ID: {current_match.password_channel_id}")
         except Exception as e:
             logger.error(f"Error deleting password channel: {e}")
+
+        # Delete roles after channels are cleaned up
+        try:
+            await asyncio.gather(
+                current_match.red_role.delete(),
+                current_match.blue_role.delete(),
+                return_exceptions=True
+            )
+        except Exception as e:
+            logger.error(f"Error deleting roles: {e}")
 
         # Stop the server if it exists
         if current_match.server_port:
