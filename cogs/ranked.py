@@ -1842,14 +1842,14 @@ class Ranked(commands.Cog):
             logger.error(f"Error deleting password channel: {e}")
 
         # Delete roles after channels are cleaned up
-        try:
-            await asyncio.gather(
-                current_match.red_role.delete(),
-                current_match.blue_role.delete(),
-                return_exceptions=True
-            )
-        except Exception as e:
-            logger.error(f"Error deleting roles: {e}")
+        role_delete_results = await asyncio.gather(
+            current_match.red_role.delete(),
+            current_match.blue_role.delete(),
+            return_exceptions=True
+        )
+        for r in role_delete_results:
+            if isinstance(r, Exception):
+                logger.error(f"Error deleting role: {r}")
 
         # Stop the server if it exists
         if current_match.server_port:
