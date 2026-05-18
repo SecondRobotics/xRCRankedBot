@@ -845,7 +845,7 @@ class Ranked(commands.Cog):
 
         # Also remove from vote queues
         for vote_queue in [self.vote_queue_3v3, self.vote_queue_2v2, self.vote_queue_1v1]:
-            vote_queue._queue.queue = [entry for entry in vote_queue._queue.queue if entry[0] not in all_players]
+            vote_queue._queue.vote_queue = [entry for entry in vote_queue._queue.vote_queue if entry[0] not in all_players]
 
         # Code from start_match
         match.red_series = 0
@@ -1045,11 +1045,6 @@ class Ranked(commands.Cog):
 
         match.red_series = match.blue_series = 2
 
-        try:
-            await remove_roles(guild, match)
-        except Exception as e:
-            logger.error(f"Error removing roles: {str(e)}")
-
         lobby = self.bot.get_channel(LOBBY_VC_ID)
         channels = [c for c in [match.red_channel, match.blue_channel] if c]
 
@@ -1074,6 +1069,15 @@ class Ranked(commands.Cog):
                     logger.info(f"Deleted password channel with ID: {match.password_channel_id}")
         except Exception as e:
             logger.error(f"Error deleting password channel: {e}")
+
+        # Delete roles after channels are cleaned up
+        role_delete_results = await asyncio.gather(
+            *[role.delete() for role in [match.red_role, match.blue_role] if role],
+            return_exceptions=True
+        )
+        for r in role_delete_results:
+            if isinstance(r, Exception):
+                logger.error(f"Error deleting role: {r}")
 
         # Remove the match from the queue
         for queue in game_queues.values():
