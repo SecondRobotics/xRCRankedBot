@@ -428,6 +428,8 @@ class Ranked(commands.Cog):
         self.bots = None  # type: discord.Role | None
         self.bot = bot
         self.ranked_display = None
+        self.elo_display = None  # type: discord.Message | None
+        self.session_elo: dict[int, tuple[str, float]] = {}
         self.session = None  # type: aiohttp.ClientSession | None
         self.check_queue_joins.start()
         self.lobby = self.bot.get_channel(LOBBY_VC_ID)
@@ -561,7 +563,8 @@ class Ranked(commands.Cog):
 
             qstatus_channel = get(self.bot.get_all_channels(), id=QUEUE_STATUS_CHANNEL_ID)
             async for msg in qstatus_channel.history(limit=None):
-                if msg.author.id == self.bot.user.id:
+                if (msg.author.id == self.bot.user.id and msg.embeds
+                        and msg.embeds[0].title == "xRC Sim Ranked Queues"):
                     self.ranked_display = msg
                     logger.info("Found Ranked Queue Display")
                     break
@@ -620,6 +623,55 @@ class Ranked(commands.Cog):
         except Exception as e:
             logger.error(e)
             self.ranked_display = None
+
+    def _accumulate_session_elo(self, response):
+        for side in ('red', 'blue'):
+            names = response.get(f'{side}_display_names', [])
+            players = response.get(f'{side}_player_elos', [])
+            changes = response.get(f'{side}_elo_changes', [])
+            for name, player, change in zip(names, players, changes):
+                uid = player['player']
+                _, prev_total = self.session_elo.get(uid, (name, 0.0))
+                self.session_elo[uid] = (name, prev_total + change)
+
+    async def update_elo_display(self):
+        qstatus_channel = get(self.bot.get_all_channels(), id=QUEUE_STATUS_CHANNEL_ID)
+        if qstatus_channel is None:
+            return
+
+        if self.elo_display is None:
+            async for msg in qstatus_channel.history(limit=20):
+                if (msg.author.id == self.bot.user.id and msg.embeds
+                        and msg.embeds[0].title == "Session ELO"):
+                    self.elo_display = msg
+                    break
+
+        embed = discord.Embed(
+            title="Session ELO",
+            description="ELO gains/losses since last bot restart — resets on reboot",
+            color=0x2ECC71,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.set_footer(text="xRC Sim Ranked", icon_url=XRC_SIM_LOGO_URL)
+
+        if not self.session_elo:
+            embed.add_field(name="No games yet", value="Play a match to see ELO changes!", inline=False)
+        else:
+            sorted_players = sorted(self.session_elo.values(), key=lambda x: x[1], reverse=True)
+            lines = [
+                f"{'+'  if total >= 0 else '-'} {name:<20} {total:+.1f}"
+                for name, total in sorted_players
+            ]
+            embed.add_field(name="Players", value="```diff\n" + "\n".join(lines) + "\n```", inline=False)
+
+        if self.elo_display is None:
+            self.elo_display = await qstatus_channel.send(embed=embed)
+        else:
+            try:
+                await self.elo_display.edit(embed=embed)
+            except Exception as e:
+                logger.error(e)
+                self.elo_display = None
 
     async def queue_player(self, interaction: discord.Interaction, game: str, from_button: bool = False):
         logger.info(f"{interaction.user.name} called /q")
@@ -1772,12 +1824,14 @@ class Ranked(commands.Cog):
 
         current_match.elo_history.append(response)
         current_match.game_scores.append((red_score, blue_score))
+        self._accumulate_session_elo(response)
         embed = self.create_score_embed(current_match, red_score, blue_score, response)
 
         password_channel = (interaction.guild.get_channel(current_match.password_channel_id)
                             if current_match.password_channel_id else None)
         await (password_channel or interaction.channel).send(embed=embed)
         await interaction.followup.send(result_message, ephemeral=True)
+        await self.update_elo_display()
 
         if gg:
             summary_embed = self.create_series_summary_embed(current_match)
@@ -1903,7 +1957,10 @@ class Ranked(commands.Cog):
             blue_totals = [sum(r['blue_elo_changes'][i] for r in history) for i in range(len(blue_names))]
 
             def fmt(names, totals):
-                return "\n".join(f"{name}  `{'%+.1f' % t}`" for name, t in zip(names, totals)) or "—"
+                return "\n".join(
+                    f"{name}  ```diff\n{'%+.1f' % t}\n```"
+                    for name, t in zip(names, totals)
+                ) or "—"
 
             embed.add_field(name="🟥 Red", value=fmt(red_names, red_totals), inline=True)
             embed.add_field(name="🟦 Blue", value=fmt(blue_names, blue_totals), inline=True)
