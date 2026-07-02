@@ -99,6 +99,7 @@ server_games = {
     "Push Back": "20",
     "Decode": "21",
     "Rebuilt": "22",
+    "Override":
 }
 
 server_games_choices = [
