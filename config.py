@@ -99,6 +99,7 @@ server_games = {
     "Push Back": "20",
     "Decode": "21",
     "Rebuilt": "22",
+    "Override": "23",
 }
 
 server_games_choices = [
@@ -142,6 +143,7 @@ short_codes = {
     "Push Back": "PB",
     "Decode": "DC",
     "Rebuilt": "RB",
+    "Override": "OR",
 }
 
 default_game_players = {
@@ -169,6 +171,7 @@ default_game_players = {
     "20": 4,
     "21": 4,
     "22": 6,
+    "23": 4,
 }
 
 server_restart_modes = {
@@ -192,4 +195,5 @@ game_logos = {
     "Push Back": "https://v5rc-kb.recf.org/hc/article_attachments/32211108957207",
     "Decode": "https://i.imgur.com/BNlGrth.png",
     "Rebuilt": "https://i.imgur.com/CRJqNjH.png",
+    "Override": "https://imgur.com/a/Wsau5Og"
 }
