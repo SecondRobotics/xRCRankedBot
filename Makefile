@@ -1,7 +1,7 @@
 PYTHON ?= python3.10
 PIPTOOLS := $(PYTHON) -m piptools
 
-.PHONY: deps lock check-lock run
+.PHONY: deps lock check-lock run test
 
 deps:
 	$(PYTHON) -m pip install --upgrade pip setuptools wheel
@@ -21,3 +21,6 @@ check-lock:
 
 run:
 	$(PYTHON) main.py
+
+test:
+	$(PYTHON) -m unittest discover -s tests -v

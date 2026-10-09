@@ -7,6 +7,7 @@ import random
 from datetime import datetime
 import logging
 from config import *
+from game_selection import game_autocomplete, resolve_game_id
 
 logger = logging.getLogger('discord')
 
@@ -983,8 +984,8 @@ class GameHangout(commands.Cog):
         self.active_hangouts = {}  # staff_user_id: HangoutSession
     
     @app_commands.command(description="Create a casual game hangout session (Staff Only)")
-    @app_commands.describe(game="The game to play in the hangout")
-    @app_commands.choices(game=server_games_choices)
+    @app_commands.describe(game="Search for a game or enter its full name")
+    @app_commands.autocomplete(game=game_autocomplete)
     async def hangout_create(self, interaction: discord.Interaction, game: str):
         # Check if user is a Member and has staff permissions
         if not isinstance(interaction.user, discord.Member):
@@ -993,6 +994,14 @@ class GameHangout(commands.Cog):
             
         if not any(role_id in [role.id for role in interaction.user.roles] for role_id in [EVENT_STAFF_ID, TRIAL_STAFF_ID]):
             await interaction.response.send_message("Only staff members can create hangout sessions!", ephemeral=True)
+            return
+
+        game_id = resolve_game_id(game)
+        if game_id is None:
+            await interaction.response.send_message(
+                "Unknown game. Choose a search suggestion or enter a full game name.",
+                ephemeral=True,
+            )
             return
         
         # Check if staff already has an active hangout
@@ -1009,7 +1018,7 @@ class GameHangout(commands.Cog):
         await interaction.response.defer()
         
         # Get game name from the choice value
-        game_name = next((name for name, value in server_games.items() if value == game), "Unknown Game")
+        game_name = next(name for name, value in server_games.items() if value == game_id)
         
         # Create hangout session
         session = HangoutSession(interaction.user, game_name, interaction.guild, self, interaction.channel)
