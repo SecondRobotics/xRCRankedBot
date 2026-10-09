@@ -133,7 +133,7 @@ typing-extensions==4.15.0
     # via
     #   aiosignal
     #   multidict
-urllib3==2.6.3
+urllib3==2.8.0
     # via requests
 yarl==1.23.0
     # via aiohttp
