@@ -1,7 +1,6 @@
 import os
 import logging
 from dotenv import load_dotenv
-from discord.app_commands import Choice
 
 logger = logging.getLogger('discord')
 load_dotenv()
@@ -100,12 +99,8 @@ server_games = {
     "Decode": "21",
     "Rebuilt": "22",
     "Override": "23",
-    "Biobuzz": "23",
+    "Biobuzz": "24",
 }
-
-server_games_choices = [
-    Choice(name=game, value=server_games[game]) for game in server_games.keys()
-]
 
 PORTS = [11115, 11116, 11117, 11118, 11119, 11120]
 

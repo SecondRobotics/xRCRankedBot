@@ -17,3 +17,32 @@ A Discord bot written in Discord.py that runs ranked competitive matches for xRC
 -   Refresh the lock file with `make lock`.
 -   Verify the lock file is up to date with `make check-lock`.
 -   The default Makefile Python is `python3.10`. Override it if needed, for example `make lock PYTHON=python3.11`.
+
+## Game Selection
+
+`/launchserver` and `/hangout_create` search the full game catalog as you type.
+The dropdown shows up to 25 suggestions at a time; type part of a game name
+(for example, `bio` for Biobuzz) to find games outside the initial suggestions.
+You can also submit a full game name without selecting a suggestion. Names
+are case-insensitive, and valid game IDs are accepted as well.
+
+## Testing
+
+After installing the project dependencies, run the automated test suite:
+
+```sh
+make test
+```
+
+Override the Python interpreter if needed, for example `make test PYTHON=python3.11`.
+Or run test discovery directly:
+
+```sh
+python3.10 -m unittest discover -s tests -v
+```
+
+Tests live in `tests/` and use Python's built-in `unittest` framework. Name new
+test modules `test_*.py` so discovery includes them. Tests use dummy configuration
+and mock external effects, so no `.env` file, credentials, or live Discord
+connection is needed. Live Discord API acceptance is checked separately by
+deploying and synchronizing the bot's commands.

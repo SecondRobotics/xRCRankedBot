@@ -17,7 +17,6 @@ from dataclasses import dataclass  # Add import for Player dataclass
 
 from config import (
     server_restart_modes,
-    server_games_choices,
     PORTS,
     server_game_settings,
     default_game_players,
@@ -25,6 +24,7 @@ from config import (
     server_games,
     QUEUE_STATUS_CHANNEL_ID,
 )
+from game_selection import game_autocomplete, resolve_game_id
 
 logger = logging.getLogger('discord')
 
@@ -561,8 +561,9 @@ class ServerActions(commands.Cog):
                     break
             await asyncio.sleep(5)  # Update every 5 seconds
 
-    @app_commands.choices(game=server_games_choices)
+    @app_commands.autocomplete(game=game_autocomplete)
     @app_commands.command(description="Launches a new instance of xRC Sim server", name="launchserver")
+    @app_commands.describe(game="Search for a game or enter its full name")
     @app_commands.checks.has_any_role("Event Staff")
     async def launch_server(self, interaction: discord.Interaction,
                             game: str, comment: str, password: str = "", admin: str = "Admin",
@@ -591,11 +592,20 @@ class ServerActions(commands.Cog):
         """
         logger.info(f"{interaction.user.name} called /launchserver")
 
+        game_id = resolve_game_id(game)
+        if game_id is None:
+            await interaction.response.send_message(
+                "Unknown game. Choose a search suggestion or enter a full game name.",
+                ephemeral=True,
+            )
+            return
+        game = game_id
+
         result, port = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
                                  tournament_mode, start_when_ready, register, spectators, min_players, restart_all, timeout)
 
         if not silent and port != -1:
-            game_type = server_games.get(game, "Unknown")
+            game_type = next(name for name, game_id in server_games.items() if game_id == game)
             asyncio.create_task(self._create_watch_message(port, game_type))
 
         await interaction.response.send_message(result)
