@@ -42,7 +42,7 @@ class GameSelectionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_substring_search(self):
         choices = await game_autocomplete(None, "buzz")
-        self.assertEqual([choice.name for choice in choices], ["Biobuzz"])
+        self.assertEqual([choice.name for choice in choices], ["BioBuzz"])
 
     async def test_unknown_search_has_no_suggestions(self):
         self.assertEqual(await game_autocomplete(None, "not a game"), [])
@@ -70,7 +70,7 @@ class GameSelectionTests(unittest.IsolatedAsyncioTestCase):
 
     def test_biobuzz_has_unique_incremented_id(self):
         self.assertEqual(server_games["Override"], "23")
-        self.assertEqual(server_games["Biobuzz"], "24")
+        self.assertEqual(server_games["BioBuzz"], "24")
         self.assertEqual(len(server_games), len(set(server_games.values())))
 
     async def test_launch_rejects_unknown_game_before_starting_server(self):
@@ -108,7 +108,7 @@ class GameSelectionTests(unittest.IsolatedAsyncioTestCase):
         interaction = make_interaction()
         await ServerActions.launch_server.callback(cog, interaction, "24", "test")
         await asyncio.sleep(0)
-        cog._create_watch_message.assert_awaited_once_with(11115, "Biobuzz")
+        cog._create_watch_message.assert_awaited_once_with(11115, "BioBuzz")
 
     async def test_hangout_normalizes_full_name_and_selected_id(self):
         for value in ("  bIoBuZz  ", "24"):
@@ -118,7 +118,7 @@ class GameSelectionTests(unittest.IsolatedAsyncioTestCase):
                 with patch("cogs.gamehangout.HangoutSession") as session_class:
                     session_class.return_value.create_hangout_resources = AsyncMock(return_value=True)
                     await GameHangout.hangout_create.callback(cog, interaction, value)
-                    self.assertEqual(session_class.call_args.args[1], "Biobuzz")
+                    self.assertEqual(session_class.call_args.args[1], "BioBuzz")
                 self.assertIn(interaction.user.id, cog.active_hangouts)
 
 

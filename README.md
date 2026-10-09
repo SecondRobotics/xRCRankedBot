@@ -22,7 +22,7 @@ A Discord bot written in Discord.py that runs ranked competitive matches for xRC
 
 `/launchserver` and `/hangout_create` search the full game catalog as you type.
 The dropdown shows up to 25 suggestions at a time; type part of a game name
-(for example, `bio` for Biobuzz) to find games outside the initial suggestions.
+(for example, `bio` for BioBuzz) to find games outside the initial suggestions.
 You can also submit a full game name without selecting a suggestion. Names
 are case-insensitive, and valid game IDs are accepted as well.
 

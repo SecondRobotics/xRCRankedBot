@@ -99,7 +99,7 @@ server_games = {
     "Decode": "21",
     "Rebuilt": "22",
     "Override": "23",
-    "Biobuzz": "24",
+    "BioBuzz": "24",
 }
 
 PORTS = [11115, 11116, 11117, 11118, 11119, 11120]
@@ -140,7 +140,7 @@ short_codes = {
     "Decode": "DC",
     "Rebuilt": "RB",
     "Override": "OR",
-    "Biobuzz": "BB",
+    "BioBuzz": "BB",
 }
 
 default_game_players = {
@@ -194,5 +194,5 @@ game_logos = {
     "Decode": "https://i.imgur.com/BNlGrth.png",
     "Rebuilt": "https://i.imgur.com/CRJqNjH.png",
     "Override": "https://imgur.com/a/Wsau5Og",
-    "Biobuzz": "https://imgur.com/a/ADbgmwJ",
+    "BioBuzz": "https://imgur.com/a/ADbgmwJ",
 }
