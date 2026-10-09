@@ -34,6 +34,9 @@ After installing the project dependencies, run the automated test suite:
 make test
 ```
 
+GitHub Actions runs the same suite with Python 3.10 on pushes to any branch and
+on pull requests targeting `main`.
+
 Override the Python interpreter if needed, for example `make test PYTHON=python3.11`.
 Or run test discovery directly:
 
