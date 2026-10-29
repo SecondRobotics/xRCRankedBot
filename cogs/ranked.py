@@ -1,7 +1,5 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
-from io import TextIOWrapper
-import subprocess
 from typing import Dict, Optional
 from discord import app_commands, ButtonStyle
 from discord.ui import View, Button
@@ -16,17 +14,10 @@ import requests
 from dotenv import load_dotenv
 import os
 from discord.app_commands import Choice
-import zipfile
-import shutil
 from config import *
 import aiohttp
 import config
 
-# Constants
-SERVER_PATH = "./server/xRC Simulator.x86_64"
-SERVER_LOGS_DIR = "./server_logs/"
-XRC_SIM_ZIP_URL = "https://xrcsimulator.org/Downloads/xRC_Linux_Server.zip"
-XRC_SIM_ZIP_PATH = "./xRC_Linux_Server.zip"
 XRC_SIM_LOGO_URL = "https://secondrobotics.org/logos/xRC%20Logo.png"
 RULES_CHANNEL_LINK = f"The rules can be found here: <#{RULES_CHANNEL_ID}>"
 QUEUE_CHANNEL_ERROR_MSG = f"<#{QUEUE_CHANNEL_ID}> >:("
@@ -45,11 +36,9 @@ queue_channel = 0
 
 team_size = 6
 team_size_alt = 4
-HEADER = {"x-api-key": SRC_API_TOKEN}
+HEADER = {"X-API-KEY": API_KEY}
 
 ip = requests.get('https://icanhazip.com').text
-servers_active: Dict[int, subprocess.Popen] = {}
-log_files: Dict[int, TextIOWrapper] = {}
 
 listener = commands.Cog.listener
 
@@ -61,7 +50,7 @@ inactive_games.remove("Relic Recovery")
 
 daily_game = random.choice(inactive_games)
 
-games = requests.get("https://secondrobotics.org/api/ranked/").json()
+games = requests.get(f"{SECONDWEBSITE_BASE_URL}/api/ranked/", timeout=15).json()
 
 games_choices = [Choice(name=game['name'], value=game['short_code'])
                  for game in games if game['game'] in active_games] #or game['game'] == daily_game]
@@ -224,6 +213,8 @@ class XrcGame:
         self.api_short = api_short
         self.server_game = server_games[game]
         self.server_port = None  # type: int | None
+        self.server_session_id = None  # type: str | None
+        self.server_session = None  # type: dict | None
         self.server_password = None  # type: str | None
         self.full_game_name = full_game_name
         self.red_role = None  # type: discord.Role | None
@@ -269,7 +260,7 @@ class Queue:
 
 
 async def handle_score_edit(interaction: discord.Interaction, qdata: XrcGame, red_score: int, blue_score: int):
-    url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
+    url = f'{SECONDWEBSITE_BASE_URL}/api/ranked/{qdata.api_short}/match/edit/'
     json = {
         "red_score": red_score,
         "blue_score": blue_score
@@ -809,7 +800,7 @@ class Ranked(commands.Cog):
                 return data
             del _player_cache[player_id]
 
-        url = f'https://secondrobotics.org/api/ranked/player/{player_id}'
+        url = f'{SECONDWEBSITE_BASE_URL}/api/ranked/player/{player_id}'
         try:
             async with self._get_session().get(url) as x:
                 data = await x.json()
@@ -960,12 +951,24 @@ class Ranked(commands.Cog):
         password = str(random.randint(100, 999))
         min_players = games_players[qdata.api_short]
         server_actions = self.bot.get_cog('ServerActions')
-        message, port = server_actions.start_server_process(
-            match.server_game, f"Ranked{qdata.api_short}", password, min_players=min_players, admin=RANKED_ADMIN_USERNAME)
+        expected_discord_user_ids = [str(player.id) for player in (match.game.red | match.game.blue)]
+        message, port, session_id, session = await server_actions.start_server_process(
+            match.server_game,
+            f"Ranked{qdata.api_short}",
+            password,
+            min_players=min_players,
+            admin=RANKED_ADMIN_USERNAME,
+            kind="ranked",
+            match_id=f"{qdata.api_short}-{id(match)}",
+            ranked_game_mode=f"{match.full_game_name} {match.team_size}v{match.team_size}",
+            expected_discord_user_ids=expected_discord_user_ids,
+        )
         if port == -1:
             logger.warning("Server couldn't auto-start for ranked: " + message)
         else:
             match.server_port = port
+            match.server_session_id = session_id
+            match.server_session = session
             match.server_password = password
 
         await self.display_teams(interaction, match)
@@ -974,6 +977,13 @@ class Ranked(commands.Cog):
         for queue in game_queues.values():
             for match in queue.matches:
                 if match.server_port == port:
+                    return match
+        return None
+
+    def find_match_by_session_id(self, session_id: str):
+        for queue in game_queues.values():
+            for match in queue.matches:
+                if match.server_session_id == session_id:
                     return match
         return None
 
@@ -986,7 +996,7 @@ class Ranked(commands.Cog):
 
     async def display_teams(self, ctx, match: XrcGame):
         async def fetch_player_elo(game, user_id):
-            url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
+            url = f'{SECONDWEBSITE_BASE_URL}/api/ranked/{game}/player/{user_id}'
             try:
                 async with self._get_session().get(url) as response:
                     if response.status == 200:
@@ -1177,7 +1187,12 @@ class Ranked(commands.Cog):
 
         if match.server_port:
             server_actions = self.bot.get_cog('ServerActions')
-            server_actions.stop_server_process(match.server_port)
+            if server_actions:
+                await server_actions.stop_server_process(
+                    match.server_port,
+                    session_id=match.server_session_id,
+                    reason="ranked match cleared",
+                )
 
         match.red_series = match.blue_series = 2
 
@@ -1220,6 +1235,67 @@ class Ranked(commands.Cog):
             if match in queue.matches:
                 queue.matches.remove(match)
                 break
+
+    async def handle_orchestrator_inactivity_warning(self, event: dict):
+        match = self.find_match_by_session_id(event.get("sessionId")) or self.find_match_by_port(event.get("port"))
+        if not match or not match.game:
+            return
+
+        for player in match.game.players:
+            try:
+                await player.send(
+                    "Your ranked match has been inactive - if all players are not present soon, the match may be cleared."
+                )
+            except discord.HTTPException:
+                pass
+
+        if match.password_channel_id:
+            channel = self.bot.get_channel(match.password_channel_id)
+            if channel:
+                total = len(match.game.red | match.game.blue)
+                needed = total // 2 + 1
+                embed = discord.Embed(
+                    title="⏱ Match Inactivity",
+                    description=(
+                        "This match has been inactive.\n"
+                        "Vote to clear if the match is not happening.\n"
+                        f"**{needed}/{total}** votes needed to clear."
+                    ),
+                    color=discord.Color.orange(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                embed.set_footer(text="xRC Sim Ranked", icon_url=XRC_SIM_LOGO_URL)
+                view = ClearVoteView(self, channel.guild, match)
+                try:
+                    msg = await channel.send(
+                        f"{match.red_role.mention} {match.blue_role.mention}",
+                        embed=embed,
+                        view=view
+                    )
+                    view.message = msg
+                except Exception as e:
+                    logger.error(f"Error sending orchestrator inactivity warning: {e}")
+
+    async def handle_orchestrator_inactivity_expired(self, event: dict):
+        match = self.find_match_by_session_id(event.get("sessionId")) or self.find_match_by_port(event.get("port"))
+        if not match:
+            return
+
+        guild_obj = guild
+        if match.password_channel_id:
+            channel = self.bot.get_channel(match.password_channel_id)
+            guild_obj = channel.guild if channel else guild_obj
+        if not guild_obj:
+            return
+
+        if match.game:
+            for player in match.game.players:
+                try:
+                    await player.send("Your ranked match has been cancelled due to inactivity.")
+                except discord.HTTPException:
+                    pass
+
+        await self.do_clear_match(guild_obj, match)
 
     @app_commands.command(name="queuevoting", description="Add yourself to a vote queue")
     @app_commands.choices(mode=[
@@ -1401,27 +1477,28 @@ class Ranked(commands.Cog):
         logger.info(f"{interaction.user.name} called /update")
         await interaction.response.defer(thinking=True)
 
-        if os.path.exists(XRC_SIM_ZIP_PATH):
-            os.remove(XRC_SIM_ZIP_PATH)
-
-        try:
-            file = download_file(XRC_SIM_ZIP_URL)
-        except Exception as e:
-            logger.error(e)
-            await interaction.followup.send("⚠ Update failed: Could not download file")
+        server_actions = self.bot.get_cog('ServerActions')
+        if not server_actions:
+            await interaction.followup.send("⚠ Update failed: orchestrator client is not loaded.")
             return
 
-        if os.path.exists("./server/"):
-            shutil.rmtree("./server/")
+        try:
+            result = await server_actions.orchestrator.update_xrc_binary(
+                reason="Discord /update requested",
+                actor={
+                    "type": "discord_user",
+                    "discordUserId": str(interaction.user.id),
+                    "displayName": interaction.user.display_name,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Orchestrator xRC update failed: {e}")
+            await interaction.followup.send(f"⚠ Update failed: {e}")
+            return
 
-        with zipfile.ZipFile(file, 'r') as zip_ref:
-            zip_ref.extractall("./server")
-
-        os.chmod(SERVER_PATH, 0o777)
-        os.remove(XRC_SIM_ZIP_PATH)
-
-        await interaction.followup.send("✅ Updated to the latest release version of xRC Sim!")
-        logger.info("Updated successfully")
+        updated_at = result.get("updatedAt", "now")
+        await interaction.followup.send(f"✅ xRC server binary update started/completed via orchestrator at {updated_at}.")
+        logger.info("Orchestrator update succeeded")
 
     @app_commands.command(description="memes")
     @app_commands.checks.has_any_role("Event Staff")
@@ -1880,7 +1957,7 @@ class Ranked(commands.Cog):
         return False, "Score Submitted"
 
     async def submit_score_to_api(self, current_match, red_score, blue_score):
-        url = f'https://secondrobotics.org/api/ranked/{current_match.api_short}/match/'
+        url = f'{SECONDWEBSITE_BASE_URL}/api/ranked/{current_match.api_short}/match/'
         json_data = {
             "red_alliance": [player.id for player in current_match.game.red] if current_match.game else [],
             "blue_alliance": [player.id for player in current_match.game.blue] if current_match.game else [],
@@ -2011,7 +2088,12 @@ class Ranked(commands.Cog):
         # Stop the server if it exists
         if current_match.server_port:
             server_actions = self.bot.get_cog('ServerActions')
-            server_actions.stop_server_process(current_match.server_port)
+            if server_actions:
+                await server_actions.stop_server_process(
+                    current_match.server_port,
+                    session_id=current_match.server_session_id,
+                    reason="ranked series complete",
+                )
 
         # Remove the match from queue
         qdata.remove_match(current_match)
@@ -2071,7 +2153,19 @@ class Ranked(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def check_empty_servers(self):
-        for server in servers_active.copy():
+        server_actions = self.bot.get_cog('ServerActions')
+        if not server_actions:
+            return
+        try:
+            active_ranked_sessions = await server_actions.orchestrator.list_servers(active="true", kind="ranked")
+        except Exception as e:
+            logger.error(f"Failed to fetch ranked sessions for inactivity check: {e}")
+            return
+
+        for session in active_ranked_sessions:
+            server = session.get("port")
+            if not server:
+                continue
             if (await server_has_players(server)):
                 last_active[server] = datetime.now()
             else:
@@ -2126,9 +2220,6 @@ async def shutdown_server_inactivity(server: int):
                             pass
                 return
 
-    # stop_server_process(server)  # FIXME
-
-
 async def server_has_players(server: int) -> bool:
     needed_players = 1
     for queue in game_queues.values():
@@ -2137,29 +2228,17 @@ async def server_has_players(server: int) -> bool:
                 needed_players = match.game_size
                 break
 
-    process = servers_active.get(server, None)
-    if process is None or process.poll() is not None or process.stdout is None or process.stdin is None:
+    if not cog:
         return False
 
-    process.stdin.write(b"PLAYERS\n")
-    process.stdin.flush()
-
-    while True:
-        line = process.stdout.readline().decode("utf-8")
-        if line != '_BEGIN_\n':
-            break
-
-    players = []
-    while True:
-        line = process.stdout.readline().decode("utf-8")
-        if line == '_END_\n':
-            break
-        players.append(line.strip())
-
-    if len(players) >= needed_players:
-        return True
-
-    return False
+    server_actions = cog.bot.get_cog('ServerActions')
+    if not server_actions:
+        return False
+    try:
+        session = await server_actions.orchestrator.get_session_by_port(server)
+        return len(session.get("players") or []) >= needed_players
+    except Exception:
+        return False
 
 
 async def warn_server_inactivity(server: int):

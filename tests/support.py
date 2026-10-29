@@ -8,6 +8,8 @@ TEST_ENV = {
     "DISCORD_BOT_TOKEN": "test-token",
     "DISCORD_APPLICATION_ID": "1",
     "SRC_API_TOKEN": "test-token",
+    "API_KEY": "test-key",
+    "ORCHESTRATOR_TOKEN": "test-orchestrator",
     "GUILD_ID": "1",
     "QUEUE_STATUS_CHANNEL_ID": "2",
     "QUEUE_CHANNEL_ID": "3",

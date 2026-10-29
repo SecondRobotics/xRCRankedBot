@@ -8,18 +8,16 @@ import logging
 import os
 import threading
 import aiohttp
-from PIL import Image
 import random
-from io import BytesIO
 from config import *
 
 FALLBACK_AVATAR_URL = 'https://i0.wp.com/sbcf.fr/wp-content/uploads/2018/03/sbcf-default-avatar.png'  # Replace with your fallback avatar URL
 
 logger = logging.getLogger('discord')
 
-HEADER = {"x-api-key": SRC_API_TOKEN}
+HEADER = {"X-API-KEY": API_KEY}
 
-games = requests.get("https://secondrobotics.org/api/ranked/").json()
+games = requests.get(f"{SECONDWEBSITE_BASE_URL}/api/ranked/", timeout=15).json()
 
 short_codes = [games['short_code'] for games in games]
 short_codes_sorted = sorted(short_codes)
@@ -44,7 +42,7 @@ class General(commands.Cog):
 
         async with aiohttp.ClientSession(headers=HEADER, timeout=aiohttp.ClientTimeout(total=10)) as session:
             # Fetch player profile and avatar concurrently
-            async with session.get(f'https://secondrobotics.org/api/ranked/player/{user_id}') as response:
+            async with session.get(f'{SECONDWEBSITE_BASE_URL}/api/ranked/player/{user_id}') as response:
                 res = await response.json()
 
             if not res["exists"]:
@@ -53,22 +51,14 @@ class General(commands.Cog):
                     ephemeral=True)
                 return
 
-            # Fetch avatar for embed color
+            # Keep the avatar as a Discord-hosted image; decoding remote images
+            # just to choose an embed color is unnecessary.
             random_color = discord.Color.blue()
-            try:
-                async with session.get(res['avatar']) as response:
-                    thumbnail_bytes = await response.read()
-                thumbnail_image = Image.open(BytesIO(thumbnail_bytes))
-                w, h = thumbnail_image.size
-                random_pixel = thumbnail_image.getpixel((random.randint(0, w - 1), random.randint(0, h - 1)))
-                random_color = discord.Color.from_rgb(*random_pixel[:3])
-            except Exception as e:
-                logger.error(f"Failed to fetch avatar: {e}")
 
             # Fetch all game stats concurrently
             async def fetch_game(game):
                 try:
-                    async with session.get(f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}') as r:
+                    async with session.get(f'{SECONDWEBSITE_BASE_URL}/api/ranked/{game}/player/{user_id}') as r:
                         return await r.json()
                 except Exception as e:
                     logger.error(f"Failed to fetch game {game} for {user_id}: {e}")

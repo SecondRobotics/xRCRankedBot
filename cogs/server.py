@@ -1,221 +1,694 @@
-import os
-import shutil  # Ensure shutil is imported for directory operations
-import subprocess
+import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Optional, List
-import discord
-from io import TextIOWrapper
-from discord import app_commands
-from discord.ext import commands, tasks
-from discord.app_commands import Choice
-import asyncio
-import psutil
-import json  # For reading status.json
-import re  # Add import for regex
-from dataclasses import dataclass  # Add import for Player dataclass
+from typing import Dict, Optional
 
-from config import (
-    server_restart_modes,
-    PORTS,
-    server_game_settings,
-    default_game_players,
-    GUILD_ID,
-    server_games,
-    QUEUE_STATUS_CHANNEL_ID,
-)
+import discord
+from discord import app_commands
+from discord.app_commands import Choice
+from discord.ext import commands
 from game_selection import game_autocomplete, resolve_game_id
 
-logger = logging.getLogger('discord')
+from config import (
+    GUILD_ID,
+    ORCHESTRATOR_ADMIN_TOKEN,
+    ORCHESTRATOR_BASE_URL,
+    ORCHESTRATOR_MODERATION_TOKEN,
+    ORCHESTRATOR_RELAY_CHAT_TO_DISCORD,
+    ORCHESTRATOR_TOKEN,
+    PORTS,
+    QUEUE_STATUS_CHANNEL_ID,
+    default_game_players,
+    server_games,
+    server_restart_modes,
+)
+from orchestrator_client import (
+    OrchestratorAPIError,
+    OrchestratorClient,
+    OrchestratorTokens,
+    SERVICE_ACTOR,
+    discord_actor,
+)
 
-# Define other constants here
-SERVER_PATH = "./server/xRC Simulator.x86_64"
-SERVER_LOGS_DIR = "./server_logs/"
-SERVER_GAME_DATA_DIR = "./server_game_data/"  # Existing constant for score files
-CHAT_LOGS_DIR = "./chat_logs/"  # Directory for chat logs
+logger = logging.getLogger("discord")
+
 CHAT_LOG_CHANNEL_ID = 1505392192724799528
-
 ports_choices = [Choice(name=str(port), value=port) for port in PORTS]
+ACTIVE_STATES = {"requested", "starting", "running", "stopping"}
 
-@dataclass
-class Player:
-    name: str
-    join_time: datetime
-    position: str
-    ip: str
+
+def _game_name(game_code: str) -> str:
+    return next((name for name, number in server_games.items() if number == str(game_code)), str(game_code))
+
+
+def _score_value(score: Optional[dict], key: str, fallback: str = "0") -> str:
+    if not score:
+        return fallback
+    value = score.get(key)
+    return fallback if value is None else str(value)
+
+
+def _players_by_alliance(players: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
+    red = [p for p in players if str(p.get("position", "")).lower().startswith("red")]
+    blue = [p for p in players if str(p.get("position", "")).lower().startswith("blue")]
+    spectators = [p for p in players if p not in red and p not in blue]
+    return red, blue, spectators
+
+
+def _player_name(player: dict) -> str:
+    return player.get("playerName") or player.get("name") or "Unknown"
+
+
+def _player_ip(player: dict) -> Optional[str]:
+    return player.get("ipAddress") or player.get("ip")
+
+
+def _format_player_lines(players: list[dict], *, include_ip: bool = False) -> str:
+    if not players:
+        return "None"
+    lines = []
+    for player in players:
+        line = f"{_player_name(player)} - {player.get('position', 'Unknown')}"
+        ip = _player_ip(player)
+        if include_ip and ip and ip != "redacted":
+            line = f"{line}\nIP: {ip}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _opr_rows(score: dict) -> list[tuple[str, float]]:
+    if score.get("opr"):
+        return [(name, float(value)) for name, value in score["opr"].items()]
+
+    rows = []
+    for entry in (score.get("redOpr") or []) + (score.get("blueOpr") or []):
+        if "playerName" not in entry or "value" not in entry:
+            continue
+        rows.append((str(entry["playerName"]), float(entry["value"])))
+    return rows
+
+
+def build_status_embed(session: dict, *, title_prefix: str = "Server Status") -> discord.Embed:
+    port = session.get("port", "Unknown")
+    score = session.get("score") or {}
+    players = session.get("players") or []
+    red, blue, _ = _players_by_alliance(players)
+
+    embed = discord.Embed(
+        title=f"{title_prefix} for Port {port}",
+        color=discord.Color.blue(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="Timer", value=_score_value(score, "timer", "N/A"), inline=True)
+    embed.add_field(name="Red Alliance", value=_format_player_lines(red), inline=True)
+    embed.add_field(name="Blue Alliance", value=_format_player_lines(blue), inline=True)
+    embed.add_field(name="Red Score", value=_score_value(score, "redScore"), inline=True)
+    embed.add_field(name="Blue Score", value=_score_value(score, "blueScore"), inline=True)
+    embed.add_field(name="Game Type", value=session.get("gameName") or _game_name(session.get("gameCode")), inline=True)
+    return embed
+
 
 class ServerActions(commands.Cog):
-    servers_active: Dict[int, subprocess.Popen] = {}
-    log_files: Dict[int, TextIOWrapper] = {}
-    last_active: Dict[int, datetime] = {}
-    server_comments: Dict[int, str] = {}
-    server_games: Dict[int, str] = {}
-    watch_tasks: Dict[int, asyncio.Task] = {}  # Keep track of watch tasks
-    players_active: Dict[int, List[Player]] = {}  # New attribute to track players
-    log_read_positions: Dict[int, int] = {}  # Added to track last read positions
-    watch_messages: Dict[int, discord.Message] = {}
-    chat_log_files: Dict[int, TextIOWrapper] = {}  # Chat log files for each server
-    last_timer: Dict[int, float] = {}
-    score_posted: Dict[int, bool] = {}
-    chat_discord_buffer: List[str] = []
-    server_data_cache: Dict[int, Optional[dict]] = {}
-    _CHAT_RE = re.compile(r"^(\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M): (\w+): (.+)\.$")
-    _JOIN_RE = re.compile(r"Player (\w+) joined on position (.+) from IP=(\d+\.\d+\.\d+\.\d+).")
-    _LEAVE_RE = re.compile(r"Removing (\w+)")
-
-    def __init__(self, bot):
+    def __init__(self, bot, orchestrator: Optional[OrchestratorClient] = None):
         self.bot = bot
-        self.players_active = {}
-        self.log_read_positions = {}
-        self.watch_messages = {}
-        self.last_timer = {}
-        self.score_posted = {}
-        self.chat_discord_buffer = []
-        self.server_data_cache = {}
-        self.chat_header_posted: set = set()
-        self.bot.loop.create_task(self.monitor_logs())
-        self.bot.loop.create_task(self._flush_chat_buffer())
+        self.orchestrator = orchestrator or OrchestratorClient(
+            ORCHESTRATOR_BASE_URL,
+            OrchestratorTokens(
+                default=ORCHESTRATOR_TOKEN,
+                moderation=ORCHESTRATOR_MODERATION_TOKEN,
+                admin=ORCHESTRATOR_ADMIN_TOKEN,
+            ),
+        )
+        self.server_sessions_by_port: Dict[int, str] = {}
+        self.server_metadata: Dict[int, dict] = {}
+        self.watch_tasks: Dict[int, asyncio.Task] = {}
+        self.watch_messages: Dict[int, discord.Message] = {}
+        self.score_posted: Dict[str, bool] = {}
+        self._events_task: Optional[asyncio.Task] = None
+        self._last_event_id: Optional[str] = None
+        self.chat_discord_buffer: list[str] = []
+        self.chat_header_posted: set[int] = set()
 
-    async def monitor_logs(self):
-        while True:
-            for port, process in list(self.servers_active.items()):
-                log_path = f"{SERVER_LOGS_DIR}{port}.log"
+    async def cog_load(self):
+        self._events_task = asyncio.create_task(self._consume_orchestrator_events())
+        if ORCHESTRATOR_RELAY_CHAT_TO_DISCORD:
+            asyncio.create_task(self._flush_chat_buffer())
 
-                if port not in self.log_read_positions:
-                    try:
-                        with open(log_path, "r") as f:
-                            last_start_pos = 0
-                            while True:
-                                line = f.readline()
-                                if not line:
-                                    break
-                                if "Done setting up TCP socket.." in line:  # Updated start signal
-                                    last_start_pos = f.tell()
-                            self.log_read_positions[port] = last_start_pos
-                    except FileNotFoundError:
-                        logger.error(f"Log file for port {port} not found.")
-                        continue
-                    except Exception as e:
-                        logger.error(f"Error initializing log file for port {port}: {e}")
-                        continue
+    async def cog_unload(self):
+        if self._events_task:
+            self._events_task.cancel()
+        for task in self.watch_tasks.values():
+            task.cancel()
+        await self.orchestrator.close()
 
-                try:
-                    with open(log_path, "r") as f:
-                        f.seek(self.log_read_positions[port])  # Move to the last read position
-                        while True:
-                            line = f.readline()
-                            if not line:
-                                break
-                            self.parse_log_line(port, line)
-                        self.log_read_positions[port] = f.tell()  # Update read position
-                except FileNotFoundError:
-                    logger.error(f"Log file for port {port} not found.")
-                except Exception as e:
-                    logger.error(f"Error reading log file for port {port}: {e}")
+    def _launch_options(
+        self,
+        *,
+        restart_mode: int,
+        frame_rate: int,
+        update_time: int,
+        tournament_mode: bool,
+        start_when_ready: bool,
+        register: bool,
+        spectators: int,
+        min_players: int,
+        restart_all: bool,
+    ) -> dict:
+        return {
+            "frameRate": frame_rate,
+            "updateTime": update_time,
+            "tournamentMode": tournament_mode,
+            "register": register,
+            "spectators": spectators,
+            "startWhenReady": start_when_ready,
+            "restartAll": restart_all,
+            "restartMode": str(restart_mode),
+            "netStats": False,
+            "profiling": False,
+            "minPlayers": min_players,
+        }
 
-                self.server_data_cache[port] = self.get_server_data(port)
-                await self._check_match_end(port)
+    async def start_server_process(
+        self,
+        game: str,
+        comment: str,
+        password: str = "",
+        admin: str = "Admin",
+        restart_mode: int = -1,
+        frame_rate: int = 60,
+        update_time: int = 20,
+        tournament_mode: bool = True,
+        start_when_ready: bool = True,
+        register: bool = True,
+        spectators: int = 4,
+        min_players: int = -1,
+        restart_all: bool = True,
+        timeout: int = -1,
+        *,
+        kind: str = "admin",
+        actor: Optional[dict] = None,
+        match_id: Optional[str] = None,
+        ranked_game_mode: Optional[str] = None,
+        expected_discord_user_ids: Optional[list[str]] = None,
+        discord_channel_ids: Optional[dict] = None,
+        owner_discord_user_id: Optional[str] = None,
+        website_server_session_id: Optional[str] = None,
+        requested_minutes: Optional[int] = None,
+        max_minutes: Optional[int] = None,
+    ) -> tuple[str, int, Optional[str], Optional[dict]]:
+        if restart_mode == -1:
+            restart_mode = server_restart_modes.get(str(game), 1)
+        if min_players == -1:
+            min_players = default_game_players.get(str(game), 4)
 
-            await asyncio.sleep(1)
+        payload = {
+            "kind": kind,
+            "gameCode": str(game),
+            "comment": comment,
+            "password": password,
+            "adminUsername": admin,
+            "launchSource": "discord_bot",
+            "actor": actor or SERVICE_ACTOR,
+            "launchOptions": self._launch_options(
+                restart_mode=restart_mode,
+                frame_rate=frame_rate,
+                update_time=update_time,
+                tournament_mode=tournament_mode,
+                start_when_ready=start_when_ready,
+                register=register,
+                spectators=spectators,
+                min_players=min_players,
+                restart_all=restart_all,
+            ),
+        }
 
-    def parse_log_line(self, port: int, line: str):
-        chat_match = self._CHAT_RE.match(line)
-        if chat_match:
-            timestamp_str, username, chat_message = chat_match.groups()
-            self.log_chat_message(port, timestamp_str, username, chat_message)
-            return
+        if timeout > 0:
+            payload["timeoutMinutes"] = timeout
+        if kind == "ranked":
+            payload.update({
+                "matchId": match_id,
+                "rankedGameMode": ranked_game_mode,
+                "minPlayers": min_players,
+                "expectedDiscordUserIds": expected_discord_user_ids or [],
+                "discordChannelIds": discord_channel_ids or {},
+            })
+        if kind == "casual":
+            payload.update({
+                "websiteServerSessionId": website_server_session_id,
+                "ownerDiscordUserId": owner_discord_user_id,
+                "requestedMinutes": requested_minutes,
+                "maxMinutes": max_minutes,
+            })
 
-        # Extract timestamp from the beginning of the log line for other logics
         try:
-            timestamp_str, message = line.split(': ', 1)  # Split timestamp and message
-            timestamp = datetime.strptime(timestamp_str, "%m/%d/%Y %I:%M:%S %p")  # Parse timestamp
-        except ValueError:
-            return
+            session = await self.orchestrator.launch_server({k: v for k, v in payload.items() if v is not None})
+        except OrchestratorAPIError as e:
+            return f"⚠ Orchestrator launch failed: {e}", -1, None, None
 
-        # Initialize player list if not present
-        if port not in self.players_active:
-            self.players_active[port] = []
+        port = int(session["port"])
+        session_id = session["id"]
+        self.server_sessions_by_port[port] = session_id
+        self.server_metadata[port] = session
+        return f"✅ Launched server '{comment}' on port {port}", port, session_id, session
 
-        # Clear player list on server start
-        if "Done setting up TCP socket.." in message:  # Updated condition
-            self.players_active[port].clear()  # Clear existing players
-            return
-
-        # Clear player list on server shutdown
-        if "Server shut down at" in message:
-            self.players_active[port].clear()  # Clear existing players
-            return
-
-        join_match = self._JOIN_RE.search(message)
-        if join_match:
-            name, position, ip = join_match.groups()
-            player = Player(name=name, join_time=timestamp, position=position, ip=ip)  # Use log timestamp
-            logger.info(f"{port} - Player {player.name} joined on {player.position} with ip {player.ip}")
-            self.players_active.setdefault(port, []).append(player)
-            return
-
-        leave_match = self._LEAVE_RE.match(message)
-        if leave_match:
-            name = leave_match.group(1)
-            logger.info(f"{port} - Player {name} left server")
-            players = self.players_active.get(port, [])
-            self.players_active[port] = [p for p in players if p.name != name]
-            return
-    
-    def log_chat_message(self, port: int, timestamp: str, username: str, message: str):
-        """Log chat messages to separate chat log files, including IP if available"""
+    async def stop_server_process(
+        self,
+        port: int,
+        *,
+        session_id: Optional[str] = None,
+        reason: str = "discord stop requested",
+        actor: Optional[dict] = None,
+    ) -> str:
         try:
-            # Ensure chat log file is open
-            if port not in self.chat_log_files:
-                os.makedirs(CHAT_LOGS_DIR, exist_ok=True)
-                chat_log_path = os.path.join(CHAT_LOGS_DIR, f"{port}.log")
-                self.chat_log_files[port] = open(chat_log_path, "a", encoding="utf-8")
-
-            game_number = self.server_games.get(port, "Unknown")
-            game_name = next((n for n, num in server_games.items() if num == game_number), game_number)
-            alliance_size = default_game_players.get(game_number, 4) // 2
-            game_format = f"{alliance_size}v{alliance_size}"
-
-            # Try to find the IP for the username
-            ip = None
-            for player in self.players_active.get(port, []):
-                if player.name == username:
-                    ip = player.ip
-                    break
-            if ip:
-                log_entry = f"{timestamp} [{game_name} {game_format}]: {username} ({ip}): {message}\n"
+            if session_id:
+                session = await self.orchestrator.stop_session(session_id, reason=reason, actor=actor)
             else:
-                log_entry = f"{timestamp} [{game_name} {game_format}]: {username}: {message}\n"
-            self.chat_log_files[port].write(log_entry)
-            self.chat_log_files[port].flush()  # Ensure it's written immediately
+                session = await self.orchestrator.stop_session_by_port(port, reason=reason, actor=actor)
+        except OrchestratorAPIError as e:
+            return f"⚠ Server on port {port} could not be stopped: {e}"
 
-            self._buffer_chat_message(port, game_name, game_format, username, ip, message)
+        self.server_sessions_by_port.pop(port, None)
+        self.server_metadata.pop(port, None)
+        await self._delete_watch_message(port)
+        stopped_port = session.get("port", port) if isinstance(session, dict) else port
+        return f"✅ Server on port {stopped_port} shut down"
 
-            logger.info(f"Chat on port {port} [{game_name} {game_format}] - {username}{' (' + ip + ')' if ip else ''}: {message}")
+    async def _create_watch_message(self, port: int, game_type: str):
+        channel = self.bot.get_channel(QUEUE_STATUS_CHANNEL_ID)
+        if channel:
+            watch_message = await channel.send(f"🔔 **Server Started** on port `{port}`\n**Game Type:** {game_type}")
+            self.watch_messages[port] = watch_message
+            task = self.bot.loop.create_task(self.server_watch_task(port, watch_message))
+            self.watch_tasks[port] = task
+
+    async def _delete_watch_message(self, port: int):
+        watch_message = self.watch_messages.pop(port, None)
+        if watch_message:
+            try:
+                await watch_message.delete()
+            except discord.NotFound:
+                logger.warning("Watch message for port %s not found.", port)
+            except Exception as e:
+                logger.error("Error deleting watch message for port %s: %s", port, e)
+
+        task = self.watch_tasks.pop(port, None)
+        if task:
+            task.cancel()
+
+    async def server_watch_task(self, port: int, message: discord.Message):
+        while True:
+            try:
+                session = await self.orchestrator.get_session_by_port(port)
+                if session.get("state") not in ACTIVE_STATES:
+                    break
+                await message.edit(embed=build_status_embed(session, title_prefix="Server Watch"))
+            except OrchestratorAPIError as e:
+                logger.warning("Stopping watch for port %s: %s", port, e)
+                break
+            except discord.HTTPException as e:
+                logger.error("Failed to update watch embed for port %s: %s", port, e)
+                break
+            await asyncio.sleep(5)
+
+    @app_commands.autocomplete(game=game_autocomplete)
+    @app_commands.command(description="Launches a new instance of xRC Sim server", name="launchserver")
+    @app_commands.checks.has_any_role("Event Staff")
+    async def launch_server(
+        self,
+        interaction: discord.Interaction,
+        game: str,
+        comment: str,
+        password: str = "",
+        admin: str = "Admin",
+        restart_mode: int = -1,
+        frame_rate: int = 120,
+        update_time: int = 10,
+        tournament_mode: bool = True,
+        start_when_ready: bool = True,
+        register: bool = True,
+        spectators: int = 4,
+        min_players: int = -1,
+        restart_all: bool = True,
+        timeout: int = -1,
+        silent: bool = False,
+    ):
+        logger.info("%s called /launchserver", interaction.user.name)
+        game = resolve_game_id(game)
+        if game is None:
+            await interaction.response.send_message("Choose a supported game from autocomplete.", ephemeral=True)
+            return
+        await interaction.response.defer()
+
+        result, port, _, _ = await self.start_server_process(
+            game,
+            comment,
+            password,
+            admin,
+            restart_mode,
+            frame_rate,
+            update_time,
+            tournament_mode,
+            start_when_ready,
+            register,
+            spectators,
+            min_players,
+            restart_all,
+            timeout,
+            kind="admin",
+            actor=discord_actor(interaction.user),
+        )
+
+        if not silent and port != -1:
+            asyncio.create_task(self._create_watch_message(port, _game_name(game)))
+
+        await interaction.followup.send(result)
+
+    @app_commands.command(description="Shutdown a running xRC Sim server", name="landserver")
+    @app_commands.checks.has_any_role("Event Staff")
+    @app_commands.choices(port=ports_choices)
+    async def land_server(self, interaction: discord.Interaction, port: int):
+        logger.info("%s called /landserver", interaction.user.name)
+        result = await self.stop_server_process(port, actor=discord_actor(interaction.user))
+        await interaction.response.send_message(result)
+
+    @app_commands.command(description="Restart a running xRC Sim server", name="restartserver")
+    @app_commands.checks.has_any_role("Event Staff")
+    @app_commands.choices(port=ports_choices)
+    async def restart_server(self, interaction: discord.Interaction, port: int, reason: str = "discord restart requested"):
+        logger.info("%s called /restartserver", interaction.user.name)
+        await interaction.response.defer()
+        try:
+            session = await self.orchestrator.get_session_by_port(port)
+            restarted = await self.orchestrator.restart_session(session["id"], reason=reason, actor=discord_actor(interaction.user))
+            self.server_sessions_by_port[int(restarted["port"])] = restarted["id"]
+            self.server_metadata[int(restarted["port"])] = restarted
+            await interaction.followup.send(f"✅ Restarted server on port {restarted['port']}")
+        except OrchestratorAPIError as e:
+            await interaction.followup.send(f"⚠ Restart failed: {e}", ephemeral=True)
+
+    @app_commands.command(description="Force kill a running xRC Sim server", name="killserver")
+    @app_commands.checks.has_any_role("Admin")
+    @app_commands.choices(port=ports_choices)
+    async def kill_server(self, interaction: discord.Interaction, port: int, reason: str):
+        logger.info("%s called /killserver", interaction.user.name)
+        await interaction.response.defer(ephemeral=True)
+        try:
+            session = await self.orchestrator.get_session_by_port(port)
+            await self.orchestrator.kill_session(session["id"], reason=reason, actor=discord_actor(interaction.user))
+            self.server_sessions_by_port.pop(port, None)
+            self.server_metadata.pop(port, None)
+            await self._delete_watch_message(port)
+            await interaction.followup.send(f"✅ Killed server on port {port}", ephemeral=True)
+        except OrchestratorAPIError as e:
+            await interaction.followup.send(f"⚠ Kill failed: {e}", ephemeral=True)
+
+    @app_commands.command(description="Lists the running server instances", name="listservers")
+    @app_commands.checks.has_any_role("Event Staff")
+    async def list_servers(self, interaction: discord.Interaction):
+        logger.info("%s called /listservers", interaction.user.name)
+        try:
+            sessions = await self.orchestrator.list_servers(active="true")
+        except OrchestratorAPIError as e:
+            await interaction.response.send_message(f"⚠ Could not list servers: {e}", ephemeral=True)
+            return
+
+        if not sessions:
+            await interaction.response.send_message("⚠ No servers are running")
+            return
+
+        lines = [
+            f"Port {s.get('port')}: {s.get('gameName') or _game_name(s.get('gameCode'))} - '{s.get('comment', 'N/A')}' ({s.get('kind')}/{s.get('state')})"
+            for s in sessions
+        ]
+        await interaction.response.send_message("Running servers:\n" + "\n".join(lines))
+
+    @app_commands.command(description="Show live performance stats for running servers", name="serverstats")
+    @app_commands.checks.has_any_role("Event Staff")
+    async def server_stats(self, interaction: discord.Interaction):
+        logger.info("%s called /serverstats", interaction.user.name)
+        await interaction.response.defer()
+
+        try:
+            overview, sessions = await asyncio.gather(
+                self.orchestrator.admin_overview(),
+                self.orchestrator.list_servers(active="true"),
+            )
+        except OrchestratorAPIError as e:
+            await interaction.followup.send(f"⚠ Could not fetch server stats: {e}", ephemeral=True)
+            return
+
+        if not sessions:
+            await interaction.followup.send("⚠ No servers are currently running.")
+            return
+
+        detail_tasks = [
+            self.orchestrator.get_session(session["id"]) if session.get("id") else asyncio.sleep(0, result=session)
+            for session in sessions
+        ]
+        session_details = await asyncio.gather(*detail_tasks, return_exceptions=True)
+        detailed_sessions = [
+            detail if isinstance(detail, dict) else session
+            for session, detail in zip(sessions, session_details)
+        ]
+
+        embed = discord.Embed(title="Server Performance", color=0x34DCEB, timestamp=datetime.now(timezone.utc))
+        embed.description = (
+            f"Running: {overview.get('runningServerCount', len(sessions))} | "
+            f"Available ports: {', '.join(map(str, overview.get('availablePorts', []))) or 'N/A'}"
+        )
+
+        for session in detailed_sessions:
+            players = session.get("players") or []
+            player_count = len(players) if players else session.get("playerCount", "N/A")
+            embed.add_field(
+                name=f"Port {session.get('port')} - {session.get('gameName') or _game_name(session.get('gameCode'))}",
+                value=(
+                    f"**Comment:** {session.get('comment', 'N/A')}\n"
+                    f"**State:** {session.get('state', 'unknown')}\n"
+                    f"**Kind:** {session.get('kind', 'unknown')}\n"
+                    f"**Players:** {player_count}\n"
+                    f"**Last Activity:** {session.get('lastActivityAt') or 'N/A'}"
+                ),
+                inline=False,
+            )
+
+        await interaction.followup.send(embed=embed)
+
+    @app_commands.command(description="Retrieve server data once", name="server_peep")
+    @app_commands.choices(port=ports_choices)
+    async def server_peep(self, interaction: discord.Interaction, port: int):
+        logger.info("%s called /server_peep for port %s", interaction.user.name, port)
+        try:
+            session = await self.orchestrator.get_session_by_port(port)
+        except OrchestratorAPIError as e:
+            await interaction.response.send_message(f"⚠ Unable to retrieve data for port {port}: {e}", ephemeral=True)
+            return
+
+        embed = build_status_embed(session)
+        embed.set_footer(
+            text=f"Requested by {interaction.user.display_name}",
+            icon_url=interaction.user.avatar.url if interaction.user.avatar else None,
+        )
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(description="Watch server data and update every 5 seconds", name="server_watch")
+    @app_commands.choices(port=ports_choices)
+    async def server_watch(self, interaction: discord.Interaction, port: int):
+        logger.info("%s called /server_watch for port %s", interaction.user.name, port)
+        try:
+            session = await self.orchestrator.get_session_by_port(port)
+        except OrchestratorAPIError as e:
+            await interaction.response.send_message(f"⚠ No active server on port {port}: {e}", ephemeral=True)
+            return
+
+        if session.get("state") not in ACTIVE_STATES:
+            await interaction.response.send_message(f"⚠ No active server on port {port}.", ephemeral=True)
+            return
+
+        await interaction.response.send_message(embed=build_status_embed(session, title_prefix="Watching Server Status"))
+        self.watch_tasks[port] = self.bot.loop.create_task(
+            self.server_watch_task(port, await interaction.original_response())
+        )
+
+    @app_commands.command(description="Stops watching server data", name="stop_server_watch")
+    @app_commands.choices(port=ports_choices)
+    @app_commands.checks.has_any_role("Event Staff")
+    async def stop_server_watch(self, interaction: discord.Interaction, port: int):
+        logger.info("%s called /stop_server_watch for port %s", interaction.user.name, port)
+        task = self.watch_tasks.pop(port, None)
+        if not task:
+            await interaction.response.send_message(f"⚠ No watch task running for port {port}.", ephemeral=True)
+            return
+        task.cancel()
+        await interaction.response.send_message(f"✅ Stopped watching server on port {port}.")
+
+    @app_commands.command(description="Investigate server players", name="investigate")
+    @app_commands.checks.has_any_role("Admin", "Mod")
+    @app_commands.choices(port=ports_choices)
+    async def investigate(self, interaction: discord.Interaction, port: int, public: bool = False):
+        logger.info("%s called /investigate for port %s", interaction.user.name, port)
+        try:
+            session = await self.orchestrator.get_session_by_port(port, moderation=not public)
+        except OrchestratorAPIError as e:
+            await interaction.response.send_message(f"⚠ Could not inspect players: {e}", ephemeral=True)
+            return
+
+        players = session.get("players") or []
+        if not players:
+            await interaction.response.send_message("No active players on this server.", ephemeral=True)
+            return
+
+        red, blue, spectators = _players_by_alliance(players)
+        embed = discord.Embed(
+            title=f"Players on Server Port {port}",
+            color=discord.Color.purple(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(name="🔴 Red Alliance", value=_format_player_lines(red, include_ip=not public), inline=False)
+        embed.add_field(name="🔵 Blue Alliance", value=_format_player_lines(blue, include_ip=not public), inline=False)
+        embed.add_field(name="👁️ Spectators", value=_format_player_lines(spectators, include_ip=not public), inline=False)
+        embed.set_footer(
+            text=f"Requested by {interaction.user.display_name}",
+            icon_url=interaction.user.avatar.url if interaction.user.avatar else None,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=not public)
+
+    async def _consume_orchestrator_events(self):
+        await self.bot.wait_until_ready()
+        types = ["match_timer_finished", "ranked_inactivity_warning", "ranked_inactivity_expired", "server_stopped"]
+        if ORCHESTRATOR_RELAY_CHAT_TO_DISCORD:
+            types.append("chat_message")
+
+        while not self.bot.is_closed():
+            try:
+                events = await self.orchestrator.get_events(
+                    after_event_id=self._last_event_id,
+                    types=types,
+                    wait_ms=25000,
+                )
+                for event in events:
+                    await self._handle_orchestrator_event(event)
+                    self._last_event_id = str(event.get("id"))
+                await self._reconcile_ranked_sessions()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error("Orchestrator event consumer error: %s", e)
+                await asyncio.sleep(5)
+
+    async def _reconcile_ranked_sessions(self):
+        ranked = self.bot.get_cog("Ranked")
+        if not ranked:
+            return
+        # Reachability failure raises; never clear Discord matches on an outage.
+        active = await self.orchestrator.list_servers(kind="ranked", active=True)
+        live_ids = {session["id"] for session in active}
+        for session_id in list(self.server_sessions_by_port.values()):
+            match = ranked.find_match_by_session_id(session_id)
+            if match and session_id not in live_ids:
+                await ranked.handle_orchestrator_inactivity_expired({"sessionId": session_id})
+
+    async def _handle_orchestrator_event(self, event: dict):
+        event_type = event.get("type")
+        if event_type == "server_stopped":
+            await self._reconcile_ranked_sessions()
+        elif event_type == "match_timer_finished":
+            await self._handle_match_timer_finished(event)
+        elif event_type == "ranked_inactivity_warning":
+            ranked = self.bot.get_cog("Ranked")
+            if ranked:
+                await ranked.handle_orchestrator_inactivity_warning(event)
+        elif event_type == "ranked_inactivity_expired":
+            ranked = self.bot.get_cog("Ranked")
+            if ranked:
+                await ranked.handle_orchestrator_inactivity_expired(event)
+        elif event_type == "chat_message" and ORCHESTRATOR_RELAY_CHAT_TO_DISCORD:
+            await self._handle_chat_message(event)
+
+    async def _handle_match_timer_finished(self, event: dict):
+        session_id = event.get("sessionId")
+        if not session_id or self.score_posted.get(session_id):
+            return
+
+        ranked = self.bot.get_cog("Ranked")
+        if not ranked:
+            return
+
+        match = ranked.find_match_by_session_id(session_id) or ranked.find_match_by_port(event.get("port"))
+        if not match or not match.password_channel_id:
+            return
+
+        try:
+            score = await self.orchestrator.get_latest_score(session_id)
+        except OrchestratorAPIError as e:
+            logger.error("Could not fetch score for session %s: %s", session_id, e)
+            return
+
+        await self._post_match_scores(event.get("port"), score or {}, match)
+        self.score_posted[session_id] = True
+
+    async def _post_match_scores(self, port: int, score: dict, match):
+        try:
+            channel = self.bot.get_channel(match.password_channel_id)
+            if not channel:
+                return
+            red = int(float(score.get("redScore", 0)))
+            blue = int(float(score.get("blueScore", 0)))
+            if red > blue:
+                result = "🟥 Red wins"
+                color = discord.Color(0xE74C3C)
+            elif blue > red:
+                result = "🟦 Blue wins"
+                color = discord.Color(0x3498DB)
+            else:
+                result = "🤝 Tie"
+                color = discord.Color(0x95A5A6)
+
+            embed = discord.Embed(
+                title=f"🏁 {match.full_game_name} - Match Over",
+                description=f"## 🟥 `{red:>3}` - `{blue:<3}` 🟦\n**{result}**",
+                color=color,
+                timestamp=datetime.now(timezone.utc),
+            )
+
+            opr = _opr_rows(score)
+            if opr:
+                rows = [f"{name:<20} {value:>6g}" for name, value in sorted(opr, key=lambda item: -item[1])]
+                embed.add_field(name="OPR", value="```\n" + "\n".join(rows[:20]) + "\n```", inline=False)
+
+            await channel.send(embed=embed)
         except Exception as e:
-            logger.error(f"Error logging chat message for port {port}: {e}")
+            logger.error("Error posting match scores for port %s: %s", port, e)
 
-    def _buffer_chat_message(self, port: int, game_name: str, game_format: str, username: str, ip, message: str):
-        RESET = "\x1b[0m"
-        DIM_CYAN = "\x1b[2;36m"
-        BOLD_YELLOW = "\x1b[1;33m"
-        BOLD_GREEN = "\x1b[1;32m"
-        DIM = "\x1b[2m"
+    async def _handle_chat_message(self, event: dict):
+        port = int(event.get("port") or 0)
+        data = event.get("data") or {}
+        username = data.get("playerName", "Unknown")
+        message = data.get("message") or event.get("message") or ""
+        session = self.server_metadata.get(port) or {}
+        game_name = session.get("gameName") or _game_name(session.get("gameCode", "Unknown"))
+        game_number = str(session.get("gameCode", ""))
+        alliance_size = default_game_players.get(game_number, 4) // 2
+        game_format = f"{alliance_size}v{alliance_size}"
+        self._buffer_chat_message(port, game_name, game_format, username, message)
+
+    def _buffer_chat_message(self, port: int, game_name: str, game_format: str, username: str, message: str):
+        reset = "\x1b[0m"
+        dim_cyan = "\x1b[2;36m"
+        bold_yellow = "\x1b[1;33m"
+        bold_green = "\x1b[1;32m"
 
         if port not in self.chat_header_posted:
             self.chat_header_posted.add(port)
-            sep = "─" * 44
+            sep = "-" * 44
             self.chat_discord_buffer.append(
-                f"{BOLD_GREEN}{sep}\n"
-                f"  🟢  {game_name} {game_format}  ·  Port {port}\n"
-                f"{sep}{RESET}"
+                f"{bold_green}{sep}\n  {game_name} {game_format}  |  Port {port}\n{sep}{reset}"
             )
 
-        header = f"{DIM_CYAN}[{port} | {game_name} {game_format}]{RESET}"
-        user_part = f"{BOLD_YELLOW}{username}{RESET}"
-        ip_part = f" {DIM}({ip}){RESET}" if ip else ""
-        safe_message = message.replace("```", "`​`​`")
-        self.chat_discord_buffer.append(f"{header} {user_part}{ip_part}: {safe_message}")
+        safe_message = message.replace("```", "`\u200b`\u200b`")
+        self.chat_discord_buffer.append(
+            f"{dim_cyan}[{port} | {game_name} {game_format}]{reset} {bold_yellow}{username}{reset}: {safe_message}"
+        )
 
     async def _flush_chat_buffer(self):
         await self.bot.wait_until_ready()
@@ -241,630 +714,11 @@ class ServerActions(commands.Cog):
                 try:
                     await channel.send("```ansi\n" + "\n".join(chunk) + "\n```")
                 except Exception as e:
-                    logger.error(f"Error flushing chat buffer to Discord: {e}")
-    @staticmethod
-    def _read_opr(port: int) -> Optional[Dict[str, list]]:
-        opr_path = os.path.join(SERVER_GAME_DATA_DIR, str(port), 'OPR.txt')
-        try:
-            with open(opr_path, 'r', encoding='utf-8') as f:
-                raw = f.read()
-        except OSError:
-            return None
-        entries = []
-        for line in raw.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            name, _, score = line.partition(':')
-            try:
-                score_val = float(score.strip())
-            except ValueError:
-                score_val = 0.0
-            entries.append((name.strip(), score_val))
-        if not entries:
-            return None
-        midpoint = -(-len(entries) // 2)
-        return {'red': entries[:midpoint], 'blue': entries[midpoint:]}
+                    logger.error("Error flushing chat buffer to Discord: %s", e)
 
-    @staticmethod
-    def _parse_timer(raw) -> Optional[float]:
-        if raw is None:
-            return None
-        s = str(raw).strip()
-        if not s:
-            return None
-        if ':' in s:
-            try:
-                minutes, seconds = s.split(':', 1)
-                return float(minutes) * 60.0 + float(seconds)
-            except ValueError:
-                return None
-        try:
-            return float(s)
-        except ValueError:
-            return None
-
-    async def _check_match_end(self, port: int):
-        if not self.players_active.get(port):
-            return
-        data = self.server_data_cache.get(port)
-        if not data:
-            return
-        timer = self._parse_timer(data.get('timer'))
-        if timer is None:
-            return
-
-        prev = self.last_timer.get(port, 0.0)
-
-        if timer > 0:
-            self.score_posted[port] = False
-
-        self.last_timer[port] = timer
-
-        if timer <= 0 and prev > 0 and not self.score_posted.get(port, False):
-            ranked_cog = self.bot.get_cog('Ranked')
-            if not ranked_cog:
-                logger.warning(f"[match_end] port {port}: Ranked cog not found")
-                return
-            match = ranked_cog.find_match_by_port(port)
-            if not match:
-                logger.warning(f"[match_end] port {port}: no match found for port")
-                return
-            if not match.password_channel_id:
-                logger.warning(f"[match_end] port {port}: match has no password_channel_id")
-                return
-            logger.info(f"[match_end] port {port}: posting scores (prev={prev}, timer={timer})")
-            await self._post_match_scores(port, data, match)
-            self.score_posted[port] = True
-
-    async def _post_match_scores(self, port: int, data: dict, match):
-        try:
-            channel = self.bot.get_channel(match.password_channel_id)
-            if not channel:
-                return
-            red = int(float(data['Score_R']))
-            blue = int(float(data['Score_B']))
-            if red > blue:
-                result = "🟥 Red wins"
-                color = discord.Color(0xE74C3C)
-            elif blue > red:
-                result = "🟦 Blue wins"
-                color = discord.Color(0x3498DB)
-            else:
-                result = "🤝 Tie"
-                color = discord.Color(0x95A5A6)
-
-            embed = discord.Embed(
-                title=f"🏁 {match.full_game_name} — Match Over",
-                description=f"## 🟥 `{red:>3}`  —  `{blue:<3}` 🟦\n**{result}**",
-                color=color,
-                timestamp=datetime.now(timezone.utc),
-            )
-
-            opr = self._read_opr(port)
-            if opr:
-                def fmt(entries):
-                    if not entries:
-                        return "—"
-                    name_w = max(len(n) for n, _ in entries)
-                    rows = [f"{name:<{name_w}}  {score:>6g}"
-                            for name, score in sorted(entries, key=lambda e: -e[1])]
-                    return "```\n" + "\n".join(rows) + "\n```"
-                embed.add_field(name="🟥 Red OPR", value=fmt(opr['red']), inline=True)
-                embed.add_field(name="🟦 Blue OPR", value=fmt(opr['blue']), inline=True)
-
-            await channel.send(embed=embed)
-        except Exception as e:
-            logger.error(f"Error posting match scores for port {port}: {e}")
-
-    def start_server_process(self, game: str, comment: str, password: str = "", admin: str = "Admin",
-                             restart_mode: int = -1, frame_rate: int = 60, update_time: int = 20,
-                             tournament_mode: bool = True, start_when_ready: bool = True,
-                             register: bool = True, spectators: int = 4, min_players: int = -1,
-                             restart_all: bool = True, timeout: int = -1):
-        if not os.path.exists(SERVER_PATH):
-            return "⚠ xRC Sim server not found, use `/update` to update", -1
-
-        if len(self.servers_active) >= len(PORTS):
-            return "⚠ The maximum number of servers are already running", -1
-
-        port = -1
-        for p in PORTS:
-            if p not in self.servers_active:
-                port = p
-                break
-
-        if port == -1:
-            return "⚠ Could not find a port to run the server on", -1
-
-        # Set up output score files directory
-        output_dir = os.path.join(SERVER_GAME_DATA_DIR, str(port))
-        os.makedirs(output_dir, exist_ok=True)  # Create directories if they don't exist
-
-        logger.info(f"Launching server on port {port}")
-
-        game_settings = server_game_settings.get(game, "")
-        if restart_mode == -1:
-            restart_mode = server_restart_modes.get(game, 1)
-
-        if min_players == -1:
-            min_players = default_game_players.get(game, 4)
-
-        f = open(f"{SERVER_LOGS_DIR}{port}.log", "a")
-        self.log_files[port] = f
-        f.write(f"Server started at {datetime.now()}\n")
-        
-        # Initialize chat log file
-        os.makedirs(CHAT_LOGS_DIR, exist_ok=True)
-        chat_log_path = os.path.join(CHAT_LOGS_DIR, f"{port}.log")
-        chat_f = open(chat_log_path, "a", encoding="utf-8")
-        self.chat_log_files[port] = chat_f
-        chat_f.write(f"=== Chat log started at {datetime.now()} ===\n")
-
-        command = [
-            SERVER_PATH, "-batchmode", "-nographics",
-            f"RouterPort={port}", f"Port={port}", f"Game={game}",
-            f"GameOption={restart_mode}", f"FrameRate={frame_rate}",
-            f"Tmode={'On' if tournament_mode else 'Off'}",
-            f"Register={'On' if register else 'Off'}",
-            f"Spectators={spectators}", f"UpdateTime={update_time}",
-            "MaxData=1000000",
-            f"StartWhenReady={'On' if start_when_ready else 'Off'}",
-            f"Comment={comment}", f"Password={password}",
-            f"Admin={admin}", f"GameSettings={game_settings}",
-            f"MinPlayers={min_players}",
-            f"RestartAll={'On' if restart_all else 'Off'}",
-            "NetStats=Off", "Profiling=Off",
-            f"OUTPUT_SCORE_FILES={output_dir}"  # Added parameter
-        ]
-
-        process = subprocess.Popen(command, stdout=f, stderr=f, shell=False)
-        self.servers_active[port] = process
-        self.last_active[port] = datetime.now()
-        self.server_comments[port] = comment
-        self.server_games[port] = game
-
-        logger.info(f"Server launched on port {port}: '{comment}'")
-
-        # Start timeout task if timeout is specified
-        if timeout > 0:
-            asyncio.create_task(self._handle_server_timeout(port, timeout))
-        
-        return f"✅ Launched server '{comment}' on port {port}", port
-
-    async def _handle_server_timeout(self, port: int, timeout_minutes: int):
-        """Handle server timeout by shutting it down after specified minutes"""
-        try:
-            await asyncio.sleep(timeout_minutes * 60)  # Convert minutes to seconds
-            if port in self.servers_active:
-                logger.info(f"Server on port {port} timed out after {timeout_minutes} minutes")
-                self.stop_server_process(port)
-        except asyncio.CancelledError:
-            logger.info(f"Timeout task for port {port} was cancelled")
-        except Exception as e:
-            logger.error(f"Error in timeout task for port {port}: {e}")
-
-    def stop_server_process(self, port: int):
-        if port not in self.servers_active:
-            return f"⚠ Server on port {port} not found"
-
-        logger.info(f"Shutting down server on port {port}")
-        if port in self.log_files:
-            self.log_files[port].write(f"Server shut down at {datetime.now()}\n")
-
-        # Close chat log file
-        if port in self.chat_log_files:
-            self.chat_log_files[port].write(f"=== Chat log ended at {datetime.now()} ===\n")
-            self.chat_log_files[port].close()
-            del self.chat_log_files[port]
-
-        process = self.servers_active[port]
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-        if port in self.log_files:
-            self.log_files[port].close()
-        self.servers_active.pop(port, None)
-        self.last_active.pop(port, None)
-        self.log_files.pop(port, None)
-        self.server_comments.pop(port, None)
-        self.server_games.pop(port, None)
-        self.log_read_positions.pop(port, None)
-        self.last_timer.pop(port, None)
-        self.chat_header_posted.discard(port)
-        self.score_posted.pop(port, None)
-        self.server_data_cache.pop(port, None)
-
-        # Delete server data directory for the port being shut down
-        output_dir = os.path.join(SERVER_GAME_DATA_DIR, str(port))
-        if os.path.exists(output_dir):
-            shutil.rmtree(output_dir)
-            logger.info(f"Deleted server data directory for port {port}")
-
-        logger.info(f"Server on port {port} shut down")
-
-        # Delete watch message using helper method
-        asyncio.create_task(self._delete_watch_message(port))  # Use helper method
-        
-        return f"✅ Server on port {port} shut down"
-
-    async def _create_watch_message(self, port: int, game_type: str):
-        channel = self.bot.get_channel(QUEUE_STATUS_CHANNEL_ID)
-        if channel:
-            watch_message = await channel.send(f"🔔 **Server Started** on port `{port}`\n**Game Type:** {game_type}")
-            self.watch_messages[port] = watch_message
-            # Start the watch task for this server
-            task = self.bot.loop.create_task(self.server_watch_task(port, watch_message))
-            self.watch_tasks[port] = task
-    
-    async def _delete_watch_message(self, port: int):
-        watch_message = self.watch_messages.get(port)
-        if watch_message:
-            try:
-                await watch_message.delete()
-                del self.watch_messages[port]
-            except discord.NotFound:
-                logger.warning(f"Watch message for port {port} not found.")
-            except Exception as e:
-                logger.error(f"Error deleting watch message for port {port}: {e}")
-            # Cancel the associated watch task
-            task = self.watch_tasks.get(port)
-            if task:
-                task.cancel()
-                del self.watch_tasks[port]
-    
-    async def server_watch_task(self, port: int, message: discord.Message):
-        while port in self.servers_active:
-            data = self.server_data_cache.get(port)
-            if data:
-                embed = discord.Embed(
-                    title=f"🖥️ Server Watch for Port {port}",
-                    color=discord.Color.blue(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                embed.add_field(name="Game Type", value=self.server_games.get(port, "Unknown"), inline=True)
-                embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
-                embed.add_field(name="Red Score", value=data.get("Score_R", "0"), inline=True)
-                embed.add_field(name="Blue Score", value=data.get("Score_B", "0"), inline=True)
-                
-                # Display players by alliance
-                players = self.players_active.get(port, [])
-                red_alliance = [p for p in players if p.position.lower().startswith("red")]
-                blue_alliance = [p for p in players if p.position.lower().startswith("blue")]
-                spectators = [p for p in players if not p.position.lower().startswith(("red", "blue"))]
-
-                if red_alliance:
-                    red_players = "\n".join(f"{p.name} - {p.position}" for p in red_alliance)
-                else:
-                    red_players = "None"
-                embed.add_field(name="🔴 Red Alliance", value=red_players, inline=False)
-
-                if blue_alliance:
-                    blue_players = "\n".join(f"{p.name} - {p.position}" for p in blue_alliance)
-                else:
-                    blue_players = "None"
-                embed.add_field(name="🔵 Blue Alliance", value=blue_players, inline=False)
-
-                if spectators:
-                    spectator_list = "\n".join(f"{p.name} - {p.position}" for p in spectators)
-                else:
-                    spectator_list = "None"
-                embed.add_field(name="👁️ Spectators", value=spectator_list, inline=False)
-                
-                try:
-                    await message.edit(embed=embed)
-                except discord.HTTPException as e:
-                    logger.error(f"Failed to update watch embed for port {port}: {e}")
-                    break
-            await asyncio.sleep(5)  # Update every 5 seconds
-
-    @app_commands.autocomplete(game=game_autocomplete)
-    @app_commands.command(description="Launches a new instance of xRC Sim server", name="launchserver")
-    @app_commands.describe(game="Search for a game or enter its full name")
-    @app_commands.checks.has_any_role("Event Staff")
-    async def launch_server(self, interaction: discord.Interaction,
-                            game: str, comment: str, password: str = "", admin: str = "Admin",
-                            restart_mode: int = -1, frame_rate: int = 120, update_time: int = 10,
-                            tournament_mode: bool = True, start_when_ready: bool = True,
-                            register: bool = True, spectators: int = 4, min_players: int = -1,
-                            restart_all: bool = True, timeout: int = -1, silent: bool = False):
-        """Launches a new instance of xRC Sim server.
-        
-        Args:
-            game: The game to launch
-            comment: A comment/description for the server
-            password: Server password (optional)
-            admin: Admin username (default: "Admin")
-            restart_mode: Server restart mode (default: -1)
-            frame_rate: Server frame rate (default: 120)
-            update_time: Server update time (default: 10)
-            tournament_mode: Whether to enable tournament mode (default: True)
-            start_when_ready: Whether to start when ready (default: True)
-            register: Whether to register the server (default: True)
-            spectators: Number of spectator slots (default: 4)
-            min_players: Minimum players required (default: -1)
-            restart_all: Whether to restart all (default: True)
-            timeout: Server timeout in minutes (-1 for no timeout) (default: -1)
-            silent: If True, do not post to the queue channel (default: False)
-        """
-        logger.info(f"{interaction.user.name} called /launchserver")
-
-        game_id = resolve_game_id(game)
-        if game_id is None:
-            await interaction.response.send_message(
-                "Unknown game. Choose a search suggestion or enter a full game name.",
-                ephemeral=True,
-            )
-            return
-        game = game_id
-
-        result, port = self.start_server_process(game, comment, password, admin, restart_mode, frame_rate, update_time,
-                                 tournament_mode, start_when_ready, register, spectators, min_players, restart_all, timeout)
-
-        if not silent and port != -1:
-            game_type = next(name for name, game_id in server_games.items() if game_id == game)
-            asyncio.create_task(self._create_watch_message(port, game_type))
-
-        await interaction.response.send_message(result)
-
-    @app_commands.command(description="Shutdown a running xRC Sim server", name="landserver")
-    @app_commands.checks.has_any_role("Event Staff")
-    @app_commands.choices(port=ports_choices)
-    async def land_server(self, interaction: discord.Interaction, port: int):
-        logger.info(f"{interaction.user.name} called /landserver")
-
-        result = self.stop_server_process(port)
-
-        await interaction.response.send_message(result)
-
-    @app_commands.command(description="Lists the running server instances", name="listservers")
-    @app_commands.checks.has_any_role("Event Staff")
-    async def list_servers(self, interaction: discord.Interaction):
-        logger.info(f"{interaction.user.name} called /listservers")
-        if not self.servers_active:
-            await interaction.response.send_message("⚠ No servers are running")
-            return
-
-        server_list = []
-        for port, process in self.servers_active.items():
-            comment = self.server_comments.get(port, "N/A")
-            game_number = self.server_games.get(port, "Unknown")
-            game_name = next((name for name, number in server_games.items() if number == game_number), "Unknown")
-            server_list.append(f"Port {port}: {game_name} - '{comment}'")
-
-        response = "Running servers:\n" + "\n".join(server_list)
-        await interaction.response.send_message(response)
-
-    @app_commands.command(description="Show live performance stats for running servers", name="serverstats")
-    @app_commands.checks.has_any_role("Event Staff")
-    async def server_stats(self, interaction: discord.Interaction):
-        logger.info(f"{interaction.user.name} called /serverstats")
-        await interaction.response.defer()
-
-        if not self.servers_active:
-            await interaction.followup.send("⚠ No servers are currently running.")
-            return
-
-        embed = discord.Embed(title="Server Performance", color=0x34dceb)
-        embed.timestamp = datetime.now()
-
-        for port, process in self.servers_active.items():
-            game_number = self.server_games.get(port, "Unknown")
-            game_name = next((n for n, num in server_games.items() if num == game_number), "Unknown")
-            comment = self.server_comments.get(port, "N/A")
-            start_time = self.last_active.get(port)
-            player_count = len(self.players_active.get(port, []))
-
-            uptime_str = "Unknown"
-            if start_time:
-                delta = datetime.now() - start_time
-                h, rem = divmod(int(delta.total_seconds()), 3600)
-                m, s = divmod(rem, 60)
-                uptime_str = f"{h}h {m}m {s}s" if h else f"{m}m {s}s"
-
-            cpu_pct = "N/A"
-            mem_mb = "N/A"
-            try:
-                proc = psutil.Process(process.pid)
-                cpu_pct = f"{await asyncio.to_thread(proc.cpu_percent, 0.1):.1f}%"
-                mem_mb = f"{proc.memory_info().rss / 1024 / 1024:.1f} MB"
-            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                logger.warning(f"Could not get stats for port {port}: {e}")
-
-            embed.add_field(
-                name=f"Port {port} — {game_name}",
-                value=(
-                    f"**Comment:** {comment}\n"
-                    f"**Uptime:** {uptime_str}\n"
-                    f"**Players:** {player_count}\n"
-                    f"**CPU:** {cpu_pct} | **RAM:** {mem_mb}"
-                ),
-                inline=False
-            )
-
-        await interaction.followup.send(embed=embed)
-
-    def get_server_data(self, port: int) -> Optional[Dict[str, any]]:
-        """
-        Retrieves server data for the specified port.
-        Reads Timer.txt, Score_R.txt, and Score_B.txt from the server data directory.
-        """
-        server_data_dir = os.path.join(SERVER_GAME_DATA_DIR, str(port))
-        timer_path = os.path.join(server_data_dir, 'Timer.txt')
-        score_r_path = os.path.join(server_data_dir, 'Score_R.txt')
-        score_b_path = os.path.join(server_data_dir, 'Score_B.txt')
-        
-        server_data = {}
-        
-        try:
-            with open(timer_path, 'r') as f:
-                server_data['timer'] = f.read().strip()
-            with open(score_r_path, 'r') as f:
-                server_data['Score_R'] = f.read().strip()
-            with open(score_b_path, 'r') as f:
-                server_data['Score_B'] = f.read().strip()
-        except FileNotFoundError:
-            logger.debug(f"Score files not yet available for port {port}")
-            return None
-        
-        return server_data
-
-    @app_commands.command(description="Retrieve server data once", name="server_peep")
-    @app_commands.choices(port=ports_choices)
-    async def server_peep(self, interaction: discord.Interaction, port: int):
-        logger.info(f"{interaction.user.name} called /server_peep for port {port}")
-
-        data = self.get_server_data(port)
-        if not data:
-            await interaction.response.send_message(f"⚠ Unable to retrieve data for port {port}.", ephemeral=True)
-            return
-
-        players = self.players_active.get(port, [])
-        red_alliance = [player.name for player in players if player.position.lower().startswith("red")]
-        blue_alliance = [player.name for player in players if player.position.lower().startswith("blue")]
-
-        red_players = "\n".join(red_alliance) if red_alliance else "No players in Red Alliance."
-        blue_players = "\n".join(blue_alliance) if blue_alliance else "No players in Blue Alliance."
-
-        red_score = data.get("Score_R", "0")
-        blue_score = data.get("Score_B", "0")
-
-        game_type = self.server_games.get(port, "Unknown")
-
-        embed = discord.Embed(
-            title=f"Server Status for Port {port}",
-            color=discord.Color.blue(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
-        embed.add_field(name="Red Alliance", value=red_players, inline=True)
-        embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
-        embed.add_field(name="Red Score", value=red_score, inline=True)
-        embed.add_field(name="Blue Score", value=blue_score, inline=True)
-        embed.add_field(name="Game Type", value=game_type, inline=True)
-        embed.set_footer(text=f"Requested by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
-
-        await interaction.response.send_message(embed=embed)
-
-    @app_commands.command(description="Watch server data and update every 5 seconds", name="server_watch")
-    @app_commands.choices(port=ports_choices)
-    async def server_watch(self, interaction: discord.Interaction, port: int):
-        logger.info(f"{interaction.user.name} called /server_watch for port {port}")
-
-        if port not in self.servers_active:
-            await interaction.response.send_message(f"⚠ No active server on port {port}.", ephemeral=True)
-            return
-
-        data = self.get_server_data(port)
-        if not data:
-            await interaction.response.send_message(f"⚠ Unable to retrieve data for port {port}.", ephemeral=True)
-            return
-
-        players = self.players_active.get(port, [])
-        red_alliance = [player.name for player in players if player.position.lower().startswith("red")]
-        blue_alliance = [player.name for player in players if player.position.lower().startswith("blue")]
-
-        red_players = "\n".join(red_alliance) if red_alliance else "No players in Red Alliance."
-        blue_players = "\n".join(blue_alliance) if blue_alliance else "No players in Blue Alliance."
-
-        red_score = data.get("Score_R", "0")
-        blue_score = data.get("Score_B", "0")
-
-        game_type = self.server_games.get(port, "Unknown")
-
-        embed = discord.Embed(
-            title=f"Watching Server Status for Port {port}",
-            color=discord.Color.green(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        embed.add_field(name="Timer", value=data.get("timer", "N/A"), inline=True)
-        embed.add_field(name="Red Alliance", value=red_players, inline=True)
-        embed.add_field(name="Blue Alliance", value=blue_players, inline=True)
-        embed.add_field(name="Red Score", value=red_score, inline=True)
-        embed.add_field(name="Blue Score", value=blue_score, inline=True)
-        embed.add_field(name="Game Type", value=game_type, inline=True)
-        embed.set_footer(text=f"Watching by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
-
-        await interaction.response.send_message(embed=embed)
-
-        # Start the server_watch_task instead of defining update_embed
-        self.watch_tasks[port] = self.bot.loop.create_task(self.server_watch_task(port, await interaction.original_response()))
-
-    @app_commands.command(description="Stops watching server data", name="stop_server_watch")
-    @app_commands.choices(port=ports_choices)
-    @app_commands.checks.has_any_role("Event Staff")
-    async def stop_server_watch(self, interaction: discord.Interaction, port: int):
-        logger.info(f"{interaction.user.name} called /stop_server_watch for port {port}")
-
-        if port not in self.watch_tasks:
-            await interaction.response.send_message(f"⚠ No watch task running for port {port}.", ephemeral=True)
-            return
-
-        task = self.watch_tasks[port]
-        task.cancel()
-        del self.watch_tasks[port]
-        await interaction.response.send_message(f"✅ Stopped watching server on port {port}.")
-
-    @app_commands.command(description="Investigate server players", name="investigate")
-    @app_commands.checks.has_any_role("Admin", "Mod")
-    @app_commands.choices(port=ports_choices)
-    async def investigate(self, interaction: discord.Interaction, port: int, public: bool = False):  # Added 'public' parameter
-        logger.info(f"{interaction.user.name} called /investigate for port {port}")
-        players = self.players_active.get(port, [])
-        if not players:
-            await interaction.response.send_message("No active players on this server.", ephemeral=True)
-            return
-        
-        # Sort players into alliances and spectators
-        red_alliance = [p for p in players if p.position.lower().startswith("red")]
-        blue_alliance = [p for p in players if p.position.lower().startswith("blue")]
-        spectators = [p for p in players if not p.position.lower().startswith(("red", "blue"))]
-        
-        embed = discord.Embed(
-            title=f"Players on Server Port {port}",
-            color=discord.Color.purple(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        # Add Red Alliance section
-        if red_alliance:
-            red_players = "\n".join(
-                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if not public else "") for p in red_alliance]
-            )
-        else:
-            red_players = "None"
-        embed.add_field(name="🔴 Red Alliance", value=red_players, inline=False)
-        
-        # Add Blue Alliance section
-        if blue_alliance:
-            blue_players = "\n".join(
-                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if not public else "") for p in blue_alliance]
-            )
-        else:
-            blue_players = "None"
-        embed.add_field(name="🔵 Blue Alliance", value=blue_players, inline=False)
-        
-        # Add Spectators section
-        if spectators:
-            spectator_list = "\n".join(
-                [f"{p.name} - {p.position}" + (f"\nIP: {p.ip}" if not public else "") for p in spectators]
-            )
-        else:
-            spectator_list = "None"
-        embed.add_field(name="👁️ Spectators", value=spectator_list, inline=False)
-        
-        embed.set_footer(text=f"Requested by {interaction.user.display_name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
-        await interaction.response.send_message(embed=embed, ephemeral=not public)  # Set ephemeral based on 'public'
 
 async def setup(bot: commands.Bot) -> None:
     cog = ServerActions(bot)
     guild = await bot.fetch_guild(GUILD_ID)
     assert guild is not None
-
-    await bot.add_cog(
-        cog,
-        guilds=[guild]
-    )
+    await bot.add_cog(cog, guilds=[guild])
