@@ -78,7 +78,7 @@ ORCHESTRATOR_MODERATION_TOKEN = os.getenv('ORCHESTRATOR_MODERATION_TOKEN', ORCHE
 ORCHESTRATOR_ADMIN_TOKEN = os.getenv('ORCHESTRATOR_ADMIN_TOKEN', ORCHESTRATOR_TOKEN)
 ORCHESTRATOR_RELAY_CHAT_TO_DISCORD = os.getenv('ORCHESTRATOR_RELAY_CHAT_TO_DISCORD', 'false').lower() in ('1', 'true', 'yes', 'on')
 
-SECONDWEBSITE_BASE_URL = os.getenv('SECONDWEBSITE_BASE_URL', os.getenv('SECOND_WEBSITE_BASE_URL', 'https://secondrobotics.org'))
+SECONDWEBSITE_BASE_URL = os.getenv('SECONDWEBSITE_BASE_URL', os.getenv('SECOND_WEBSITE_BASE_URL', 'https://secondrobotics.org')).rstrip('/')
 
 
 server_games = {

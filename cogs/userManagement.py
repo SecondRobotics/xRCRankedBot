@@ -3,7 +3,7 @@ from discord.ext import commands, tasks
 from datetime import datetime
 import aiohttp
 import logging
-from config import GUILD_ID, API_KEY
+from config import GUILD_ID, API_KEY, SECONDWEBSITE_BASE_URL
 import time
 
 logger = logging.getLogger('discord')
@@ -31,7 +31,7 @@ class UserManagement(commands.Cog):
             logger.error("Guild not found.")
             return
 
-        url = "https://secondrobotics.org/api/ranked/leaderboard/RB3v3/"
+        url = f"{SECONDWEBSITE_BASE_URL}/api/ranked/leaderboard/RB3v3/"
         leaderboard_data = await self.fetch_leaderboard_data(url)
         if not leaderboard_data:
             return

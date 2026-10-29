@@ -17,7 +17,7 @@ logger = logging.getLogger('discord')
 
 HEADER = {"X-API-KEY": API_KEY}
 
-games = requests.get("https://secondrobotics.org/api/ranked/").json()
+games = requests.get(f"{SECONDWEBSITE_BASE_URL}/api/ranked/", timeout=15).json()
 
 short_codes = [games['short_code'] for games in games]
 short_codes_sorted = sorted(short_codes)
@@ -42,7 +42,7 @@ class General(commands.Cog):
 
         async with aiohttp.ClientSession(headers=HEADER, timeout=aiohttp.ClientTimeout(total=10)) as session:
             # Fetch player profile and avatar concurrently
-            async with session.get(f'https://secondrobotics.org/api/ranked/player/{user_id}') as response:
+            async with session.get(f'{SECONDWEBSITE_BASE_URL}/api/ranked/player/{user_id}') as response:
                 res = await response.json()
 
             if not res["exists"]:
@@ -58,7 +58,7 @@ class General(commands.Cog):
             # Fetch all game stats concurrently
             async def fetch_game(game):
                 try:
-                    async with session.get(f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}') as r:
+                    async with session.get(f'{SECONDWEBSITE_BASE_URL}/api/ranked/{game}/player/{user_id}') as r:
                         return await r.json()
                 except Exception as e:
                     logger.error(f"Failed to fetch game {game} for {user_id}: {e}")

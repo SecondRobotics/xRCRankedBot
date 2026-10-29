@@ -50,7 +50,7 @@ inactive_games.remove("Relic Recovery")
 
 daily_game = random.choice(inactive_games)
 
-games = requests.get("https://secondrobotics.org/api/ranked/").json()
+games = requests.get(f"{SECONDWEBSITE_BASE_URL}/api/ranked/", timeout=15).json()
 
 games_choices = [Choice(name=game['name'], value=game['short_code'])
                  for game in games if game['game'] in active_games] #or game['game'] == daily_game]
@@ -260,7 +260,7 @@ class Queue:
 
 
 async def handle_score_edit(interaction: discord.Interaction, qdata: XrcGame, red_score: int, blue_score: int):
-    url = f'https://secondrobotics.org/api/ranked/{qdata.api_short}/match/edit/'
+    url = f'{SECONDWEBSITE_BASE_URL}/api/ranked/{qdata.api_short}/match/edit/'
     json = {
         "red_score": red_score,
         "blue_score": blue_score
@@ -800,7 +800,7 @@ class Ranked(commands.Cog):
                 return data
             del _player_cache[player_id]
 
-        url = f'https://secondrobotics.org/api/ranked/player/{player_id}'
+        url = f'{SECONDWEBSITE_BASE_URL}/api/ranked/player/{player_id}'
         try:
             async with self._get_session().get(url) as x:
                 data = await x.json()
@@ -996,7 +996,7 @@ class Ranked(commands.Cog):
 
     async def display_teams(self, ctx, match: XrcGame):
         async def fetch_player_elo(game, user_id):
-            url = f'https://secondrobotics.org/api/ranked/{game}/player/{user_id}'
+            url = f'{SECONDWEBSITE_BASE_URL}/api/ranked/{game}/player/{user_id}'
             try:
                 async with self._get_session().get(url) as response:
                     if response.status == 200:
@@ -1957,7 +1957,7 @@ class Ranked(commands.Cog):
         return False, "Score Submitted"
 
     async def submit_score_to_api(self, current_match, red_score, blue_score):
-        url = f'https://secondrobotics.org/api/ranked/{current_match.api_short}/match/'
+        url = f'{SECONDWEBSITE_BASE_URL}/api/ranked/{current_match.api_short}/match/'
         json_data = {
             "red_alliance": [player.id for player in current_match.game.red] if current_match.game else [],
             "blue_alliance": [player.id for player in current_match.game.blue] if current_match.game else [],
