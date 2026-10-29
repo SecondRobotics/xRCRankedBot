@@ -20,7 +20,7 @@ A Discord bot written in Discord.py that runs ranked competitive matches for xRC
 
 ## Game Selection
 
-`/launchserver` and `/hangout_create` search the full game catalog as you type.
+`/launchserver` and `/casual_start` search the full game catalog as you type.
 The dropdown shows up to 25 suggestions at a time; type part of a game name
 (for example, `bio` for BioBuzz) to find games outside the initial suggestions.
 You can also submit a full game name without selecting a suggestion. Names
@@ -49,3 +49,15 @@ test modules `test_*.py` so discovery includes them. Tests use dummy configurati
 and mock external effects, so no `.env` file, credentials, or live Discord
 connection is needed. Live Discord API acceptance is checked separately by
 deploying and synchronizing the bot's commands.
+
+## Server orchestration
+
+The orchestrator owns game processes, ports, logs, chat, and score snapshots.
+Ranked and staff commands use scoped orchestrator bearer tokens. Subscriber casual
+commands always call SecondWebsite with the shared API key; the website checks
+entitlements and reserves credits. See `.env.example` for the required URLs/tokens.
+Old game hangouts have been replaced by `/casual_start`, `/casual_status`, and `/casual_stop`.
+
+Use a clean environment when upgrading: legacy plotting, spreadsheet, process,
+and image-decoding dependencies are no longer needed. Profile avatars still
+appear in embeds; embed color no longer requires decoding a remote image.

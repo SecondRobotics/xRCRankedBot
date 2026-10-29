@@ -8,16 +8,14 @@ import logging
 import os
 import threading
 import aiohttp
-from PIL import Image
 import random
-from io import BytesIO
 from config import *
 
 FALLBACK_AVATAR_URL = 'https://i0.wp.com/sbcf.fr/wp-content/uploads/2018/03/sbcf-default-avatar.png'  # Replace with your fallback avatar URL
 
 logger = logging.getLogger('discord')
 
-HEADER = {"x-api-key": SRC_API_TOKEN}
+HEADER = {"X-API-KEY": API_KEY}
 
 games = requests.get("https://secondrobotics.org/api/ranked/").json()
 
@@ -53,17 +51,9 @@ class General(commands.Cog):
                     ephemeral=True)
                 return
 
-            # Fetch avatar for embed color
+            # Keep the avatar as a Discord-hosted image; decoding remote images
+            # just to choose an embed color is unnecessary.
             random_color = discord.Color.blue()
-            try:
-                async with session.get(res['avatar']) as response:
-                    thumbnail_bytes = await response.read()
-                thumbnail_image = Image.open(BytesIO(thumbnail_bytes))
-                w, h = thumbnail_image.size
-                random_pixel = thumbnail_image.getpixel((random.randint(0, w - 1), random.randint(0, h - 1)))
-                random_color = discord.Color.from_rgb(*random_pixel[:3])
-            except Exception as e:
-                logger.error(f"Failed to fetch avatar: {e}")
 
             # Fetch all game stats concurrently
             async def fetch_game(game):

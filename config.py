@@ -15,10 +15,10 @@ if not DISCORD_APPLICATION_ID:
     logger.fatal('DISCORD_APPLICATION_ID not found')
     raise RuntimeError('DISCORD_APPLICATION_ID not found')
 
-SRC_API_TOKEN = os.getenv('SRC_API_TOKEN')
-if not SRC_API_TOKEN:
-    logger.fatal('SRC_API_TOKEN not found')
-    raise RuntimeError('SRC_API_TOKEN not found')
+API_KEY = os.getenv('API_KEY')
+if not API_KEY:
+    logger.fatal('API_KEY not found')
+    raise RuntimeError('API_KEY not found')
 
 GUILD_ID = int(os.getenv('GUILD_ID'))
 if not GUILD_ID:
@@ -71,6 +71,14 @@ RANKED_ADMIN_USERNAME = os.getenv('RANKED_ADMIN_USERNAME')
 if not RANKED_ADMIN_USERNAME:
     logger.fatal('RANKED_ADMIN_USERNAME not found')
     raise RuntimeError('RANKED_ADMIN_USERNAME not found')
+
+ORCHESTRATOR_BASE_URL = os.getenv('ORCHESTRATOR_BASE_URL', 'http://127.0.0.1:3000')
+ORCHESTRATOR_TOKEN = os.getenv('ORCHESTRATOR_TOKEN', '')
+ORCHESTRATOR_MODERATION_TOKEN = os.getenv('ORCHESTRATOR_MODERATION_TOKEN', ORCHESTRATOR_TOKEN)
+ORCHESTRATOR_ADMIN_TOKEN = os.getenv('ORCHESTRATOR_ADMIN_TOKEN', ORCHESTRATOR_TOKEN)
+ORCHESTRATOR_RELAY_CHAT_TO_DISCORD = os.getenv('ORCHESTRATOR_RELAY_CHAT_TO_DISCORD', 'false').lower() in ('1', 'true', 'yes', 'on')
+
+SECONDWEBSITE_BASE_URL = os.getenv('SECONDWEBSITE_BASE_URL', os.getenv('SECOND_WEBSITE_BASE_URL', 'https://secondrobotics.org'))
 
 
 server_games = {

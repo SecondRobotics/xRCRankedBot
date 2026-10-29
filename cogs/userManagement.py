@@ -3,11 +3,11 @@ from discord.ext import commands, tasks
 from datetime import datetime
 import aiohttp
 import logging
-from config import GUILD_ID, SRC_API_TOKEN
+from config import GUILD_ID, API_KEY
 import time
 
 logger = logging.getLogger('discord')
-HEADER = {"x-api-key": SRC_API_TOKEN}
+HEADER = {"X-API-KEY": API_KEY}
 
 class UserManagement(commands.Cog):
     def __init__(self, bot):

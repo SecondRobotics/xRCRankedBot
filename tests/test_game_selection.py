@@ -13,7 +13,7 @@ with test_configuration():
     from config import EVENT_STAFF_ID, server_games
     from game_selection import game_autocomplete, resolve_game_id
     from cogs.server import ServerActions
-    from cogs.gamehangout import GameHangout
+    from cogs.casual import CasualServers
 
 
 def make_interaction():
@@ -86,40 +86,20 @@ class GameSelectionTests(unittest.IsolatedAsyncioTestCase):
         for value in ("  bIoBuZz  ", "24"):
             with self.subTest(value=value):
                 cog = ServerActions.__new__(ServerActions)
-                cog.start_server_process = Mock(return_value=("test result", -1))
+                cog.start_server_process = AsyncMock(return_value=("test result", -1, None, None))
                 interaction = make_interaction()
                 await ServerActions.launch_server.callback(cog, interaction, value, "test")
                 self.assertEqual(cog.start_server_process.call_args.args[0], "24")
 
-    async def test_hangout_rejects_unknown_game_before_creating_resources(self):
-        cog = GameHangout(Mock())
-        interaction = make_interaction()
-        with patch("cogs.gamehangout.HangoutSession") as session_class:
-            await GameHangout.hangout_create.callback(cog, interaction, "bad game")
-            session_class.assert_not_called()
-        interaction.response.defer.assert_not_awaited()
-        interaction.response.send_message.assert_awaited_once()
-        self.assertTrue(interaction.response.send_message.call_args.kwargs["ephemeral"])
-
     async def test_launched_server_watch_uses_selected_game_name(self):
         cog = ServerActions.__new__(ServerActions)
-        cog.start_server_process = Mock(return_value=("server started", 11115))
+        cog.start_server_process = AsyncMock(return_value=("server started", 11115, "session", {}))
         cog._create_watch_message = AsyncMock()
         interaction = make_interaction()
         await ServerActions.launch_server.callback(cog, interaction, "24", "test")
         await asyncio.sleep(0)
         cog._create_watch_message.assert_awaited_once_with(11115, "BioBuzz")
 
-    async def test_hangout_normalizes_full_name_and_selected_id(self):
-        for value in ("  bIoBuZz  ", "24"):
-            with self.subTest(value=value):
-                cog = GameHangout(Mock())
-                interaction = make_interaction()
-                with patch("cogs.gamehangout.HangoutSession") as session_class:
-                    session_class.return_value.create_hangout_resources = AsyncMock(return_value=True)
-                    await GameHangout.hangout_create.callback(cog, interaction, value)
-                    self.assertEqual(session_class.call_args.args[1], "BioBuzz")
-                self.assertIn(interaction.user.id, cog.active_hangouts)
 
 
 if __name__ == "__main__":

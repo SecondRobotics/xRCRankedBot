@@ -13,14 +13,13 @@ lock:
 
 check-lock:
 	$(PYTHON) -m pip install --upgrade pip pip-tools
-	tmpfile=$$(mktemp); \
-	$(PIPTOOLS) compile --resolver=backtracking --output-file=$$tmpfile requirements.in; \
-	perl -0pi -e 's|pip-compile --output-file=.*? requirements\\.in|pip-compile --output-file=requirements.txt requirements.in|' $$tmpfile; \
-	diff -u requirements.txt $$tmpfile; \
-	rm $$tmpfile
+	set -eu; tmpfile=$$(mktemp); trap 'rm -f "$$tmpfile"' EXIT; \
+	CUSTOM_COMPILE_COMMAND='pip-compile --output-file=requirements.txt requirements.in' $(PIPTOOLS) compile --resolver=backtracking --output-file=$$tmpfile requirements.in; \
+	diff -u requirements.txt $$tmpfile
 
 run:
 	$(PYTHON) main.py
 
 test:
 	$(PYTHON) -m unittest discover -s tests -v
+	$(PYTHON) -m unittest test_regex_log -v
