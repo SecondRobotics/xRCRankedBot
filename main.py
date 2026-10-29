@@ -7,18 +7,17 @@ import logging.handlers
 from dotenv import load_dotenv
 from discord.utils import get
 from config import *
+from gateway_intents import build_intents
 
 logger = logging.getLogger('discord')
 load_dotenv()
 
-intents = discord.Intents.all()
-intents.message_content = True
 
 class RankedBot(commands.Bot):
     def __init__(self):
         super().__init__(
             command_prefix="!!!",
-            intents=discord.Intents.all(),
+            intents=build_intents(),
             application_id=DISCORD_APPLICATION_ID)
         self.ranked_cog = None
 
