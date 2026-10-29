@@ -1,4 +1,5 @@
 import aiohttp
+import asyncio
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
@@ -64,7 +65,7 @@ class OrchestratorClient:
     async def _request(self, *args, **kwargs):
         try:
             return await self._request_unchecked(*args, **kwargs)
-        except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
+        except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError, ValueError) as exc:
             raise OrchestratorAPIError(0, 'SERVICE_UNAVAILABLE', 'The service could not be reached or returned an invalid response.') from exc
 
     async def _request_unchecked(
@@ -75,6 +76,7 @@ class OrchestratorClient:
         json: Optional[dict] = None,
         query: Optional[dict] = None,
         scope: str = "default",
+        timeout: Optional[aiohttp.ClientTimeout] = None,
     ) -> Any:
         token = self._token_for_scope(scope)
         if not token:
@@ -89,7 +91,8 @@ class OrchestratorClient:
             url = f"{url}?{urlencode({k: v for k, v in query.items() if v is not None})}"
 
         headers = {"Authorization": f"Bearer {token}"}
-        async with self._get_session().request(method, url, json=json, headers=headers) as response:
+        request_options = {"timeout": timeout} if timeout is not None else {}
+        async with self._get_session().request(method, url, json=json, headers=headers, **request_options) as response:
             if response.status == 204:
                 return None
 
@@ -202,6 +205,8 @@ class OrchestratorClient:
         payload = await self._request(
             "GET",
             "/v1/events",
+            # Leave time for the full server wait plus network/response overhead.
+            timeout=aiohttp.ClientTimeout(total=max(self._timeout.total or 0, wait_ms / 1000 + 10)),
             query={
                 "afterEventId": after_event_id,
                 "types": ",".join(types) if types else None,
